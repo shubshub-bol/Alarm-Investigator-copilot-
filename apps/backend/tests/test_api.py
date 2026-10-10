@@ -140,6 +140,9 @@ class BrokenLlm:
     async def generate_json(self, system, prompt, schema):
         raise LlmError("429 RESOURCE_EXHAUSTED")
 
+    async def generate_text(self, system, prompt):
+        raise LlmError("429 RESOURCE_EXHAUSTED")
+
 
 def test_llm_outage_degrades_to_rules_and_template(retriever):
     with client_for(retriever, llm=BrokenLlm()) as api:

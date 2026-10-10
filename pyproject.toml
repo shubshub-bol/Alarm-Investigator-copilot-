@@ -49,6 +49,7 @@ dev = [
 testpaths = ["tests", "services", "mcp-servers", "rag/tests", "apps/backend/tests"]
 pythonpath = ["mcp-servers/alarm-management/tests", "apps/backend/tests"]  # shared test helpers
 addopts = "-q --import-mode=importlib"
+anyio_mode = "auto"  # every `async def` test runs with anyio (the MCP SDK's test runner), parametrized ones too
 
 [tool.ruff]
 line-length = 120

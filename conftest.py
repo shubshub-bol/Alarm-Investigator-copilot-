@@ -1,14 +1,7 @@
-"""Repo-wide pytest setup: run every `async def` test with anyio (the MCP SDK's test runner)."""
-
-import inspect
+"""Repo-wide pytest setup. `anyio_mode = "auto"` (pyproject.toml) runs every `async def` test with anyio, the MCP
+SDK's test runner; this fixture pins it to the asyncio backend."""
 
 import pytest
-
-
-def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
-    for item in items:
-        if inspect.iscoroutinefunction(getattr(item, "function", None)):
-            item.add_marker(pytest.mark.anyio)
 
 
 @pytest.fixture

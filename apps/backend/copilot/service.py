@@ -14,6 +14,7 @@ from copilot.conversations import ConversationStore, OpenConversation, StorageEr
 from copilot.investigation import Evidence, investigate
 from copilot.llm import LlmProvider
 from copilot.mcp_client import Connector, McpToolClient
+from copilot.titles import llm_title, rule_title
 from copilot.trace import RetrievalRecord, ToolCallRecord, ToolSpec
 from copilot.understanding import QueryUnderstanding, understand
 from rag.retrieval import Retriever
@@ -22,6 +23,7 @@ log = logging.getLogger("copilot.service")
 
 TraceStep = Annotated[ToolCallRecord | RetrievalRecord, Field(discriminator="kind")]
 EventCallback = Callable[[str, dict[str, Any]], Awaitable[None]]  # (event name, JSON-ready data)
+TITLE_WAIT_SECONDS = 3.0  # how long a finished answer waits for a slow LLM title before using the rule title
 
 
 class DiscoveryRecord(BaseModel):
@@ -110,24 +112,31 @@ class CopilotService:
             await self._save(conv, question, response, title=None)  # small talk leaves the chat as "New chat"
             return response
 
-        t0 = time.perf_counter()
-        async with McpToolClient(self.connector, server_name=self.server_name) as mcp:
-            tools = await mcp.discover()
-            discovery = DiscoveryRecord(
-                server=self.server_name,
-                connected=mcp.connected,
-                tool_count=len(tools),
-                tools=[t.name for t in tools],
-                error=None if mcp.connected else mcp.last_error,
-                duration_ms=_ms(t0),
-            )
-            await emit("discovery", discovery.model_dump(mode="json"))
-            run = await investigate(u, mcp, self.retriever, conv.state, trace_id=trace_id, on_step=on_step)
-        investigation_ms = _ms(t0)
+        # The LLM title runs alongside the investigation and is only waited for once the answer is ready.
+        title_task = asyncio.create_task(llm_title(self.llm, question)) if self.llm and conv.needs_title else None
+        try:
+            t0 = time.perf_counter()
+            async with McpToolClient(self.connector, server_name=self.server_name) as mcp:
+                tools = await mcp.discover()
+                discovery = DiscoveryRecord(
+                    server=self.server_name,
+                    connected=mcp.connected,
+                    tool_count=len(tools),
+                    tools=[t.name for t in tools],
+                    error=None if mcp.connected else mcp.last_error,
+                    duration_ms=_ms(t0),
+                )
+                await emit("discovery", discovery.model_dump(mode="json"))
+                run = await investigate(u, mcp, self.retriever, conv.state, trace_id=trace_id, on_step=on_step)
+            investigation_ms = _ms(t0)
 
-        t0 = time.perf_counter()
-        answer = await compose_answer(question, run, self.llm)
-        answer_ms = _ms(t0)
+            t0 = time.perf_counter()
+            answer = await compose_answer(question, run, self.llm)
+            answer_ms = _ms(t0)
+            title = await self._title(title_task, u, run.evidence, answer) if conv.needs_title else None
+        finally:
+            if title_task is not None:
+                title_task.cancel()  # a no-op once it has finished; stops it if this question was cancelled
 
         failed = any(s.status != "ok" for s in run.steps)
         if not discovery.connected or answer.grounding.degraded or u.fallback_reason:
@@ -153,7 +162,7 @@ class CopilotService:
                 total_ms=_ms(started),
             ),
         )
-        await self._save(conv, question, response, title=None)
+        await self._save(conv, question, response, title)
         log.info(
             "chat",
             extra={
@@ -196,6 +205,24 @@ class CopilotService:
             trace=[],
             timings=Timings(understanding_ms=understanding_ms, investigation_ms=0, answer_ms=0, total_ms=_ms(started)),
         )
+
+    async def _title(
+        self,
+        task: asyncio.Task[str | None] | None,
+        u: QueryUnderstanding,
+        evidence: Evidence,
+        answer: CopilotAnswer,
+    ) -> str:
+        """The LLM title if it arrives in time and is usable, otherwise the rule-based title."""
+        if task is not None:
+            try:
+                title = await asyncio.wait_for(task, TITLE_WAIT_SECONDS)
+            except TimeoutError:
+                log.warning("llm title too slow; using rules")
+                title = None
+            if title:
+                return title
+        return rule_title(u, evidence, [c.title for c in answer.citations])
 
     async def _resume(self, conversation_id: str | None) -> OpenConversation:
         """The conversation to continue. Without working storage the question is answered as a new chat."""
