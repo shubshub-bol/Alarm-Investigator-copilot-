@@ -32,3 +32,6 @@ Thumbs.db
 
 # Downloaded embedding model files
 .cache/
+
+# Local editor/agent tooling
+.claude/

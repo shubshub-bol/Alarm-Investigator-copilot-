@@ -1,0 +1,4533 @@
+{
+ "server": "alarm-management",
+ "connected": true,
+ "error": null,
+ "tools": [
+  {
+   "server": "alarm-management",
+   "name": "search_assets",
+   "title": "Search assets",
+   "description": "Resolve an asset name (e.g. 'Boiler Feed Pump 101') to asset ids, best match first.\n        Call this first whenever the user names equipment; pass the returned asset_id to other tools.",
+   "input_schema": {
+    "type": "object",
+    "properties": {
+     "query": {
+      "description": "Name, id or type words",
+      "maxLength": 100,
+      "minLength": 1,
+      "title": "Query",
+      "type": "string"
+     },
+     "limit": {
+      "default": 5,
+      "maximum": 50,
+      "minimum": 1,
+      "title": "Limit",
+      "type": "integer"
+     },
+     "site": {
+      "anyOf": [
+       {
+        "maxLength": 64,
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": null,
+      "description": "Site name, e.g. 'NorthPlant' or 'EastRefinery'",
+      "title": "Site"
+     },
+     "unit": {
+      "anyOf": [
+       {
+        "maxLength": 64,
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": null,
+      "description": "Unit name, e.g. 'Unit 1'",
+      "title": "Unit"
+     },
+     "asset_type": {
+      "anyOf": [
+       {
+        "maxLength": 32,
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": null,
+      "description": "e.g. pump, motor, compressor",
+      "title": "Asset Type"
+     }
+    },
+    "required": [
+     "query"
+    ],
+    "title": "search_assetsArguments"
+   },
+   "output_schema": {
+    "$defs": {
+     "ApiCall": {
+      "properties": {
+       "method": {
+        "anyOf": [
+         {
+          "type": "string"
+         },
+         {
+          "type": "null"
+         }
+        ],
+        "title": "Method"
+       },
+       "path": {
+        "anyOf": [
+         {
+          "type": "string"
+         },
+         {
+          "type": "null"
+         }
+        ],
+        "title": "Path"
+       },
+       "status_code": {
+        "anyOf": [
+         {
+          "type": "integer"
+         },
+         {
+          "type": "null"
+         }
+        ],
+        "title": "Status Code"
+       },
+       "attempts": {
+        "description": "1 = first try succeeded; >1 means retries happened",
+        "title": "Attempts",
+        "type": "integer"
+       },
+       "duration_ms": {
+        "anyOf": [
+         {
+          "type": "number"
+         },
+         {
+          "type": "null"
+         }
+        ],
+        "title": "Duration Ms"
+       },
+       "outcome": {
+        "enum": [
+         "ok",
+         "error"
+        ],
+        "title": "Outcome",
+        "type": "string"
+       },
+       "error_code": {
+        "anyOf": [
+         {
+          "type": "string"
+         },
+         {
+          "type": "null"
+         }
+        ],
+        "default": null,
+        "title": "Error Code"
+       }
+      },
+      "required": [
+       "method",
+       "path",
+       "status_code",
+       "attempts",
+       "duration_ms",
+       "outcome"
+      ],
+      "title": "ApiCall",
+      "type": "object"
+     },
+     "AssetHit": {
+      "properties": {
+       "asset_id": {
+        "title": "Asset Id",
+        "type": "string"
+       },
+       "name": {
+        "title": "Name",
+        "type": "string"
+       },
+       "asset_type": {
+        "title": "Asset Type",
+        "type": "string"
+       },
+       "site": {
+        "title": "Site",
+        "type": "string"
+       },
+       "unit": {
+        "title": "Unit",
+        "type": "string"
+       },
+       "criticality": {
+        "title": "Criticality",
+        "type": "string"
+       },
+       "match_score": {
+        "title": "Match Score",
+        "type": "number"
+       }
+      },
+      "required": [
+       "asset_id",
+       "name",
+       "asset_type",
+       "site",
+       "unit",
+       "criticality",
+       "match_score"
+      ],
+      "title": "AssetHit",
+      "type": "object"
+     },
+     "ToolMeta": {
+      "properties": {
+       "trace_id": {
+        "title": "Trace Id",
+        "type": "string"
+       },
+       "api_calls": {
+        "items": {
+         "$ref": "#/$defs/ApiCall"
+        },
+        "title": "Api Calls",
+        "type": "array"
+       }
+      },
+      "required": [
+       "trace_id",
+       "api_calls"
+      ],
+      "title": "ToolMeta",
+      "type": "object"
+     }
+    },
+    "properties": {
+     "meta": {
+      "$ref": "#/$defs/ToolMeta",
+      "description": "Trace id and the Alarm API calls made for this tool call"
+     },
+     "query": {
+      "title": "Query",
+      "type": "string"
+     },
+     "total": {
+      "title": "Total",
+      "type": "integer"
+     },
+     "results": {
+      "items": {
+       "$ref": "#/$defs/AssetHit"
+      },
+      "title": "Results",
+      "type": "array"
+     }
+    },
+    "required": [
+     "meta",
+     "query",
+     "total",
+     "results"
+    ],
+    "title": "SearchAssetsOutput",
+    "type": "object"
+   },
+   "read_only": true
+  },
+  {
+   "server": "alarm-management",
+   "name": "get_asset_metadata",
+   "title": "Get asset metadata",
+   "description": "Asset details: type, site/unit, criticality, manufacturer, the RELATED assets connected to it\n        (drive motor, upstream vessel, valves...), its possible alarm codes and alarm statistics.",
+   "input_schema": {
+    "type": "object",
+    "properties": {
+     "asset_id": {
+      "description": "Asset id from search_assets, e.g. 'AST-BFP-101'",
+      "pattern": "^[A-Za-z0-9._-]{1,64}$",
+      "title": "Asset Id",
+      "type": "string"
+     }
+    },
+    "required": [
+     "asset_id"
+    ],
+    "title": "get_asset_metadataArguments"
+   },
+   "output_schema": {
+    "$defs": {
+     "AlarmStatistics": {
+      "properties": {
+       "total_alarms": {
+        "title": "Total Alarms",
+        "type": "integer"
+       },
+       "active_alarms": {
+        "title": "Active Alarms",
+        "type": "integer"
+       },
+       "by_severity": {
+        "additionalProperties": {
+         "type": "integer"
+        },
+        "title": "By Severity",
+        "type": "object"
+       },
+       "first_alarm_at": {
+        "anyOf": [
+         {
+          "format": "date-time",
+          "type": "string"
+         },
+         {
+          "type": "null"
+         }
+        ],
+        "title": "First Alarm At"
+       },
+       "last_alarm_at": {
+        "anyOf": [
+         {
+          "format": "date-time",
+          "type": "string"
+         },
+         {
+          "type": "null"
+         }
+        ],
+        "title": "Last Alarm At"
+       }
+      },
+      "required": [
+       "total_alarms",
+       "active_alarms",
+       "by_severity",
+       "first_alarm_at",
+       "last_alarm_at"
+      ],
+      "title": "AlarmStatistics",
+      "type": "object"
+     },
+     "ApiCall": {
+      "properties": {
+       "method": {
+        "anyOf": [
+         {
+          "type": "string"
+         },
+         {
+          "type": "null"
+         }
+        ],
+        "title": "Method"
+       },
+       "path": {
+        "anyOf": [
+         {
+          "type": "string"
+         },
+         {
+          "type": "null"
+         }
+        ],
+        "title": "Path"
+       },
+       "status_code": {
+        "anyOf": [
+         {
+          "type": "integer"
+         },
+         {
+          "type": "null"
+         }
+        ],
+        "title": "Status Code"
+       },
+       "attempts": {
+        "description": "1 = first try succeeded; >1 means retries happened",
+        "title": "Attempts",
+        "type": "integer"
+       },
+       "duration_ms": {
+        "anyOf": [
+         {
+          "type": "number"
+         },
+         {
+          "type": "null"
+         }
+        ],
+        "title": "Duration Ms"
+       },
+       "outcome": {
+        "enum": [
+         "ok",
+         "error"
+        ],
+        "title": "Outcome",
+        "type": "string"
+       },
+       "error_code": {
+        "anyOf": [
+         {
+          "type": "string"
+         },
+         {
+          "type": "null"
+         }
+        ],
+        "default": null,
+        "title": "Error Code"
+       }
+      },
+      "required": [
+       "method",
+       "path",
+       "status_code",
+       "attempts",
+       "duration_ms",
+       "outcome"
+      ],
+      "title": "ApiCall",
+      "type": "object"
+     },
+     "AssetSummary": {
+      "properties": {
+       "asset_id": {
+        "title": "Asset Id",
+        "type": "string"
+       },
+       "name": {
+        "title": "Name",
+        "type": "string"
+       },
+       "asset_type": {
+        "title": "Asset Type",
+        "type": "string"
+       },
+       "site": {
+        "title": "Site",
+        "type": "string"
+       },
+       "unit": {
+        "title": "Unit",
+        "type": "string"
+       },
+       "criticality": {
+        "title": "Criticality",
+        "type": "string"
+       }
+      },
+      "required": [
+       "asset_id",
+       "name",
+       "asset_type",
+       "site",
+       "unit",
+       "criticality"
+      ],
+      "title": "AssetSummary",
+      "type": "object"
+     },
+     "ToolMeta": {
+      "properties": {
+       "trace_id": {
+        "title": "Trace Id",
+        "type": "string"
+       },
+       "api_calls": {
+        "items": {
+         "$ref": "#/$defs/ApiCall"
+        },
+        "title": "Api Calls",
+        "type": "array"
+       }
+      },
+      "required": [
+       "trace_id",
+       "api_calls"
+      ],
+      "title": "ToolMeta",
+      "type": "object"
+     }
+    },
+    "properties": {
+     "asset_id": {
+      "title": "Asset Id",
+      "type": "string"
+     },
+     "name": {
+      "title": "Name",
+      "type": "string"
+     },
+     "asset_type": {
+      "title": "Asset Type",
+      "type": "string"
+     },
+     "site": {
+      "title": "Site",
+      "type": "string"
+     },
+     "unit": {
+      "title": "Unit",
+      "type": "string"
+     },
+     "criticality": {
+      "title": "Criticality",
+      "type": "string"
+     },
+     "meta": {
+      "$ref": "#/$defs/ToolMeta",
+      "description": "Trace id and the Alarm API calls made for this tool call"
+     },
+     "manufacturer": {
+      "title": "Manufacturer",
+      "type": "string"
+     },
+     "model": {
+      "title": "Model",
+      "type": "string"
+     },
+     "install_date": {
+      "title": "Install Date",
+      "type": "string"
+     },
+     "related_assets": {
+      "items": {
+       "$ref": "#/$defs/AssetSummary"
+      },
+      "title": "Related Assets",
+      "type": "array"
+     },
+     "alarm_codes": {
+      "items": {
+       "type": "string"
+      },
+      "title": "Alarm Codes",
+      "type": "array"
+     },
+     "alarm_statistics": {
+      "$ref": "#/$defs/AlarmStatistics"
+     }
+    },
+    "required": [
+     "asset_id",
+     "name",
+     "asset_type",
+     "site",
+     "unit",
+     "criticality",
+     "meta",
+     "manufacturer",
+     "model",
+     "install_date",
+     "related_assets",
+     "alarm_codes",
+     "alarm_statistics"
+    ],
+    "title": "AssetMetadataOutput",
+    "type": "object"
+   },
+   "read_only": true
+  },
+  {
+   "server": "alarm-management",
+   "name": "get_alarms",
+   "title": "Get alarms",
+   "description": "List alarm events with filters (asset, site, unit, status, severity, alarm code, time window).\n        Use status='active' for alarms that are still on. Newest first by default.",
+   "input_schema": {
+    "type": "object",
+    "properties": {
+     "asset_id": {
+      "anyOf": [
+       {
+        "description": "Asset id from search_assets, e.g. 'AST-BFP-101'",
+        "pattern": "^[A-Za-z0-9._-]{1,64}$",
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": null,
+      "title": "Asset Id"
+     },
+     "site": {
+      "anyOf": [
+       {
+        "maxLength": 64,
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": null,
+      "description": "Site name, e.g. 'NorthPlant' or 'EastRefinery'",
+      "title": "Site"
+     },
+     "unit": {
+      "anyOf": [
+       {
+        "maxLength": 64,
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": null,
+      "description": "Unit name, e.g. 'Unit 1'",
+      "title": "Unit"
+     },
+     "status": {
+      "anyOf": [
+       {
+        "enum": [
+         "active",
+         "cleared"
+        ],
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": null,
+      "title": "Status"
+     },
+     "severity": {
+      "anyOf": [
+       {
+        "items": {
+         "enum": [
+          "low",
+          "medium",
+          "high",
+          "critical"
+         ],
+         "type": "string"
+        },
+        "type": "array"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": null,
+      "description": "Only these severities",
+      "title": "Severity"
+     },
+     "alarm_codes": {
+      "anyOf": [
+       {
+        "items": {
+         "pattern": "^[A-Za-z0-9._-]{1,64}$",
+         "type": "string"
+        },
+        "maxItems": 20,
+        "type": "array"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": null,
+      "title": "Alarm Codes"
+     },
+     "start_time": {
+      "anyOf": [
+       {
+        "format": "date-time",
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": null,
+      "description": "ISO-8601 start (inclusive). Alternative to lookback_days.",
+      "title": "Start Time"
+     },
+     "end_time": {
+      "anyOf": [
+       {
+        "format": "date-time",
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": null,
+      "description": "ISO-8601 end (exclusive). Alternative to lookback_days.",
+      "title": "End Time"
+     },
+     "lookback_days": {
+      "anyOf": [
+       {
+        "maximum": 365,
+        "minimum": 1,
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": null,
+      "description": "Analyse the last N days of data, measured from the Alarm API's data clock.",
+      "title": "Lookback Days"
+     },
+     "page": {
+      "default": 1,
+      "minimum": 1,
+      "title": "Page",
+      "type": "integer"
+     },
+     "page_size": {
+      "default": 50,
+      "maximum": 200,
+      "minimum": 1,
+      "title": "Page Size",
+      "type": "integer"
+     },
+     "sort_by": {
+      "default": "start_time",
+      "enum": [
+       "start_time",
+       "severity",
+       "asset_id",
+       "alarm_id"
+      ],
+      "title": "Sort By",
+      "type": "string"
+     },
+     "sort_order": {
+      "default": "desc",
+      "enum": [
+       "asc",
+       "desc"
+      ],
+      "title": "Sort Order",
+      "type": "string"
+     },
+     "fetch_all": {
+      "default": false,
+      "description": "Follow pagination and return every match",
+      "title": "Fetch All",
+      "type": "boolean"
+     },
+     "max_items": {
+      "default": 500,
+      "description": "Cap when fetch_all is true",
+      "maximum": 2000,
+      "minimum": 1,
+      "title": "Max Items",
+      "type": "integer"
+     }
+    },
+    "title": "get_alarmsArguments"
+   },
+   "output_schema": {
+    "$defs": {
+     "AlarmRecord": {
+      "properties": {
+       "alarm_id": {
+        "title": "Alarm Id",
+        "type": "string"
+       },
+       "asset_id": {
+        "title": "Asset Id",
+        "type": "string"
+       },
+       "asset_name": {
+        "title": "Asset Name",
+        "type": "string"
+       },
+       "site": {
+        "title": "Site",
+        "type": "string"
+       },
+       "unit": {
+        "title": "Unit",
+        "type": "string"
+       },
+       "alarm_code": {
+        "title": "Alarm Code",
+        "type": "string"
+       },
+       "alarm_name": {
+        "title": "Alarm Name",
+        "type": "string"
+       },
+       "alarm_type": {
+        "title": "Alarm Type",
+        "type": "string"
+       },
+       "severity": {
+        "enum": [
+         "low",
+         "medium",
+         "high",
+         "critical"
+        ],
+        "title": "Severity",
+        "type": "string"
+       },
+       "status": {
+        "enum": [
+         "active",
+         "cleared"
+        ],
+        "title": "Status",
+        "type": "string"
+       },
+       "acknowledged": {
+        "title": "Acknowledged",
+        "type": "boolean"
+       },
+       "start_time": {
+        "format": "date-time",
+        "title": "Start Time",
+        "type": "string"
+       },
+       "ack_time": {
+        "anyOf": [
+         {
+          "format": "date-time",
+          "type": "string"
+         },
+         {
+          "type": "null"
+         }
+        ],
+        "title": "Ack Time"
+       },
+       "end_time": {
+        "anyOf": [
+         {
+          "format": "date-time",
+          "type": "string"
+         },
+         {
+          "type": "null"
+         }
+        ],
+        "title": "End Time"
+       },
+       "value": {
+        "anyOf": [
+         {
+          "type": "number"
+         },
+         {
+          "type": "null"
+         }
+        ],
+        "title": "Value"
+       },
+       "setpoint": {
+        "anyOf": [
+         {
+          "type": "number"
+         },
+         {
+          "type": "null"
+         }
+        ],
+        "title": "Setpoint"
+       },
+       "uom": {
+        "anyOf": [
+         {
+          "type": "string"
+         },
+         {
+          "type": "null"
+         }
+        ],
+        "title": "Uom"
+       },
+       "message": {
+        "title": "Message",
+        "type": "string"
+       }
+      },
+      "required": [
+       "alarm_id",
+       "asset_id",
+       "asset_name",
+       "site",
+       "unit",
+       "alarm_code",
+       "alarm_name",
+       "alarm_type",
+       "severity",
+       "status",
+       "acknowledged",
+       "start_time",
+       "ack_time",
+       "end_time",
+       "value",
+       "setpoint",
+       "uom",
+       "message"
+      ],
+      "title": "AlarmRecord",
+      "type": "object"
+     },
+     "ApiCall": {
+      "properties": {
+       "method": {
+        "anyOf": [
+         {
+          "type": "string"
+         },
+         {
+          "type": "null"
+         }
+        ],
+        "title": "Method"
+       },
+       "path": {
+        "anyOf": [
+         {
+          "type": "string"
+         },
+         {
+          "type": "null"
+         }
+        ],
+        "title": "Path"
+       },
+       "status_code": {
+        "anyOf": [
+         {
+          "type": "integer"
+         },
+         {
+          "type": "null"
+         }
+        ],
+        "title": "Status Code"
+       },
+       "attempts": {
+        "description": "1 = first try succeeded; >1 means retries happened",
+        "title": "Attempts",
+        "type": "integer"
+       },
+       "duration_ms": {
+        "anyOf": [
+         {
+          "type": "number"
+         },
+         {
+          "type": "null"
+         }
+        ],
+        "title": "Duration Ms"
+       },
+       "outcome": {
+        "enum": [
+         "ok",
+         "error"
+        ],
+        "title": "Outcome",
+        "type": "string"
+       },
+       "error_code": {
+        "anyOf": [
+         {
+          "type": "string"
+         },
+         {
+          "type": "null"
+         }
+        ],
+        "default": null,
+        "title": "Error Code"
+       }
+      },
+      "required": [
+       "method",
+       "path",
+       "status_code",
+       "attempts",
+       "duration_ms",
+       "outcome"
+      ],
+      "title": "ApiCall",
+      "type": "object"
+     },
+     "ToolMeta": {
+      "properties": {
+       "trace_id": {
+        "title": "Trace Id",
+        "type": "string"
+       },
+       "api_calls": {
+        "items": {
+         "$ref": "#/$defs/ApiCall"
+        },
+        "title": "Api Calls",
+        "type": "array"
+       }
+      },
+      "required": [
+       "trace_id",
+       "api_calls"
+      ],
+      "title": "ToolMeta",
+      "type": "object"
+     }
+    },
+    "properties": {
+     "meta": {
+      "$ref": "#/$defs/ToolMeta",
+      "description": "Trace id and the Alarm API calls made for this tool call"
+     },
+     "alarms": {
+      "items": {
+       "$ref": "#/$defs/AlarmRecord"
+      },
+      "title": "Alarms",
+      "type": "array"
+     },
+     "total_items": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Total Items"
+     },
+     "page": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "description": "Page returned; null when fetch_all was used",
+      "title": "Page"
+     },
+     "has_next": {
+      "title": "Has Next",
+      "type": "boolean"
+     },
+     "pages_fetched": {
+      "title": "Pages Fetched",
+      "type": "integer"
+     },
+     "truncated": {
+      "description": "True if more alarms matched than were returned",
+      "title": "Truncated",
+      "type": "boolean"
+     }
+    },
+    "required": [
+     "meta",
+     "alarms",
+     "total_items",
+     "page",
+     "has_next",
+     "pages_fetched",
+     "truncated"
+    ],
+    "title": "AlarmListOutput",
+    "type": "object"
+   },
+   "read_only": true
+  },
+  {
+   "server": "alarm-management",
+   "name": "get_alarm_details",
+   "title": "Get alarm details",
+   "description": "One alarm with its duration, minutes-to-acknowledge and asset summary.",
+   "input_schema": {
+    "type": "object",
+    "properties": {
+     "alarm_id": {
+      "description": "Alarm id from get_alarms, e.g. 'ALM-000123'",
+      "pattern": "^[A-Za-z0-9._-]{1,64}$",
+      "title": "Alarm Id",
+      "type": "string"
+     }
+    },
+    "required": [
+     "alarm_id"
+    ],
+    "title": "get_alarm_detailsArguments"
+   },
+   "output_schema": {
+    "$defs": {
+     "ApiCall": {
+      "properties": {
+       "method": {
+        "anyOf": [
+         {
+          "type": "string"
+         },
+         {
+          "type": "null"
+         }
+        ],
+        "title": "Method"
+       },
+       "path": {
+        "anyOf": [
+         {
+          "type": "string"
+         },
+         {
+          "type": "null"
+         }
+        ],
+        "title": "Path"
+       },
+       "status_code": {
+        "anyOf": [
+         {
+          "type": "integer"
+         },
+         {
+          "type": "null"
+         }
+        ],
+        "title": "Status Code"
+       },
+       "attempts": {
+        "description": "1 = first try succeeded; >1 means retries happened",
+        "title": "Attempts",
+        "type": "integer"
+       },
+       "duration_ms": {
+        "anyOf": [
+         {
+          "type": "number"
+         },
+         {
+          "type": "null"
+         }
+        ],
+        "title": "Duration Ms"
+       },
+       "outcome": {
+        "enum": [
+         "ok",
+         "error"
+        ],
+        "title": "Outcome",
+        "type": "string"
+       },
+       "error_code": {
+        "anyOf": [
+         {
+          "type": "string"
+         },
+         {
+          "type": "null"
+         }
+        ],
+        "default": null,
+        "title": "Error Code"
+       }
+      },
+      "required": [
+       "method",
+       "path",
+       "status_code",
+       "attempts",
+       "duration_ms",
+       "outcome"
+      ],
+      "title": "ApiCall",
+      "type": "object"
+     },
+     "AssetSummary": {
+      "properties": {
+       "asset_id": {
+        "title": "Asset Id",
+        "type": "string"
+       },
+       "name": {
+        "title": "Name",
+        "type": "string"
+       },
+       "asset_type": {
+        "title": "Asset Type",
+        "type": "string"
+       },
+       "site": {
+        "title": "Site",
+        "type": "string"
+       },
+       "unit": {
+        "title": "Unit",
+        "type": "string"
+       },
+       "criticality": {
+        "title": "Criticality",
+        "type": "string"
+       }
+      },
+      "required": [
+       "asset_id",
+       "name",
+       "asset_type",
+       "site",
+       "unit",
+       "criticality"
+      ],
+      "title": "AssetSummary",
+      "type": "object"
+     },
+     "ToolMeta": {
+      "properties": {
+       "trace_id": {
+        "title": "Trace Id",
+        "type": "string"
+       },
+       "api_calls": {
+        "items": {
+         "$ref": "#/$defs/ApiCall"
+        },
+        "title": "Api Calls",
+        "type": "array"
+       }
+      },
+      "required": [
+       "trace_id",
+       "api_calls"
+      ],
+      "title": "ToolMeta",
+      "type": "object"
+     }
+    },
+    "properties": {
+     "alarm_id": {
+      "title": "Alarm Id",
+      "type": "string"
+     },
+     "asset_id": {
+      "title": "Asset Id",
+      "type": "string"
+     },
+     "asset_name": {
+      "title": "Asset Name",
+      "type": "string"
+     },
+     "site": {
+      "title": "Site",
+      "type": "string"
+     },
+     "unit": {
+      "title": "Unit",
+      "type": "string"
+     },
+     "alarm_code": {
+      "title": "Alarm Code",
+      "type": "string"
+     },
+     "alarm_name": {
+      "title": "Alarm Name",
+      "type": "string"
+     },
+     "alarm_type": {
+      "title": "Alarm Type",
+      "type": "string"
+     },
+     "severity": {
+      "enum": [
+       "low",
+       "medium",
+       "high",
+       "critical"
+      ],
+      "title": "Severity",
+      "type": "string"
+     },
+     "status": {
+      "enum": [
+       "active",
+       "cleared"
+      ],
+      "title": "Status",
+      "type": "string"
+     },
+     "acknowledged": {
+      "title": "Acknowledged",
+      "type": "boolean"
+     },
+     "start_time": {
+      "format": "date-time",
+      "title": "Start Time",
+      "type": "string"
+     },
+     "ack_time": {
+      "anyOf": [
+       {
+        "format": "date-time",
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Ack Time"
+     },
+     "end_time": {
+      "anyOf": [
+       {
+        "format": "date-time",
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "End Time"
+     },
+     "value": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Value"
+     },
+     "setpoint": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Setpoint"
+     },
+     "uom": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Uom"
+     },
+     "message": {
+      "title": "Message",
+      "type": "string"
+     },
+     "meta": {
+      "$ref": "#/$defs/ToolMeta",
+      "description": "Trace id and the Alarm API calls made for this tool call"
+     },
+     "duration_minutes": {
+      "title": "Duration Minutes",
+      "type": "number"
+     },
+     "ack_delay_minutes": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Ack Delay Minutes"
+     },
+     "asset": {
+      "$ref": "#/$defs/AssetSummary"
+     }
+    },
+    "required": [
+     "alarm_id",
+     "asset_id",
+     "asset_name",
+     "site",
+     "unit",
+     "alarm_code",
+     "alarm_name",
+     "alarm_type",
+     "severity",
+     "status",
+     "acknowledged",
+     "start_time",
+     "ack_time",
+     "end_time",
+     "value",
+     "setpoint",
+     "uom",
+     "message",
+     "meta",
+     "duration_minutes",
+     "ack_delay_minutes",
+     "asset"
+    ],
+    "title": "AlarmDetailOutput",
+    "type": "object"
+   },
+   "read_only": true
+  },
+  {
+   "server": "alarm-management",
+   "name": "summarize_alarms",
+   "title": "Summarize alarms",
+   "description": "Count alarms and compute KPIs (count, critical count, recurring rate, average minutes to\n        acknowledge, suppression-candidate rate), grouped e.g. by alarm_name. Default window: 90 days.",
+   "input_schema": {
+    "type": "object",
+    "properties": {
+     "asset_ids": {
+      "anyOf": [
+       {
+        "items": {
+         "description": "Asset id from search_assets, e.g. 'AST-BFP-101'",
+         "pattern": "^[A-Za-z0-9._-]{1,64}$",
+         "type": "string"
+        },
+        "maxItems": 50,
+        "minItems": 1,
+        "type": "array"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": null,
+      "description": "Limit to these asset ids",
+      "title": "Asset Ids"
+     },
+     "site": {
+      "anyOf": [
+       {
+        "maxLength": 64,
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": null,
+      "description": "Site name, e.g. 'NorthPlant' or 'EastRefinery'",
+      "title": "Site"
+     },
+     "unit": {
+      "anyOf": [
+       {
+        "maxLength": 64,
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": null,
+      "description": "Unit name, e.g. 'Unit 1'",
+      "title": "Unit"
+     },
+     "start_time": {
+      "anyOf": [
+       {
+        "format": "date-time",
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": null,
+      "description": "ISO-8601 start (inclusive). Alternative to lookback_days.",
+      "title": "Start Time"
+     },
+     "end_time": {
+      "anyOf": [
+       {
+        "format": "date-time",
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": null,
+      "description": "ISO-8601 end (exclusive). Alternative to lookback_days.",
+      "title": "End Time"
+     },
+     "lookback_days": {
+      "anyOf": [
+       {
+        "maximum": 365,
+        "minimum": 1,
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": null,
+      "description": "Analyse the last N days of data, measured from the Alarm API's data clock.",
+      "title": "Lookback Days"
+     },
+     "severity": {
+      "anyOf": [
+       {
+        "items": {
+         "enum": [
+          "low",
+          "medium",
+          "high",
+          "critical"
+         ],
+         "type": "string"
+        },
+        "type": "array"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": null,
+      "description": "Only these severities",
+      "title": "Severity"
+     },
+     "alarm_types": {
+      "anyOf": [
+       {
+        "items": {
+         "enum": [
+          "process",
+          "safety",
+          "device"
+         ],
+         "type": "string"
+        },
+        "type": "array"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": null,
+      "title": "Alarm Types"
+     },
+     "group_by": {
+      "default": [
+       "alarm_name"
+      ],
+      "items": {
+       "enum": [
+        "alarm_name",
+        "alarm_code",
+        "alarm_type",
+        "asset_id",
+        "asset_name",
+        "severity",
+        "site",
+        "unit"
+       ],
+       "type": "string"
+      },
+      "maxItems": 4,
+      "title": "Group By",
+      "type": "array"
+     },
+     "kpis": {
+      "default": [
+       "alarm_count",
+       "recurring_rate",
+       "avg_ack_delay"
+      ],
+      "items": {
+       "enum": [
+        "alarm_count",
+        "critical_count",
+        "recurring_rate",
+        "avg_ack_delay",
+        "suppression_candidate_rate"
+       ],
+       "type": "string"
+      },
+      "minItems": 1,
+      "title": "Kpis",
+      "type": "array"
+     }
+    },
+    "title": "summarize_alarmsArguments"
+   },
+   "output_schema": {
+    "$defs": {
+     "ApiCall": {
+      "properties": {
+       "method": {
+        "anyOf": [
+         {
+          "type": "string"
+         },
+         {
+          "type": "null"
+         }
+        ],
+        "title": "Method"
+       },
+       "path": {
+        "anyOf": [
+         {
+          "type": "string"
+         },
+         {
+          "type": "null"
+         }
+        ],
+        "title": "Path"
+       },
+       "status_code": {
+        "anyOf": [
+         {
+          "type": "integer"
+         },
+         {
+          "type": "null"
+         }
+        ],
+        "title": "Status Code"
+       },
+       "attempts": {
+        "description": "1 = first try succeeded; >1 means retries happened",
+        "title": "Attempts",
+        "type": "integer"
+       },
+       "duration_ms": {
+        "anyOf": [
+         {
+          "type": "number"
+         },
+         {
+          "type": "null"
+         }
+        ],
+        "title": "Duration Ms"
+       },
+       "outcome": {
+        "enum": [
+         "ok",
+         "error"
+        ],
+        "title": "Outcome",
+        "type": "string"
+       },
+       "error_code": {
+        "anyOf": [
+         {
+          "type": "string"
+         },
+         {
+          "type": "null"
+         }
+        ],
+        "default": null,
+        "title": "Error Code"
+       }
+      },
+      "required": [
+       "method",
+       "path",
+       "status_code",
+       "attempts",
+       "duration_ms",
+       "outcome"
+      ],
+      "title": "ApiCall",
+      "type": "object"
+     },
+     "SummaryGroup": {
+      "properties": {
+       "key": {
+        "additionalProperties": {
+         "type": "string"
+        },
+        "title": "Key",
+        "type": "object"
+       },
+       "kpis": {
+        "additionalProperties": {
+         "anyOf": [
+          {
+           "type": "number"
+          },
+          {
+           "type": "integer"
+          },
+          {
+           "type": "null"
+          }
+         ]
+        },
+        "title": "Kpis",
+        "type": "object"
+       }
+      },
+      "required": [
+       "key",
+       "kpis"
+      ],
+      "title": "SummaryGroup",
+      "type": "object"
+     },
+     "TimeRange": {
+      "properties": {
+       "start_time": {
+        "format": "date-time",
+        "title": "Start Time",
+        "type": "string"
+       },
+       "end_time": {
+        "format": "date-time",
+        "title": "End Time",
+        "type": "string"
+       }
+      },
+      "required": [
+       "start_time",
+       "end_time"
+      ],
+      "title": "TimeRange",
+      "type": "object"
+     },
+     "ToolMeta": {
+      "properties": {
+       "trace_id": {
+        "title": "Trace Id",
+        "type": "string"
+       },
+       "api_calls": {
+        "items": {
+         "$ref": "#/$defs/ApiCall"
+        },
+        "title": "Api Calls",
+        "type": "array"
+       }
+      },
+      "required": [
+       "trace_id",
+       "api_calls"
+      ],
+      "title": "ToolMeta",
+      "type": "object"
+     }
+    },
+    "properties": {
+     "meta": {
+      "$ref": "#/$defs/ToolMeta",
+      "description": "Trace id and the Alarm API calls made for this tool call"
+     },
+     "time_range": {
+      "$ref": "#/$defs/TimeRange"
+     },
+     "totals": {
+      "additionalProperties": {
+       "anyOf": [
+        {
+         "type": "number"
+        },
+        {
+         "type": "integer"
+        },
+        {
+         "type": "null"
+        }
+       ]
+      },
+      "title": "Totals",
+      "type": "object"
+     },
+     "groups": {
+      "items": {
+       "$ref": "#/$defs/SummaryGroup"
+      },
+      "title": "Groups",
+      "type": "array"
+     }
+    },
+    "required": [
+     "meta",
+     "time_range",
+     "totals",
+     "groups"
+    ],
+    "title": "SummaryOutput",
+    "type": "object"
+   },
+   "read_only": true
+  },
+  {
+   "server": "alarm-management",
+   "name": "get_alarm_trends",
+   "title": "Get alarm trends",
+   "description": "Alarm counts per time bucket and whether they are increasing, decreasing or stable\n        (first half vs second half). Filter by alarm_codes to ask 'is THIS alarm getting worse?'.",
+   "input_schema": {
+    "type": "object",
+    "properties": {
+     "asset_ids": {
+      "anyOf": [
+       {
+        "items": {
+         "description": "Asset id from search_assets, e.g. 'AST-BFP-101'",
+         "pattern": "^[A-Za-z0-9._-]{1,64}$",
+         "type": "string"
+        },
+        "maxItems": 50,
+        "minItems": 1,
+        "type": "array"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": null,
+      "description": "Limit to these asset ids",
+      "title": "Asset Ids"
+     },
+     "site": {
+      "anyOf": [
+       {
+        "maxLength": 64,
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": null,
+      "description": "Site name, e.g. 'NorthPlant' or 'EastRefinery'",
+      "title": "Site"
+     },
+     "unit": {
+      "anyOf": [
+       {
+        "maxLength": 64,
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": null,
+      "description": "Unit name, e.g. 'Unit 1'",
+      "title": "Unit"
+     },
+     "alarm_codes": {
+      "anyOf": [
+       {
+        "items": {
+         "pattern": "^[A-Za-z0-9._-]{1,64}$",
+         "type": "string"
+        },
+        "maxItems": 20,
+        "type": "array"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": null,
+      "title": "Alarm Codes"
+     },
+     "severity": {
+      "anyOf": [
+       {
+        "items": {
+         "enum": [
+          "low",
+          "medium",
+          "high",
+          "critical"
+         ],
+         "type": "string"
+        },
+        "type": "array"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": null,
+      "description": "Only these severities",
+      "title": "Severity"
+     },
+     "start_time": {
+      "anyOf": [
+       {
+        "format": "date-time",
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": null,
+      "description": "ISO-8601 start (inclusive). Alternative to lookback_days.",
+      "title": "Start Time"
+     },
+     "end_time": {
+      "anyOf": [
+       {
+        "format": "date-time",
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": null,
+      "description": "ISO-8601 end (exclusive). Alternative to lookback_days.",
+      "title": "End Time"
+     },
+     "lookback_days": {
+      "anyOf": [
+       {
+        "maximum": 365,
+        "minimum": 1,
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": null,
+      "description": "Analyse the last N days of data, measured from the Alarm API's data clock.",
+      "title": "Lookback Days"
+     },
+     "bucket": {
+      "default": "weekly",
+      "enum": [
+       "hourly",
+       "daily",
+       "weekly"
+      ],
+      "title": "Bucket",
+      "type": "string"
+     },
+     "metrics": {
+      "default": [
+       "alarm_count"
+      ],
+      "items": {
+       "enum": [
+        "alarm_count",
+        "critical_count",
+        "recurring_rate",
+        "avg_ack_delay",
+        "suppression_candidate_rate"
+       ],
+       "type": "string"
+      },
+      "minItems": 1,
+      "title": "Metrics",
+      "type": "array"
+     }
+    },
+    "title": "get_alarm_trendsArguments"
+   },
+   "output_schema": {
+    "$defs": {
+     "ApiCall": {
+      "properties": {
+       "method": {
+        "anyOf": [
+         {
+          "type": "string"
+         },
+         {
+          "type": "null"
+         }
+        ],
+        "title": "Method"
+       },
+       "path": {
+        "anyOf": [
+         {
+          "type": "string"
+         },
+         {
+          "type": "null"
+         }
+        ],
+        "title": "Path"
+       },
+       "status_code": {
+        "anyOf": [
+         {
+          "type": "integer"
+         },
+         {
+          "type": "null"
+         }
+        ],
+        "title": "Status Code"
+       },
+       "attempts": {
+        "description": "1 = first try succeeded; >1 means retries happened",
+        "title": "Attempts",
+        "type": "integer"
+       },
+       "duration_ms": {
+        "anyOf": [
+         {
+          "type": "number"
+         },
+         {
+          "type": "null"
+         }
+        ],
+        "title": "Duration Ms"
+       },
+       "outcome": {
+        "enum": [
+         "ok",
+         "error"
+        ],
+        "title": "Outcome",
+        "type": "string"
+       },
+       "error_code": {
+        "anyOf": [
+         {
+          "type": "string"
+         },
+         {
+          "type": "null"
+         }
+        ],
+        "default": null,
+        "title": "Error Code"
+       }
+      },
+      "required": [
+       "method",
+       "path",
+       "status_code",
+       "attempts",
+       "duration_ms",
+       "outcome"
+      ],
+      "title": "ApiCall",
+      "type": "object"
+     },
+     "TimeRange": {
+      "properties": {
+       "start_time": {
+        "format": "date-time",
+        "title": "Start Time",
+        "type": "string"
+       },
+       "end_time": {
+        "format": "date-time",
+        "title": "End Time",
+        "type": "string"
+       }
+      },
+      "required": [
+       "start_time",
+       "end_time"
+      ],
+      "title": "TimeRange",
+      "type": "object"
+     },
+     "ToolMeta": {
+      "properties": {
+       "trace_id": {
+        "title": "Trace Id",
+        "type": "string"
+       },
+       "api_calls": {
+        "items": {
+         "$ref": "#/$defs/ApiCall"
+        },
+        "title": "Api Calls",
+        "type": "array"
+       }
+      },
+      "required": [
+       "trace_id",
+       "api_calls"
+      ],
+      "title": "ToolMeta",
+      "type": "object"
+     },
+     "TrendInfo": {
+      "properties": {
+       "direction": {
+        "enum": [
+         "increasing",
+         "decreasing",
+         "stable"
+        ],
+        "title": "Direction",
+        "type": "string"
+       },
+       "first_half_avg": {
+        "title": "First Half Avg",
+        "type": "number"
+       },
+       "second_half_avg": {
+        "title": "Second Half Avg",
+        "type": "number"
+       },
+       "change_percent": {
+        "anyOf": [
+         {
+          "type": "number"
+         },
+         {
+          "type": "null"
+         }
+        ],
+        "title": "Change Percent"
+       }
+      },
+      "required": [
+       "direction",
+       "first_half_avg",
+       "second_half_avg",
+       "change_percent"
+      ],
+      "title": "TrendInfo",
+      "type": "object"
+     },
+     "TrendPoint": {
+      "properties": {
+       "bucket_start": {
+        "format": "date-time",
+        "title": "Bucket Start",
+        "type": "string"
+       },
+       "values": {
+        "additionalProperties": {
+         "anyOf": [
+          {
+           "type": "number"
+          },
+          {
+           "type": "integer"
+          },
+          {
+           "type": "null"
+          }
+         ]
+        },
+        "title": "Values",
+        "type": "object"
+       }
+      },
+      "required": [
+       "bucket_start",
+       "values"
+      ],
+      "title": "TrendPoint",
+      "type": "object"
+     }
+    },
+    "properties": {
+     "meta": {
+      "$ref": "#/$defs/ToolMeta",
+      "description": "Trace id and the Alarm API calls made for this tool call"
+     },
+     "time_range": {
+      "$ref": "#/$defs/TimeRange"
+     },
+     "bucket": {
+      "title": "Bucket",
+      "type": "string"
+     },
+     "series": {
+      "items": {
+       "$ref": "#/$defs/TrendPoint"
+      },
+      "title": "Series",
+      "type": "array"
+     },
+     "trend": {
+      "$ref": "#/$defs/TrendInfo"
+     }
+    },
+    "required": [
+     "meta",
+     "time_range",
+     "bucket",
+     "series",
+     "trend"
+    ],
+    "title": "TrendsOutput",
+    "type": "object"
+   },
+   "read_only": true
+  },
+  {
+   "server": "alarm-management",
+   "name": "correlate_alarms",
+   "title": "Correlate alarms",
+   "description": "Find alarms that fire together within lag_window_minutes and which one usually comes FIRST\n        (a likely contributing factor). Pass the asset plus its related_assets from get_asset_metadata.",
+   "input_schema": {
+    "type": "object",
+    "properties": {
+     "asset_ids": {
+      "items": {
+       "description": "Asset id from search_assets, e.g. 'AST-BFP-101'",
+       "pattern": "^[A-Za-z0-9._-]{1,64}$",
+       "type": "string"
+      },
+      "maxItems": 20,
+      "minItems": 1,
+      "title": "Asset Ids",
+      "type": "array"
+     },
+     "start_time": {
+      "anyOf": [
+       {
+        "format": "date-time",
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": null,
+      "description": "ISO-8601 start (inclusive). Alternative to lookback_days.",
+      "title": "Start Time"
+     },
+     "end_time": {
+      "anyOf": [
+       {
+        "format": "date-time",
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": null,
+      "description": "ISO-8601 end (exclusive). Alternative to lookback_days.",
+      "title": "End Time"
+     },
+     "lookback_days": {
+      "anyOf": [
+       {
+        "maximum": 365,
+        "minimum": 1,
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": null,
+      "description": "Analyse the last N days of data, measured from the Alarm API's data clock.",
+      "title": "Lookback Days"
+     },
+     "lag_window_minutes": {
+      "default": 15,
+      "maximum": 240,
+      "minimum": 1,
+      "title": "Lag Window Minutes",
+      "type": "integer"
+     },
+     "severity_threshold": {
+      "default": "low",
+      "enum": [
+       "low",
+       "medium",
+       "high",
+       "critical"
+      ],
+      "title": "Severity Threshold",
+      "type": "string"
+     },
+     "min_support": {
+      "default": 2,
+      "maximum": 100,
+      "minimum": 1,
+      "title": "Min Support",
+      "type": "integer"
+     }
+    },
+    "required": [
+     "asset_ids"
+    ],
+    "title": "correlate_alarmsArguments"
+   },
+   "output_schema": {
+    "$defs": {
+     "AlarmRef": {
+      "properties": {
+       "asset_id": {
+        "title": "Asset Id",
+        "type": "string"
+       },
+       "asset_name": {
+        "title": "Asset Name",
+        "type": "string"
+       },
+       "alarm_code": {
+        "title": "Alarm Code",
+        "type": "string"
+       },
+       "alarm_name": {
+        "title": "Alarm Name",
+        "type": "string"
+       },
+       "occurrences": {
+        "title": "Occurrences",
+        "type": "integer"
+       }
+      },
+      "required": [
+       "asset_id",
+       "asset_name",
+       "alarm_code",
+       "alarm_name",
+       "occurrences"
+      ],
+      "title": "AlarmRef",
+      "type": "object"
+     },
+     "ApiCall": {
+      "properties": {
+       "method": {
+        "anyOf": [
+         {
+          "type": "string"
+         },
+         {
+          "type": "null"
+         }
+        ],
+        "title": "Method"
+       },
+       "path": {
+        "anyOf": [
+         {
+          "type": "string"
+         },
+         {
+          "type": "null"
+         }
+        ],
+        "title": "Path"
+       },
+       "status_code": {
+        "anyOf": [
+         {
+          "type": "integer"
+         },
+         {
+          "type": "null"
+         }
+        ],
+        "title": "Status Code"
+       },
+       "attempts": {
+        "description": "1 = first try succeeded; >1 means retries happened",
+        "title": "Attempts",
+        "type": "integer"
+       },
+       "duration_ms": {
+        "anyOf": [
+         {
+          "type": "number"
+         },
+         {
+          "type": "null"
+         }
+        ],
+        "title": "Duration Ms"
+       },
+       "outcome": {
+        "enum": [
+         "ok",
+         "error"
+        ],
+        "title": "Outcome",
+        "type": "string"
+       },
+       "error_code": {
+        "anyOf": [
+         {
+          "type": "string"
+         },
+         {
+          "type": "null"
+         }
+        ],
+        "default": null,
+        "title": "Error Code"
+       }
+      },
+      "required": [
+       "method",
+       "path",
+       "status_code",
+       "attempts",
+       "duration_ms",
+       "outcome"
+      ],
+      "title": "ApiCall",
+      "type": "object"
+     },
+     "CorrelationPair": {
+      "properties": {
+       "leading": {
+        "$ref": "#/$defs/AlarmRef"
+       },
+       "following": {
+        "$ref": "#/$defs/AlarmRef"
+       },
+       "relation": {
+        "enum": [
+         "precedes",
+         "simultaneous"
+        ],
+        "title": "Relation",
+        "type": "string"
+       },
+       "cooccurrences": {
+        "title": "Cooccurrences",
+        "type": "integer"
+       },
+       "confidence": {
+        "title": "Confidence",
+        "type": "number"
+       },
+       "median_lead_minutes": {
+        "title": "Median Lead Minutes",
+        "type": "number"
+       },
+       "insight": {
+        "title": "Insight",
+        "type": "string"
+       }
+      },
+      "required": [
+       "leading",
+       "following",
+       "relation",
+       "cooccurrences",
+       "confidence",
+       "median_lead_minutes",
+       "insight"
+      ],
+      "title": "CorrelationPair",
+      "type": "object"
+     },
+     "TimeRange": {
+      "properties": {
+       "start_time": {
+        "format": "date-time",
+        "title": "Start Time",
+        "type": "string"
+       },
+       "end_time": {
+        "format": "date-time",
+        "title": "End Time",
+        "type": "string"
+       }
+      },
+      "required": [
+       "start_time",
+       "end_time"
+      ],
+      "title": "TimeRange",
+      "type": "object"
+     },
+     "ToolMeta": {
+      "properties": {
+       "trace_id": {
+        "title": "Trace Id",
+        "type": "string"
+       },
+       "api_calls": {
+        "items": {
+         "$ref": "#/$defs/ApiCall"
+        },
+        "title": "Api Calls",
+        "type": "array"
+       }
+      },
+      "required": [
+       "trace_id",
+       "api_calls"
+      ],
+      "title": "ToolMeta",
+      "type": "object"
+     }
+    },
+    "properties": {
+     "meta": {
+      "$ref": "#/$defs/ToolMeta",
+      "description": "Trace id and the Alarm API calls made for this tool call"
+     },
+     "time_range": {
+      "$ref": "#/$defs/TimeRange"
+     },
+     "lag_window_minutes": {
+      "title": "Lag Window Minutes",
+      "type": "integer"
+     },
+     "events_analyzed": {
+      "title": "Events Analyzed",
+      "type": "integer"
+     },
+     "pairs": {
+      "items": {
+       "$ref": "#/$defs/CorrelationPair"
+      },
+      "title": "Pairs",
+      "type": "array"
+     }
+    },
+    "required": [
+     "meta",
+     "time_range",
+     "lag_window_minutes",
+     "events_analyzed",
+     "pairs"
+    ],
+    "title": "CorrelationOutput",
+    "type": "object"
+   },
+   "read_only": true
+  },
+  {
+   "server": "alarm-management",
+   "name": "analyze_alarm_floods",
+   "title": "Analyze alarm floods",
+   "description": "Detect alarm floods (more than threshold_count alarms within rolling_window_minutes; ISA-18.2\n        uses 10 in 10) and the alarm that initiated each flood.",
+   "input_schema": {
+    "type": "object",
+    "properties": {
+     "asset_ids": {
+      "anyOf": [
+       {
+        "items": {
+         "description": "Asset id from search_assets, e.g. 'AST-BFP-101'",
+         "pattern": "^[A-Za-z0-9._-]{1,64}$",
+         "type": "string"
+        },
+        "maxItems": 50,
+        "minItems": 1,
+        "type": "array"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": null,
+      "description": "Limit to these asset ids",
+      "title": "Asset Ids"
+     },
+     "site": {
+      "anyOf": [
+       {
+        "maxLength": 64,
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": null,
+      "description": "Site name, e.g. 'NorthPlant' or 'EastRefinery'",
+      "title": "Site"
+     },
+     "unit": {
+      "anyOf": [
+       {
+        "maxLength": 64,
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": null,
+      "description": "Unit name, e.g. 'Unit 1'",
+      "title": "Unit"
+     },
+     "start_time": {
+      "anyOf": [
+       {
+        "format": "date-time",
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": null,
+      "description": "ISO-8601 start (inclusive). Alternative to lookback_days.",
+      "title": "Start Time"
+     },
+     "end_time": {
+      "anyOf": [
+       {
+        "format": "date-time",
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": null,
+      "description": "ISO-8601 end (exclusive). Alternative to lookback_days.",
+      "title": "End Time"
+     },
+     "lookback_days": {
+      "anyOf": [
+       {
+        "maximum": 365,
+        "minimum": 1,
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": null,
+      "description": "Analyse the last N days of data, measured from the Alarm API's data clock.",
+      "title": "Lookback Days"
+     },
+     "threshold_count": {
+      "default": 10,
+      "maximum": 1000,
+      "minimum": 2,
+      "title": "Threshold Count",
+      "type": "integer"
+     },
+     "rolling_window_minutes": {
+      "default": 10,
+      "maximum": 1440,
+      "minimum": 1,
+      "title": "Rolling Window Minutes",
+      "type": "integer"
+     }
+    },
+    "title": "analyze_alarm_floodsArguments"
+   },
+   "output_schema": {
+    "$defs": {
+     "ApiCall": {
+      "properties": {
+       "method": {
+        "anyOf": [
+         {
+          "type": "string"
+         },
+         {
+          "type": "null"
+         }
+        ],
+        "title": "Method"
+       },
+       "path": {
+        "anyOf": [
+         {
+          "type": "string"
+         },
+         {
+          "type": "null"
+         }
+        ],
+        "title": "Path"
+       },
+       "status_code": {
+        "anyOf": [
+         {
+          "type": "integer"
+         },
+         {
+          "type": "null"
+         }
+        ],
+        "title": "Status Code"
+       },
+       "attempts": {
+        "description": "1 = first try succeeded; >1 means retries happened",
+        "title": "Attempts",
+        "type": "integer"
+       },
+       "duration_ms": {
+        "anyOf": [
+         {
+          "type": "number"
+         },
+         {
+          "type": "null"
+         }
+        ],
+        "title": "Duration Ms"
+       },
+       "outcome": {
+        "enum": [
+         "ok",
+         "error"
+        ],
+        "title": "Outcome",
+        "type": "string"
+       },
+       "error_code": {
+        "anyOf": [
+         {
+          "type": "string"
+         },
+         {
+          "type": "null"
+         }
+        ],
+        "default": null,
+        "title": "Error Code"
+       }
+      },
+      "required": [
+       "method",
+       "path",
+       "status_code",
+       "attempts",
+       "duration_ms",
+       "outcome"
+      ],
+      "title": "ApiCall",
+      "type": "object"
+     },
+     "Contributor": {
+      "properties": {
+       "asset_name": {
+        "title": "Asset Name",
+        "type": "string"
+       },
+       "alarm_name": {
+        "title": "Alarm Name",
+        "type": "string"
+       },
+       "count": {
+        "title": "Count",
+        "type": "integer"
+       }
+      },
+      "required": [
+       "asset_name",
+       "alarm_name",
+       "count"
+      ],
+      "title": "Contributor",
+      "type": "object"
+     },
+     "FloodWindow": {
+      "properties": {
+       "start": {
+        "format": "date-time",
+        "title": "Start",
+        "type": "string"
+       },
+       "end": {
+        "format": "date-time",
+        "title": "End",
+        "type": "string"
+       },
+       "duration_minutes": {
+        "title": "Duration Minutes",
+        "type": "number"
+       },
+       "alarm_count": {
+        "title": "Alarm Count",
+        "type": "integer"
+       },
+       "peak_count_in_window": {
+        "title": "Peak Count In Window",
+        "type": "integer"
+       },
+       "initiating_alarm": {
+        "$ref": "#/$defs/InitiatingAlarm"
+       },
+       "top_contributors": {
+        "items": {
+         "$ref": "#/$defs/Contributor"
+        },
+        "title": "Top Contributors",
+        "type": "array"
+       }
+      },
+      "required": [
+       "start",
+       "end",
+       "duration_minutes",
+       "alarm_count",
+       "peak_count_in_window",
+       "initiating_alarm",
+       "top_contributors"
+      ],
+      "title": "FloodWindow",
+      "type": "object"
+     },
+     "InitiatingAlarm": {
+      "properties": {
+       "alarm_id": {
+        "title": "Alarm Id",
+        "type": "string"
+       },
+       "asset_id": {
+        "title": "Asset Id",
+        "type": "string"
+       },
+       "asset_name": {
+        "title": "Asset Name",
+        "type": "string"
+       },
+       "alarm_name": {
+        "title": "Alarm Name",
+        "type": "string"
+       },
+       "start_time": {
+        "format": "date-time",
+        "title": "Start Time",
+        "type": "string"
+       }
+      },
+      "required": [
+       "alarm_id",
+       "asset_id",
+       "asset_name",
+       "alarm_name",
+       "start_time"
+      ],
+      "title": "InitiatingAlarm",
+      "type": "object"
+     },
+     "TimeRange": {
+      "properties": {
+       "start_time": {
+        "format": "date-time",
+        "title": "Start Time",
+        "type": "string"
+       },
+       "end_time": {
+        "format": "date-time",
+        "title": "End Time",
+        "type": "string"
+       }
+      },
+      "required": [
+       "start_time",
+       "end_time"
+      ],
+      "title": "TimeRange",
+      "type": "object"
+     },
+     "ToolMeta": {
+      "properties": {
+       "trace_id": {
+        "title": "Trace Id",
+        "type": "string"
+       },
+       "api_calls": {
+        "items": {
+         "$ref": "#/$defs/ApiCall"
+        },
+        "title": "Api Calls",
+        "type": "array"
+       }
+      },
+      "required": [
+       "trace_id",
+       "api_calls"
+      ],
+      "title": "ToolMeta",
+      "type": "object"
+     }
+    },
+    "properties": {
+     "meta": {
+      "$ref": "#/$defs/ToolMeta",
+      "description": "Trace id and the Alarm API calls made for this tool call"
+     },
+     "time_range": {
+      "$ref": "#/$defs/TimeRange"
+     },
+     "threshold_count": {
+      "title": "Threshold Count",
+      "type": "integer"
+     },
+     "rolling_window_minutes": {
+      "title": "Rolling Window Minutes",
+      "type": "integer"
+     },
+     "total_alarms": {
+      "title": "Total Alarms",
+      "type": "integer"
+     },
+     "alarms_in_floods": {
+      "title": "Alarms In Floods",
+      "type": "integer"
+     },
+     "time_in_flood_percent": {
+      "title": "Time In Flood Percent",
+      "type": "number"
+     },
+     "flood_windows": {
+      "items": {
+       "$ref": "#/$defs/FloodWindow"
+      },
+      "title": "Flood Windows",
+      "type": "array"
+     }
+    },
+    "required": [
+     "meta",
+     "time_range",
+     "threshold_count",
+     "rolling_window_minutes",
+     "total_alarms",
+     "alarms_in_floods",
+     "time_in_flood_percent",
+     "flood_windows"
+    ],
+    "title": "FloodOutput",
+    "type": "object"
+   },
+   "read_only": true
+  },
+  {
+   "server": "alarm-management",
+   "name": "find_rationalization_candidates",
+   "title": "Find rationalization candidates",
+   "description": "Rank recurring, chattering, stale or mostly-unacknowledged alarms, with a score and a suggested\n        action. Safety alarms are never marked suppression-eligible.",
+   "input_schema": {
+    "type": "object",
+    "properties": {
+     "asset_ids": {
+      "anyOf": [
+       {
+        "items": {
+         "description": "Asset id from search_assets, e.g. 'AST-BFP-101'",
+         "pattern": "^[A-Za-z0-9._-]{1,64}$",
+         "type": "string"
+        },
+        "maxItems": 50,
+        "minItems": 1,
+        "type": "array"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": null,
+      "description": "Limit to these asset ids",
+      "title": "Asset Ids"
+     },
+     "site": {
+      "anyOf": [
+       {
+        "maxLength": 64,
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": null,
+      "description": "Site name, e.g. 'NorthPlant' or 'EastRefinery'",
+      "title": "Site"
+     },
+     "unit": {
+      "anyOf": [
+       {
+        "maxLength": 64,
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": null,
+      "description": "Unit name, e.g. 'Unit 1'",
+      "title": "Unit"
+     },
+     "start_time": {
+      "anyOf": [
+       {
+        "format": "date-time",
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": null,
+      "description": "ISO-8601 start (inclusive). Alternative to lookback_days.",
+      "title": "Start Time"
+     },
+     "end_time": {
+      "anyOf": [
+       {
+        "format": "date-time",
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": null,
+      "description": "ISO-8601 end (exclusive). Alternative to lookback_days.",
+      "title": "End Time"
+     },
+     "lookback_days": {
+      "anyOf": [
+       {
+        "maximum": 365,
+        "minimum": 1,
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": null,
+      "description": "Analyse the last N days of data, measured from the Alarm API's data clock.",
+      "title": "Lookback Days"
+     },
+     "recurrence_threshold": {
+      "default": 5,
+      "maximum": 1000,
+      "minimum": 2,
+      "title": "Recurrence Threshold",
+      "type": "integer"
+     },
+     "stale_minutes_threshold": {
+      "default": 1440,
+      "minimum": 1,
+      "title": "Stale Minutes Threshold",
+      "type": "integer"
+     },
+     "chatter_seconds_threshold": {
+      "default": 120,
+      "maximum": 3600,
+      "minimum": 1,
+      "title": "Chatter Seconds Threshold",
+      "type": "integer"
+     }
+    },
+    "title": "find_rationalization_candidatesArguments"
+   },
+   "output_schema": {
+    "$defs": {
+     "ApiCall": {
+      "properties": {
+       "method": {
+        "anyOf": [
+         {
+          "type": "string"
+         },
+         {
+          "type": "null"
+         }
+        ],
+        "title": "Method"
+       },
+       "path": {
+        "anyOf": [
+         {
+          "type": "string"
+         },
+         {
+          "type": "null"
+         }
+        ],
+        "title": "Path"
+       },
+       "status_code": {
+        "anyOf": [
+         {
+          "type": "integer"
+         },
+         {
+          "type": "null"
+         }
+        ],
+        "title": "Status Code"
+       },
+       "attempts": {
+        "description": "1 = first try succeeded; >1 means retries happened",
+        "title": "Attempts",
+        "type": "integer"
+       },
+       "duration_ms": {
+        "anyOf": [
+         {
+          "type": "number"
+         },
+         {
+          "type": "null"
+         }
+        ],
+        "title": "Duration Ms"
+       },
+       "outcome": {
+        "enum": [
+         "ok",
+         "error"
+        ],
+        "title": "Outcome",
+        "type": "string"
+       },
+       "error_code": {
+        "anyOf": [
+         {
+          "type": "string"
+         },
+         {
+          "type": "null"
+         }
+        ],
+        "default": null,
+        "title": "Error Code"
+       }
+      },
+      "required": [
+       "method",
+       "path",
+       "status_code",
+       "attempts",
+       "duration_ms",
+       "outcome"
+      ],
+      "title": "ApiCall",
+      "type": "object"
+     },
+     "RationalizationCandidate": {
+      "properties": {
+       "asset_id": {
+        "title": "Asset Id",
+        "type": "string"
+       },
+       "asset_name": {
+        "title": "Asset Name",
+        "type": "string"
+       },
+       "alarm_code": {
+        "title": "Alarm Code",
+        "type": "string"
+       },
+       "alarm_name": {
+        "title": "Alarm Name",
+        "type": "string"
+       },
+       "alarm_type": {
+        "title": "Alarm Type",
+        "type": "string"
+       },
+       "severity": {
+        "enum": [
+         "low",
+         "medium",
+         "high",
+         "critical"
+        ],
+        "title": "Severity",
+        "type": "string"
+       },
+       "occurrences": {
+        "title": "Occurrences",
+        "type": "integer"
+       },
+       "chattering_count": {
+        "title": "Chattering Count",
+        "type": "integer"
+       },
+       "stale_count": {
+        "title": "Stale Count",
+        "type": "integer"
+       },
+       "unacknowledged_count": {
+        "title": "Unacknowledged Count",
+        "type": "integer"
+       },
+       "avg_ack_delay_minutes": {
+        "anyOf": [
+         {
+          "type": "number"
+         },
+         {
+          "type": "null"
+         }
+        ],
+        "title": "Avg Ack Delay Minutes"
+       },
+       "reasons": {
+        "items": {
+         "type": "string"
+        },
+        "title": "Reasons",
+        "type": "array"
+       },
+       "score": {
+        "title": "Score",
+        "type": "number"
+       },
+       "suppression_eligible": {
+        "title": "Suppression Eligible",
+        "type": "boolean"
+       },
+       "suggested_action": {
+        "title": "Suggested Action",
+        "type": "string"
+       }
+      },
+      "required": [
+       "asset_id",
+       "asset_name",
+       "alarm_code",
+       "alarm_name",
+       "alarm_type",
+       "severity",
+       "occurrences",
+       "chattering_count",
+       "stale_count",
+       "unacknowledged_count",
+       "avg_ack_delay_minutes",
+       "reasons",
+       "score",
+       "suppression_eligible",
+       "suggested_action"
+      ],
+      "title": "RationalizationCandidate",
+      "type": "object"
+     },
+     "TimeRange": {
+      "properties": {
+       "start_time": {
+        "format": "date-time",
+        "title": "Start Time",
+        "type": "string"
+       },
+       "end_time": {
+        "format": "date-time",
+        "title": "End Time",
+        "type": "string"
+       }
+      },
+      "required": [
+       "start_time",
+       "end_time"
+      ],
+      "title": "TimeRange",
+      "type": "object"
+     },
+     "ToolMeta": {
+      "properties": {
+       "trace_id": {
+        "title": "Trace Id",
+        "type": "string"
+       },
+       "api_calls": {
+        "items": {
+         "$ref": "#/$defs/ApiCall"
+        },
+        "title": "Api Calls",
+        "type": "array"
+       }
+      },
+      "required": [
+       "trace_id",
+       "api_calls"
+      ],
+      "title": "ToolMeta",
+      "type": "object"
+     }
+    },
+    "properties": {
+     "meta": {
+      "$ref": "#/$defs/ToolMeta",
+      "description": "Trace id and the Alarm API calls made for this tool call"
+     },
+     "time_range": {
+      "$ref": "#/$defs/TimeRange"
+     },
+     "criteria": {
+      "additionalProperties": {
+       "type": "integer"
+      },
+      "title": "Criteria",
+      "type": "object"
+     },
+     "total_alarms": {
+      "title": "Total Alarms",
+      "type": "integer"
+     },
+     "candidates": {
+      "items": {
+       "$ref": "#/$defs/RationalizationCandidate"
+      },
+      "title": "Candidates",
+      "type": "array"
+     }
+    },
+    "required": [
+     "meta",
+     "time_range",
+     "criteria",
+     "total_alarms",
+     "candidates"
+    ],
+    "title": "RationalizationOutput",
+    "type": "object"
+   },
+   "read_only": true
+  },
+  {
+   "server": "alarm-management",
+   "name": "score_alarm_priority",
+   "title": "Score alarm priority",
+   "description": "Priority 0-100 and band P1-P4 for one alarm, with the factors that produced it (severity,\n        asset criticality, active/acknowledged state, recurrence, concurrent alarms nearby).",
+   "input_schema": {
+    "type": "object",
+    "properties": {
+     "alarm_id": {
+      "description": "Alarm id from get_alarms, e.g. 'ALM-000123'",
+      "pattern": "^[A-Za-z0-9._-]{1,64}$",
+      "title": "Alarm Id",
+      "type": "string"
+     }
+    },
+    "required": [
+     "alarm_id"
+    ],
+    "title": "score_alarm_priorityArguments"
+   },
+   "output_schema": {
+    "$defs": {
+     "AlarmBrief": {
+      "properties": {
+       "alarm_id": {
+        "title": "Alarm Id",
+        "type": "string"
+       },
+       "asset_id": {
+        "title": "Asset Id",
+        "type": "string"
+       },
+       "asset_name": {
+        "title": "Asset Name",
+        "type": "string"
+       },
+       "alarm_name": {
+        "title": "Alarm Name",
+        "type": "string"
+       },
+       "severity": {
+        "enum": [
+         "low",
+         "medium",
+         "high",
+         "critical"
+        ],
+        "title": "Severity",
+        "type": "string"
+       },
+       "status": {
+        "title": "Status",
+        "type": "string"
+       },
+       "start_time": {
+        "format": "date-time",
+        "title": "Start Time",
+        "type": "string"
+       }
+      },
+      "required": [
+       "alarm_id",
+       "asset_id",
+       "asset_name",
+       "alarm_name",
+       "severity",
+       "status",
+       "start_time"
+      ],
+      "title": "AlarmBrief",
+      "type": "object"
+     },
+     "ApiCall": {
+      "properties": {
+       "method": {
+        "anyOf": [
+         {
+          "type": "string"
+         },
+         {
+          "type": "null"
+         }
+        ],
+        "title": "Method"
+       },
+       "path": {
+        "anyOf": [
+         {
+          "type": "string"
+         },
+         {
+          "type": "null"
+         }
+        ],
+        "title": "Path"
+       },
+       "status_code": {
+        "anyOf": [
+         {
+          "type": "integer"
+         },
+         {
+          "type": "null"
+         }
+        ],
+        "title": "Status Code"
+       },
+       "attempts": {
+        "description": "1 = first try succeeded; >1 means retries happened",
+        "title": "Attempts",
+        "type": "integer"
+       },
+       "duration_ms": {
+        "anyOf": [
+         {
+          "type": "number"
+         },
+         {
+          "type": "null"
+         }
+        ],
+        "title": "Duration Ms"
+       },
+       "outcome": {
+        "enum": [
+         "ok",
+         "error"
+        ],
+        "title": "Outcome",
+        "type": "string"
+       },
+       "error_code": {
+        "anyOf": [
+         {
+          "type": "string"
+         },
+         {
+          "type": "null"
+         }
+        ],
+        "default": null,
+        "title": "Error Code"
+       }
+      },
+      "required": [
+       "method",
+       "path",
+       "status_code",
+       "attempts",
+       "duration_ms",
+       "outcome"
+      ],
+      "title": "ApiCall",
+      "type": "object"
+     },
+     "PriorityFactor": {
+      "properties": {
+       "name": {
+        "title": "Name",
+        "type": "string"
+       },
+       "points": {
+        "title": "Points",
+        "type": "number"
+       },
+       "max_points": {
+        "title": "Max Points",
+        "type": "number"
+       },
+       "explanation": {
+        "title": "Explanation",
+        "type": "string"
+       }
+      },
+      "required": [
+       "name",
+       "points",
+       "max_points",
+       "explanation"
+      ],
+      "title": "PriorityFactor",
+      "type": "object"
+     },
+     "ToolMeta": {
+      "properties": {
+       "trace_id": {
+        "title": "Trace Id",
+        "type": "string"
+       },
+       "api_calls": {
+        "items": {
+         "$ref": "#/$defs/ApiCall"
+        },
+        "title": "Api Calls",
+        "type": "array"
+       }
+      },
+      "required": [
+       "trace_id",
+       "api_calls"
+      ],
+      "title": "ToolMeta",
+      "type": "object"
+     }
+    },
+    "properties": {
+     "meta": {
+      "$ref": "#/$defs/ToolMeta",
+      "description": "Trace id and the Alarm API calls made for this tool call"
+     },
+     "alarm_id": {
+      "title": "Alarm Id",
+      "type": "string"
+     },
+     "score": {
+      "title": "Score",
+      "type": "number"
+     },
+     "priority": {
+      "enum": [
+       "P1",
+       "P2",
+       "P3",
+       "P4"
+      ],
+      "title": "Priority",
+      "type": "string"
+     },
+     "priority_label": {
+      "title": "Priority Label",
+      "type": "string"
+     },
+     "factors": {
+      "items": {
+       "$ref": "#/$defs/PriorityFactor"
+      },
+      "title": "Factors",
+      "type": "array"
+     },
+     "alarm": {
+      "$ref": "#/$defs/AlarmBrief"
+     }
+    },
+    "required": [
+     "meta",
+     "alarm_id",
+     "score",
+     "priority",
+     "priority_label",
+     "factors",
+     "alarm"
+    ],
+    "title": "PriorityOutput",
+    "type": "object"
+   },
+   "read_only": true
+  },
+  {
+   "server": "alarm-management",
+   "name": "get_operator_recommendations",
+   "title": "Get operator recommendations",
+   "description": "The Alarm API's likely causes and recommended operator actions for one alarm, with related-asset\n        status and 90-day history. This guidance comes from the API catalogue and MUST be checked\n        against the site operating procedures before it is presented as instructions.",
+   "input_schema": {
+    "type": "object",
+    "properties": {
+     "alarm_id": {
+      "description": "Alarm id from get_alarms, e.g. 'ALM-000123'",
+      "pattern": "^[A-Za-z0-9._-]{1,64}$",
+      "title": "Alarm Id",
+      "type": "string"
+     },
+     "include_related": {
+      "default": true,
+      "title": "Include Related",
+      "type": "boolean"
+     },
+     "include_asset_context": {
+      "default": true,
+      "title": "Include Asset Context",
+      "type": "boolean"
+     },
+     "include_historical_pattern": {
+      "default": true,
+      "title": "Include Historical Pattern",
+      "type": "boolean"
+     }
+    },
+    "required": [
+     "alarm_id"
+    ],
+    "title": "get_operator_recommendationsArguments"
+   },
+   "output_schema": {
+    "$defs": {
+     "ActionStep": {
+      "properties": {
+       "step": {
+        "title": "Step",
+        "type": "integer"
+       },
+       "action": {
+        "title": "Action",
+        "type": "string"
+       }
+      },
+      "required": [
+       "step",
+       "action"
+      ],
+      "title": "ActionStep",
+      "type": "object"
+     },
+     "AlarmBrief": {
+      "properties": {
+       "alarm_id": {
+        "title": "Alarm Id",
+        "type": "string"
+       },
+       "asset_id": {
+        "title": "Asset Id",
+        "type": "string"
+       },
+       "asset_name": {
+        "title": "Asset Name",
+        "type": "string"
+       },
+       "alarm_name": {
+        "title": "Alarm Name",
+        "type": "string"
+       },
+       "severity": {
+        "enum": [
+         "low",
+         "medium",
+         "high",
+         "critical"
+        ],
+        "title": "Severity",
+        "type": "string"
+       },
+       "status": {
+        "title": "Status",
+        "type": "string"
+       },
+       "start_time": {
+        "format": "date-time",
+        "title": "Start Time",
+        "type": "string"
+       }
+      },
+      "required": [
+       "alarm_id",
+       "asset_id",
+       "asset_name",
+       "alarm_name",
+       "severity",
+       "status",
+       "start_time"
+      ],
+      "title": "AlarmBrief",
+      "type": "object"
+     },
+     "ApiCall": {
+      "properties": {
+       "method": {
+        "anyOf": [
+         {
+          "type": "string"
+         },
+         {
+          "type": "null"
+         }
+        ],
+        "title": "Method"
+       },
+       "path": {
+        "anyOf": [
+         {
+          "type": "string"
+         },
+         {
+          "type": "null"
+         }
+        ],
+        "title": "Path"
+       },
+       "status_code": {
+        "anyOf": [
+         {
+          "type": "integer"
+         },
+         {
+          "type": "null"
+         }
+        ],
+        "title": "Status Code"
+       },
+       "attempts": {
+        "description": "1 = first try succeeded; >1 means retries happened",
+        "title": "Attempts",
+        "type": "integer"
+       },
+       "duration_ms": {
+        "anyOf": [
+         {
+          "type": "number"
+         },
+         {
+          "type": "null"
+         }
+        ],
+        "title": "Duration Ms"
+       },
+       "outcome": {
+        "enum": [
+         "ok",
+         "error"
+        ],
+        "title": "Outcome",
+        "type": "string"
+       },
+       "error_code": {
+        "anyOf": [
+         {
+          "type": "string"
+         },
+         {
+          "type": "null"
+         }
+        ],
+        "default": null,
+        "title": "Error Code"
+       }
+      },
+      "required": [
+       "method",
+       "path",
+       "status_code",
+       "attempts",
+       "duration_ms",
+       "outcome"
+      ],
+      "title": "ApiCall",
+      "type": "object"
+     },
+     "AssetContext": {
+      "properties": {
+       "asset_id": {
+        "title": "Asset Id",
+        "type": "string"
+       },
+       "name": {
+        "title": "Name",
+        "type": "string"
+       },
+       "asset_type": {
+        "title": "Asset Type",
+        "type": "string"
+       },
+       "site": {
+        "title": "Site",
+        "type": "string"
+       },
+       "unit": {
+        "title": "Unit",
+        "type": "string"
+       },
+       "criticality": {
+        "title": "Criticality",
+        "type": "string"
+       },
+       "manufacturer": {
+        "title": "Manufacturer",
+        "type": "string"
+       },
+       "model": {
+        "title": "Model",
+        "type": "string"
+       },
+       "install_date": {
+        "title": "Install Date",
+        "type": "string"
+       }
+      },
+      "required": [
+       "asset_id",
+       "name",
+       "asset_type",
+       "site",
+       "unit",
+       "criticality",
+       "manufacturer",
+       "model",
+       "install_date"
+      ],
+      "title": "AssetContext",
+      "type": "object"
+     },
+     "HistoricalPattern": {
+      "properties": {
+       "occurrences_prior_30_days": {
+        "title": "Occurrences Prior 30 Days",
+        "type": "integer"
+       },
+       "occurrences_prior_90_days": {
+        "title": "Occurrences Prior 90 Days",
+        "type": "integer"
+       },
+       "last_previous_occurrence": {
+        "anyOf": [
+         {
+          "format": "date-time",
+          "type": "string"
+         },
+         {
+          "type": "null"
+         }
+        ],
+        "title": "Last Previous Occurrence"
+       },
+       "avg_duration_minutes": {
+        "anyOf": [
+         {
+          "type": "number"
+         },
+         {
+          "type": "null"
+         }
+        ],
+        "title": "Avg Duration Minutes"
+       },
+       "avg_ack_delay_minutes": {
+        "anyOf": [
+         {
+          "type": "number"
+         },
+         {
+          "type": "null"
+         }
+        ],
+        "title": "Avg Ack Delay Minutes"
+       },
+       "trend_direction": {
+        "enum": [
+         "increasing",
+         "decreasing",
+         "stable"
+        ],
+        "title": "Trend Direction",
+        "type": "string"
+       }
+      },
+      "required": [
+       "occurrences_prior_30_days",
+       "occurrences_prior_90_days",
+       "last_previous_occurrence",
+       "avg_duration_minutes",
+       "avg_ack_delay_minutes",
+       "trend_direction"
+      ],
+      "title": "HistoricalPattern",
+      "type": "object"
+     },
+     "PrioritySnapshot": {
+      "properties": {
+       "score": {
+        "title": "Score",
+        "type": "number"
+       },
+       "priority": {
+        "enum": [
+         "P1",
+         "P2",
+         "P3",
+         "P4"
+        ],
+        "title": "Priority",
+        "type": "string"
+       },
+       "priority_label": {
+        "title": "Priority Label",
+        "type": "string"
+       }
+      },
+      "required": [
+       "score",
+       "priority",
+       "priority_label"
+      ],
+      "title": "PrioritySnapshot",
+      "type": "object"
+     },
+     "RelatedAssetStatus": {
+      "properties": {
+       "asset_id": {
+        "title": "Asset Id",
+        "type": "string"
+       },
+       "name": {
+        "title": "Name",
+        "type": "string"
+       },
+       "asset_type": {
+        "title": "Asset Type",
+        "type": "string"
+       },
+       "active_alarms": {
+        "items": {
+         "$ref": "#/$defs/AlarmBrief"
+        },
+        "title": "Active Alarms",
+        "type": "array"
+       },
+       "alarms_prior_7_days": {
+        "title": "Alarms Prior 7 Days",
+        "type": "integer"
+       }
+      },
+      "required": [
+       "asset_id",
+       "name",
+       "asset_type",
+       "active_alarms",
+       "alarms_prior_7_days"
+      ],
+      "title": "RelatedAssetStatus",
+      "type": "object"
+     },
+     "ToolMeta": {
+      "properties": {
+       "trace_id": {
+        "title": "Trace Id",
+        "type": "string"
+       },
+       "api_calls": {
+        "items": {
+         "$ref": "#/$defs/ApiCall"
+        },
+        "title": "Api Calls",
+        "type": "array"
+       }
+      },
+      "required": [
+       "trace_id",
+       "api_calls"
+      ],
+      "title": "ToolMeta",
+      "type": "object"
+     }
+    },
+    "properties": {
+     "meta": {
+      "$ref": "#/$defs/ToolMeta",
+      "description": "Trace id and the Alarm API calls made for this tool call"
+     },
+     "alarm_id": {
+      "title": "Alarm Id",
+      "type": "string"
+     },
+     "alarm": {
+      "$ref": "#/$defs/AlarmBrief"
+     },
+     "priority": {
+      "$ref": "#/$defs/PrioritySnapshot"
+     },
+     "likely_causes": {
+      "items": {
+       "type": "string"
+      },
+      "title": "Likely Causes",
+      "type": "array"
+     },
+     "recommended_actions": {
+      "items": {
+       "$ref": "#/$defs/ActionStep"
+      },
+      "title": "Recommended Actions",
+      "type": "array"
+     },
+     "source": {
+      "description": "Origin of the guidance. Must be checked against site procedures.",
+      "title": "Source",
+      "type": "string"
+     },
+     "related_assets": {
+      "anyOf": [
+       {
+        "items": {
+         "$ref": "#/$defs/RelatedAssetStatus"
+        },
+        "type": "array"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Related Assets"
+     },
+     "asset_context": {
+      "anyOf": [
+       {
+        "$ref": "#/$defs/AssetContext"
+       },
+       {
+        "type": "null"
+       }
+      ]
+     },
+     "historical_pattern": {
+      "anyOf": [
+       {
+        "$ref": "#/$defs/HistoricalPattern"
+       },
+       {
+        "type": "null"
+       }
+      ]
+     }
+    },
+    "required": [
+     "meta",
+     "alarm_id",
+     "alarm",
+     "priority",
+     "likely_causes",
+     "recommended_actions",
+     "source",
+     "related_assets",
+     "asset_context",
+     "historical_pattern"
+    ],
+    "title": "RecommendationOutput",
+    "type": "object"
+   },
+   "read_only": true
+  },
+  {
+   "server": "alarm-management",
+   "name": "calculate_kpi",
+   "title": "Calculate KPI",
+   "description": "Generate and then execute a KPI calculation (two API calls) and return the value with its\n        interpretation. Types: alarm_flood_index, critical_alarm_density, operator_response_efficiency,\n        nuisance_alarm_score.",
+   "input_schema": {
+    "type": "object",
+    "properties": {
+     "calculation_type": {
+      "enum": [
+       "alarm_flood_index",
+       "critical_alarm_density",
+       "operator_response_efficiency",
+       "nuisance_alarm_score"
+      ],
+      "title": "Calculation Type",
+      "type": "string"
+     },
+     "asset_ids": {
+      "anyOf": [
+       {
+        "items": {
+         "description": "Asset id from search_assets, e.g. 'AST-BFP-101'",
+         "pattern": "^[A-Za-z0-9._-]{1,64}$",
+         "type": "string"
+        },
+        "maxItems": 50,
+        "minItems": 1,
+        "type": "array"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": null,
+      "description": "Limit to these asset ids",
+      "title": "Asset Ids"
+     },
+     "site": {
+      "anyOf": [
+       {
+        "maxLength": 64,
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": null,
+      "description": "Site name, e.g. 'NorthPlant' or 'EastRefinery'",
+      "title": "Site"
+     },
+     "unit": {
+      "anyOf": [
+       {
+        "maxLength": 64,
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": null,
+      "description": "Unit name, e.g. 'Unit 1'",
+      "title": "Unit"
+     },
+     "start_time": {
+      "anyOf": [
+       {
+        "format": "date-time",
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": null,
+      "description": "ISO-8601 start (inclusive). Alternative to lookback_days.",
+      "title": "Start Time"
+     },
+     "end_time": {
+      "anyOf": [
+       {
+        "format": "date-time",
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": null,
+      "description": "ISO-8601 end (exclusive). Alternative to lookback_days.",
+      "title": "End Time"
+     },
+     "lookback_days": {
+      "anyOf": [
+       {
+        "maximum": 365,
+        "minimum": 1,
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": null,
+      "description": "Analyse the last N days of data, measured from the Alarm API's data clock.",
+      "title": "Lookback Days"
+     }
+    },
+    "required": [
+     "calculation_type"
+    ],
+    "title": "calculate_kpiArguments"
+   },
+   "output_schema": {
+    "$defs": {
+     "ApiCall": {
+      "properties": {
+       "method": {
+        "anyOf": [
+         {
+          "type": "string"
+         },
+         {
+          "type": "null"
+         }
+        ],
+        "title": "Method"
+       },
+       "path": {
+        "anyOf": [
+         {
+          "type": "string"
+         },
+         {
+          "type": "null"
+         }
+        ],
+        "title": "Path"
+       },
+       "status_code": {
+        "anyOf": [
+         {
+          "type": "integer"
+         },
+         {
+          "type": "null"
+         }
+        ],
+        "title": "Status Code"
+       },
+       "attempts": {
+        "description": "1 = first try succeeded; >1 means retries happened",
+        "title": "Attempts",
+        "type": "integer"
+       },
+       "duration_ms": {
+        "anyOf": [
+         {
+          "type": "number"
+         },
+         {
+          "type": "null"
+         }
+        ],
+        "title": "Duration Ms"
+       },
+       "outcome": {
+        "enum": [
+         "ok",
+         "error"
+        ],
+        "title": "Outcome",
+        "type": "string"
+       },
+       "error_code": {
+        "anyOf": [
+         {
+          "type": "string"
+         },
+         {
+          "type": "null"
+         }
+        ],
+        "default": null,
+        "title": "Error Code"
+       }
+      },
+      "required": [
+       "method",
+       "path",
+       "status_code",
+       "attempts",
+       "duration_ms",
+       "outcome"
+      ],
+      "title": "ApiCall",
+      "type": "object"
+     },
+     "ToolMeta": {
+      "properties": {
+       "trace_id": {
+        "title": "Trace Id",
+        "type": "string"
+       },
+       "api_calls": {
+        "items": {
+         "$ref": "#/$defs/ApiCall"
+        },
+        "title": "Api Calls",
+        "type": "array"
+       }
+      },
+      "required": [
+       "trace_id",
+       "api_calls"
+      ],
+      "title": "ToolMeta",
+      "type": "object"
+     }
+    },
+    "properties": {
+     "meta": {
+      "$ref": "#/$defs/ToolMeta",
+      "description": "Trace id and the Alarm API calls made for this tool call"
+     },
+     "calculation_id": {
+      "title": "Calculation Id",
+      "type": "string"
+     },
+     "calculation_type": {
+      "title": "Calculation Type",
+      "type": "string"
+     },
+     "description": {
+      "title": "Description",
+      "type": "string"
+     },
+     "value": {
+      "title": "Value",
+      "type": "number"
+     },
+     "unit": {
+      "title": "Unit",
+      "type": "string"
+     },
+     "interpretation": {
+      "title": "Interpretation",
+      "type": "string"
+     },
+     "details": {
+      "additionalProperties": {
+       "anyOf": [
+        {
+         "type": "number"
+        },
+        {
+         "type": "integer"
+        },
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ]
+      },
+      "title": "Details",
+      "type": "object"
+     },
+     "filters": {
+      "additionalProperties": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "items": {
+          "type": "string"
+         },
+         "type": "array"
+        },
+        {
+         "type": "null"
+        }
+       ]
+      },
+      "title": "Filters",
+      "type": "object"
+     }
+    },
+    "required": [
+     "meta",
+     "calculation_id",
+     "calculation_type",
+     "description",
+     "value",
+     "unit",
+     "interpretation",
+     "details",
+     "filters"
+    ],
+    "title": "KpiOutput",
+    "type": "object"
+   },
+   "read_only": true
+  },
+  {
+   "server": "alarm-management",
+   "name": "list_kpi_definitions",
+   "title": "List KPI definitions",
+   "description": "The KPIs and calculation types the Alarm API supports, with units and definitions.",
+   "input_schema": {
+    "type": "object",
+    "properties": {},
+    "title": "list_kpi_definitionsArguments"
+   },
+   "output_schema": {
+    "$defs": {
+     "ApiCall": {
+      "properties": {
+       "method": {
+        "anyOf": [
+         {
+          "type": "string"
+         },
+         {
+          "type": "null"
+         }
+        ],
+        "title": "Method"
+       },
+       "path": {
+        "anyOf": [
+         {
+          "type": "string"
+         },
+         {
+          "type": "null"
+         }
+        ],
+        "title": "Path"
+       },
+       "status_code": {
+        "anyOf": [
+         {
+          "type": "integer"
+         },
+         {
+          "type": "null"
+         }
+        ],
+        "title": "Status Code"
+       },
+       "attempts": {
+        "description": "1 = first try succeeded; >1 means retries happened",
+        "title": "Attempts",
+        "type": "integer"
+       },
+       "duration_ms": {
+        "anyOf": [
+         {
+          "type": "number"
+         },
+         {
+          "type": "null"
+         }
+        ],
+        "title": "Duration Ms"
+       },
+       "outcome": {
+        "enum": [
+         "ok",
+         "error"
+        ],
+        "title": "Outcome",
+        "type": "string"
+       },
+       "error_code": {
+        "anyOf": [
+         {
+          "type": "string"
+         },
+         {
+          "type": "null"
+         }
+        ],
+        "default": null,
+        "title": "Error Code"
+       }
+      },
+      "required": [
+       "method",
+       "path",
+       "status_code",
+       "attempts",
+       "duration_ms",
+       "outcome"
+      ],
+      "title": "ApiCall",
+      "type": "object"
+     },
+     "KpiDefinition": {
+      "properties": {
+       "name": {
+        "title": "Name",
+        "type": "string"
+       },
+       "unit": {
+        "title": "Unit",
+        "type": "string"
+       },
+       "description": {
+        "title": "Description",
+        "type": "string"
+       }
+      },
+      "required": [
+       "name",
+       "unit",
+       "description"
+      ],
+      "title": "KpiDefinition",
+      "type": "object"
+     },
+     "ToolMeta": {
+      "properties": {
+       "trace_id": {
+        "title": "Trace Id",
+        "type": "string"
+       },
+       "api_calls": {
+        "items": {
+         "$ref": "#/$defs/ApiCall"
+        },
+        "title": "Api Calls",
+        "type": "array"
+       }
+      },
+      "required": [
+       "trace_id",
+       "api_calls"
+      ],
+      "title": "ToolMeta",
+      "type": "object"
+     }
+    },
+    "properties": {
+     "meta": {
+      "$ref": "#/$defs/ToolMeta",
+      "description": "Trace id and the Alarm API calls made for this tool call"
+     },
+     "kpis": {
+      "items": {
+       "$ref": "#/$defs/KpiDefinition"
+      },
+      "title": "Kpis",
+      "type": "array"
+     },
+     "calculation_types": {
+      "items": {
+       "$ref": "#/$defs/KpiDefinition"
+      },
+      "title": "Calculation Types",
+      "type": "array"
+     }
+    },
+    "required": [
+     "meta",
+     "kpis",
+     "calculation_types"
+    ],
+    "title": "KpiDefinitionsOutput",
+    "type": "object"
+   },
+   "read_only": true
+  }
+ ]
+}

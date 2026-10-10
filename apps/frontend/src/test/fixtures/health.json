@@ -1,0 +1,18 @@
+{
+ "status": "ok",
+ "version": "0.1.0",
+ "mcp": {
+  "server": "alarm-management",
+  "connected": true,
+  "tools": 13,
+  "error": null
+ },
+ "rag": {
+  "index_loaded": true,
+  "chunks": 54,
+  "embedder": "BAAI/bge-small-en-v1.5"
+ },
+ "llm": {
+  "provider": "offline"
+ }
+}

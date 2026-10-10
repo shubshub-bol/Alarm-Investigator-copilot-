@@ -1,0 +1,1985 @@
+{
+ "conversation_id": "conv-a14c5ce4373f",
+ "trace_id": "trace-f083af1932724e18",
+ "question": "Investigate recurring high-severity alarms for Boiler Feed Pump 101 over the last 90 days, identify likely contributing factors, retrieve the relevant operating procedure, and provide recommended actions with source evidence.",
+ "status": "ok",
+ "understanding": {
+  "intent": "investigate_asset",
+  "asset_query": "Boiler Feed Pump 101",
+  "asset_type": "boiler",
+  "site": null,
+  "unit": null,
+  "lookback_days": 90,
+  "severities": [
+   "high",
+   "critical"
+  ],
+  "status": null,
+  "alarm_topic": null,
+  "uses_context": false,
+  "rationale": "keyword rules",
+  "question": "Investigate recurring high-severity alarms for Boiler Feed Pump 101 over the last 90 days, identify likely contributing factors, retrieve the relevant operating procedure, and provide recommended actions with source evidence.",
+  "method": "rules",
+  "fallback_reason": null
+ },
+ "answer": {
+  "summary": "Boiler Feed Pump 101 had 24 High Vibration alarms in the last 90 days, and the trend is increasing [T2]. The most likely contributing factor is Motor M-101 (BFP 101 Drive) 'High Bearing Temperature', which fired a median 12.0 min earlier in 79% of cases [T4]. The Alarm API's advice to 'Continue operation and monitor vibration trend for 24 hours' conflicts with the approved procedure, which governs [S1].",
+  "findings": [
+   {
+    "text": "Boiler Feed Pump 101 (AST-BFP-101) is a high-criticality pump at NorthPlant Unit 1. Related assets: Motor M-101 (BFP 101 Drive), Deaerator D-101, Feedwater Control Valve FV-101, Boiler Feed Pump 102.",
+    "citations": [
+     "T1"
+    ]
+   },
+   {
+    "text": "In the last 90 days Boiler Feed Pump 101 had 37 alarms in scope; the most frequent was High Vibration (PMP-VIB-HI) with 24 occurrences, recurring rate 100%, average time to acknowledge 6.7 min.",
+    "citations": [
+     "T2"
+    ]
+   },
+   {
+    "text": "High Vibration is increasing: 1.5 -> 2.1 alarms per week, first half vs second half of the window (+43%).",
+    "citations": [
+     "T3"
+    ]
+   },
+   {
+    "text": "Motor M-101 (BFP 101 Drive) 'High Bearing Temperature' fired a median 12.0 min before Boiler Feed Pump 101 'High Vibration' in 19 of 24 occurrences (79%).",
+    "citations": [
+     "T4"
+    ]
+   },
+   {
+    "text": "Latest High Vibration: ALM-000411 at 2026-06-28T18:36:00Z (cleared, value 11.07 mm/s vs setpoint 7.1).",
+    "citations": [
+     "T5"
+    ]
+   },
+   {
+    "text": "Priority of ALM-000411: 85.0/100, P1 (Immediate action) because severity is critical; Boiler Feed Pump 101 criticality is high; alarm is cleared; 10 previous occurrences of this alarm on this asset in the prior 30 days; 2 other alarm(s) active on this or related assets at the same time.",
+    "citations": [
+     "T6"
+    ]
+   },
+   {
+    "text": "Related asset Motor M-101 (BFP 101 Drive): no active alarms; 5 alarm(s) in the 7 days before the alarm.",
+    "citations": [
+     "T8"
+    ]
+   },
+   {
+    "text": "Related asset Deaerator D-101: no active alarms; 1 alarm(s) in the 7 days before the alarm.",
+    "citations": [
+     "T9"
+    ]
+   },
+   {
+    "text": "Related asset Feedwater Control Valve FV-101: Position Deviation; 1 alarm(s) in the 7 days before the alarm.",
+    "citations": [
+     "T10"
+    ]
+   },
+   {
+    "text": "Related asset Boiler Feed Pump 102: Low Suction Pressure, High Vibration, High Bearing Temperature; 1 alarm(s) in the 7 days before the alarm.",
+    "citations": [
+     "T11"
+    ]
+   },
+   {
+    "text": "History: 23 occurrences of this alarm in the 90 days before it (10 in the last 30), trend increasing.",
+    "citations": [
+     "T12"
+    ]
+   }
+  ],
+  "likely_causes": [
+   {
+    "text": "Motor M-101 (BFP 101 Drive) 'High Bearing Temperature' fired a median 12.0 min before Boiler Feed Pump 101 'High Vibration' in 19 of 24 occurrences (79%).",
+    "citations": [
+     "T4"
+    ]
+   },
+   {
+    "text": "Documented pattern: Misalignment between the motor and the pump is a leading cause of combined motor bearing heating and pump vibration.",
+    "citations": [
+     "S4"
+    ]
+   },
+   {
+    "text": "Alarm API likely causes: Bearing wear, Shaft misalignment, Cavitation from low suction pressure.",
+    "citations": [
+     "T7"
+    ]
+   }
+  ],
+  "procedure": [
+   {
+    "text": "SOP-BFP-001 \u00a74.1 - Boiler Feed Pump Operation and Alarm Response (rev C): Continued operation above 7.1 mm/s needs explicit shift supervisor approval and must not exceed 30 minutes. 6. Inform the shift supervisor and raise a maintenance notification for vibration analysis and a bearing and coupling inspection...",
+    "citations": [
+     "S1"
+    ]
+   },
+   {
+    "text": "SOP-BFP-001 \u00a74.1 - Boiler Feed Pump Operation and Alarm Response (rev C): 1. Confirm the reading on the local vibration indicator and the DCS trend. Note whether the drive-end, non-drive-end or both bearings are affected. 2. Check the drive motor bearing temperature (alarm MTR-BRG-TEMP-HI on M-101 / M-102). A...",
+    "citations": [
+     "S2"
+    ]
+   },
+   {
+    "text": "TG-DEA-007 \u00a72 - Deaerator and Feedwater Troubleshooting Guide (rev A): The deaerator provides the suction head (NPSH) for BFP-101 and BFP-102. A low level reduces suction pressure within a few minutes, which triggers PMP-SUCT-LO and can make the pumps cavitate. Cavitation shows up as noise, unstable discharge...",
+    "citations": [
+     "S3"
+    ]
+   }
+  ],
+  "recommended_actions": [
+   {
+    "text": "Follow the procedure: Continued operation above 7.1 mm/s needs explicit shift supervisor approval and must not exceed 30 minutes. If vibration stays above 7.1 mm/s for more than 10 minutes, is rising, or exceeds 11.0 mm/s at any time: start the standby feed pump, transfer the load to it, and stop the affected pump. (instead of the API's 'Continue operation and monitor vibration trend for 24 hours').",
+    "citations": [
+     "S1",
+     "S2",
+     "S7",
+     "T7"
+    ]
+   },
+   {
+    "text": "Check drive motor bearing temperature (API recommendation, matches the documents).",
+    "citations": [
+     "T7",
+     "S2"
+    ]
+   },
+   {
+    "text": "Schedule vibration analysis at next maintenance window (API recommendation, matches the documents).",
+    "citations": [
+     "T7",
+     "S1"
+    ]
+   },
+   {
+    "text": "Before any field inspection, apply lockout and isolation as set out in SAF-005 \u00a72.",
+    "citations": [
+     "S6"
+    ]
+   }
+  ],
+  "action_assessments": [
+   {
+    "step": 1,
+    "action": "Continue operation and monitor vibration trend for 24 hours",
+    "verdict": "conflict",
+    "document_guidance": "Continued operation above 7.1 mm/s needs explicit shift supervisor approval and must not exceed 30 minutes. If vibration stays above 7.1 mm/s for more than 10 minutes, is rising, or exceeds 11.0 mm/s at any time: start the standby feed pump, transfer the load to it, and stop the affected pump.",
+    "citation_keys": [
+     "S1",
+     "S2",
+     "S7"
+    ],
+    "explanation": "The API suggests continuing to operate, but the documents require stopping or changing over. The approved procedure governs."
+   },
+   {
+    "step": 2,
+    "action": "Check drive motor bearing temperature",
+    "verdict": "consistent",
+    "document_guidance": "Check the drive motor bearing temperature (alarm MTR-BRG-TEMP-HI on M-101 / M-102).",
+    "citation_keys": [
+     "S2"
+    ],
+    "explanation": "SOP-BFP-001 \u00a74.1 covers the same check."
+   },
+   {
+    "step": 3,
+    "action": "Schedule vibration analysis at next maintenance window",
+    "verdict": "consistent",
+    "document_guidance": "Inform the shift supervisor and raise a maintenance notification for vibration analysis and a bearing and coupling inspection (MM-PUMP-002 section 5).",
+    "citation_keys": [
+     "S1"
+    ],
+    "explanation": "SOP-BFP-001 \u00a74.1 covers the same check."
+   }
+  ],
+  "gaps": [],
+  "facts": [
+   {
+    "key": "T1",
+    "step": 2,
+    "tool": "get_asset_metadata",
+    "statement": "Boiler Feed Pump 101 (AST-BFP-101) is a high-criticality pump at NorthPlant Unit 1. Related assets: Motor M-101 (BFP 101 Drive), Deaerator D-101, Feedwater Control Valve FV-101, Boiler Feed Pump 102."
+   },
+   {
+    "key": "T2",
+    "step": 3,
+    "tool": "summarize_alarms",
+    "statement": "In the last 90 days Boiler Feed Pump 101 had 37 alarms in scope; the most frequent was High Vibration (PMP-VIB-HI) with 24 occurrences, recurring rate 100%, average time to acknowledge 6.7 min."
+   },
+   {
+    "key": "T3",
+    "step": 4,
+    "tool": "get_alarm_trends",
+    "statement": "High Vibration is increasing: 1.5 -> 2.1 alarms per week, first half vs second half of the window (+43%)."
+   },
+   {
+    "key": "T4",
+    "step": 5,
+    "tool": "correlate_alarms",
+    "statement": "Motor M-101 (BFP 101 Drive) 'High Bearing Temperature' fired a median 12.0 min before Boiler Feed Pump 101 'High Vibration' in 19 of 24 occurrences (79%)."
+   },
+   {
+    "key": "T5",
+    "step": 6,
+    "tool": "get_alarms",
+    "statement": "Latest High Vibration: ALM-000411 at 2026-06-28T18:36:00Z (cleared, value 11.07 mm/s vs setpoint 7.1)."
+   },
+   {
+    "key": "T6",
+    "step": 7,
+    "tool": "score_alarm_priority",
+    "statement": "Priority of ALM-000411: 85.0/100, P1 (Immediate action) because severity is critical; Boiler Feed Pump 101 criticality is high; alarm is cleared; 10 previous occurrences of this alarm on this asset in the prior 30 days; 2 other alarm(s) active on this or related assets at the same time."
+   },
+   {
+    "key": "T7",
+    "step": 8,
+    "tool": "get_operator_recommendations",
+    "statement": "The Alarm API (alarm-response-catalog) lists likely causes: Bearing wear, Shaft misalignment, Cavitation from low suction pressure; and recommends: (1) Continue operation and monitor vibration trend for 24 hours. (2) Check drive motor bearing temperature. (3) Schedule vibration analysis at next maintenance window."
+   },
+   {
+    "key": "T8",
+    "step": 8,
+    "tool": "get_operator_recommendations",
+    "statement": "Related asset Motor M-101 (BFP 101 Drive): no active alarms; 5 alarm(s) in the 7 days before the alarm."
+   },
+   {
+    "key": "T9",
+    "step": 8,
+    "tool": "get_operator_recommendations",
+    "statement": "Related asset Deaerator D-101: no active alarms; 1 alarm(s) in the 7 days before the alarm."
+   },
+   {
+    "key": "T10",
+    "step": 8,
+    "tool": "get_operator_recommendations",
+    "statement": "Related asset Feedwater Control Valve FV-101: Position Deviation; 1 alarm(s) in the 7 days before the alarm."
+   },
+   {
+    "key": "T11",
+    "step": 8,
+    "tool": "get_operator_recommendations",
+    "statement": "Related asset Boiler Feed Pump 102: Low Suction Pressure, High Vibration, High Bearing Temperature; 1 alarm(s) in the 7 days before the alarm."
+   },
+   {
+    "key": "T12",
+    "step": 8,
+    "tool": "get_operator_recommendations",
+    "statement": "History: 23 occurrences of this alarm in the 90 days before it (10 in the last 30), trend increasing."
+   }
+  ],
+  "citations": [
+   {
+    "key": "S1",
+    "label": "SOP-BFP-001 \u00a74.1",
+    "doc_id": "SOP-BFP-001",
+    "title": "Boiler Feed Pump Operation and Alarm Response",
+    "doc_type": "operating_procedure",
+    "section_title": "4.1 High vibration (PMP-VIB-HI)",
+    "revision": "C",
+    "source_path": "SOP-BFP-001_boiler_feed_pump_operation.md",
+    "chunk_id": "SOP-BFP-001::s03-4-1::1",
+    "snippet": "Continued operation above 7.1 mm/s needs explicit shift supervisor approval and must not exceed 30 minutes. 6. Inform the shift supervisor and raise a maintenance notification for vibration analysis and a bearing and coupling inspection ..."
+   },
+   {
+    "key": "S2",
+    "label": "SOP-BFP-001 \u00a74.1",
+    "doc_id": "SOP-BFP-001",
+    "title": "Boiler Feed Pump Operation and Alarm Response",
+    "doc_type": "operating_procedure",
+    "section_title": "4.1 High vibration (PMP-VIB-HI)",
+    "revision": "C",
+    "source_path": "SOP-BFP-001_boiler_feed_pump_operation.md",
+    "chunk_id": "SOP-BFP-001::s03-4-1::0",
+    "snippet": "1. Confirm the reading on the local vibration indicator and the DCS trend. Note whether the drive-end, non-drive-end or both bearings are affected. 2. Check the drive motor bearing temperature (alarm MTR-BRG-TEMP-HI on M-101 / M-102). A ..."
+   },
+   {
+    "key": "S3",
+    "label": "TG-DEA-007 \u00a72",
+    "doc_id": "TG-DEA-007",
+    "title": "Deaerator and Feedwater Troubleshooting Guide",
+    "doc_type": "troubleshooting_guide",
+    "section_title": "2. Effect on the boiler feed pumps",
+    "revision": "A",
+    "source_path": "TG-DEA-007_deaerator_feedwater_troubleshooting.md",
+    "chunk_id": "TG-DEA-007::s01-2::0",
+    "snippet": "The deaerator provides the suction head (NPSH) for BFP-101 and BFP-102. A low level reduces suction pressure within a few minutes, which triggers PMP-SUCT-LO and can make the pumps cavitate. Cavitation shows up as noise, unstable discharge ..."
+   },
+   {
+    "key": "S4",
+    "label": "MM-PUMP-002 \u00a74",
+    "doc_id": "MM-PUMP-002",
+    "title": "Pump and Drive Motor Maintenance Manual",
+    "doc_type": "maintenance_manual",
+    "section_title": "4. Coupling alignment",
+    "revision": "B",
+    "source_path": "MM-PUMP-002_pump_motor_maintenance_manual.md",
+    "chunk_id": "MM-PUMP-002::s03-4::0",
+    "snippet": "Misalignment between the motor and the pump is a leading cause of combined motor bearing heating and pump vibration. Typical signs are: - the drive motor drive-end bearing temperature rises 5 to 15 minutes before pump vibration alarms; - ..."
+   },
+   {
+    "key": "S5",
+    "label": "TG-MTR-003 \u00a75",
+    "doc_id": "TG-MTR-003",
+    "title": "Electric Motor Troubleshooting Guide",
+    "doc_type": "troubleshooting_guide",
+    "section_title": "5. High motor bearing temperature (MTR-BRG-TEMP-HI)",
+    "revision": "A",
+    "source_path": "TG-MTR-003_motor_troubleshooting_guide.md",
+    "chunk_id": "TG-MTR-003::s04-5::0",
+    "snippet": "1. Check the grease or oil condition and regreasing records (MM-PUMP-002 section 3). 2. When the motor drives a pump, check coupling alignment and the pump vibration trend. A hot motor bearing followed by pump vibration is the classic ..."
+   },
+   {
+    "key": "S6",
+    "label": "SAF-005 \u00a72",
+    "doc_id": "SAF-005",
+    "title": "Rotating Equipment Safety and Isolation Instructions",
+    "doc_type": "safety_instruction",
+    "section_title": "2. Lockout and tagout (LOTO) for a pump and its motor",
+    "revision": "F",
+    "source_path": "SAF-005_rotating_equipment_safety.md",
+    "chunk_id": "SAF-005::s01-2::0",
+    "snippet": "1. Stop the pump from the DCS and confirm it has stopped. 2. Open and lock the motor circuit breaker; apply a personal lock and tag. 3. Close and lock the suction and discharge isolation valves. 4. Depressurize and drain the pump casing to ..."
+   },
+   {
+    "key": "S7",
+    "label": "ALM-PHIL-006 \u00a77",
+    "doc_id": "ALM-PHIL-006",
+    "title": "Alarm Management Philosophy and Response Priorities",
+    "doc_type": "alarm_philosophy",
+    "section_title": "7. Use of decision-support recommendations",
+    "revision": "B",
+    "source_path": "ALM-PHIL-006_alarm_philosophy.md",
+    "chunk_id": "ALM-PHIL-006::s06-7::0",
+    "snippet": "Recommendations from decision-support tools, analytics or AI assistants are advisory. Where a recommendation conflicts with an approved operating procedure, the approved procedure governs and the conflict must be reported to the procedure ..."
+   }
+  ],
+  "grounding": {
+   "mode": "template",
+   "degraded": false,
+   "degraded_reason": null,
+   "removed_statements": 0,
+   "unknown_citations": [],
+   "retrieval_confidence": "high",
+   "model": null,
+   "llm_latency_ms": null
+  },
+  "markdown": "Boiler Feed Pump 101 had 24 High Vibration alarms in the last 90 days, and the trend is increasing [T2]. The most likely contributing factor is Motor M-101 (BFP 101 Drive) 'High Bearing Temperature', which fired a median 12.0 min earlier in 79% of cases [T4]. The Alarm API's advice to 'Continue operation and monitor vibration trend for 24 hours' conflicts with the approved procedure, which governs [S1].\n\n### What the data shows\n- Boiler Feed Pump 101 (AST-BFP-101) is a high-criticality pump at NorthPlant Unit 1. Related assets: Motor M-101 (BFP 101 Drive), Deaerator D-101, Feedwater Control Valve FV-101, Boiler Feed Pump 102. [T1]\n- In the last 90 days Boiler Feed Pump 101 had 37 alarms in scope; the most frequent was High Vibration (PMP-VIB-HI) with 24 occurrences, recurring rate 100%, average time to acknowledge 6.7 min. [T2]\n- High Vibration is increasing: 1.5 -> 2.1 alarms per week, first half vs second half of the window (+43%). [T3]\n- Motor M-101 (BFP 101 Drive) 'High Bearing Temperature' fired a median 12.0 min before Boiler Feed Pump 101 'High Vibration' in 19 of 24 occurrences (79%). [T4]\n- Latest High Vibration: ALM-000411 at 2026-06-28T18:36:00Z (cleared, value 11.07 mm/s vs setpoint 7.1). [T5]\n- Priority of ALM-000411: 85.0/100, P1 (Immediate action) because severity is critical; Boiler Feed Pump 101 criticality is high; alarm is cleared; 10 previous occurrences of this alarm on this asset in the prior 30 days; 2 other alarm(s) active on this or related assets at the same time. [T6]\n- Related asset Motor M-101 (BFP 101 Drive): no active alarms; 5 alarm(s) in the 7 days before the alarm. [T8]\n- Related asset Deaerator D-101: no active alarms; 1 alarm(s) in the 7 days before the alarm. [T9]\n- Related asset Feedwater Control Valve FV-101: Position Deviation; 1 alarm(s) in the 7 days before the alarm. [T10]\n- Related asset Boiler Feed Pump 102: Low Suction Pressure, High Vibration, High Bearing Temperature; 1 alarm(s) in the 7 days before the alarm. [T11]\n- History: 23 occurrences of this alarm in the 90 days before it (10 in the last 30), trend increasing. [T12]\n\n### Likely contributing factors\n- Motor M-101 (BFP 101 Drive) 'High Bearing Temperature' fired a median 12.0 min before Boiler Feed Pump 101 'High Vibration' in 19 of 24 occurrences (79%). [T4]\n- Documented pattern: Misalignment between the motor and the pump is a leading cause of combined motor bearing heating and pump vibration. [S4]\n- Alarm API likely causes: Bearing wear, Shaft misalignment, Cavitation from low suction pressure. [T7]\n\n### Applicable procedure\n- SOP-BFP-001 \u00a74.1 - Boiler Feed Pump Operation and Alarm Response (rev C): Continued operation above 7.1 mm/s needs explicit shift supervisor approval and must not exceed 30 minutes. 6. Inform the shift supervisor and raise a maintenance notification for vibration analysis and a bearing and coupling inspection... [S1]\n- SOP-BFP-001 \u00a74.1 - Boiler Feed Pump Operation and Alarm Response (rev C): 1. Confirm the reading on the local vibration indicator and the DCS trend. Note whether the drive-end, non-drive-end or both bearings are affected. 2. Check the drive motor bearing temperature (alarm MTR-BRG-TEMP-HI on M-101 / M-102). A... [S2]\n- TG-DEA-007 \u00a72 - Deaerator and Feedwater Troubleshooting Guide (rev A): The deaerator provides the suction head (NPSH) for BFP-101 and BFP-102. A low level reduces suction pressure within a few minutes, which triggers PMP-SUCT-LO and can make the pumps cavitate. Cavitation shows up as noise, unstable discharge... [S3]\n\n### Recommended actions\n1. Follow the procedure: Continued operation above 7.1 mm/s needs explicit shift supervisor approval and must not exceed 30 minutes. If vibration stays above 7.1 mm/s for more than 10 minutes, is rising, or exceeds 11.0 mm/s at any time: start the standby feed pump, transfer the load to it, and stop the affected pump. (instead of the API's 'Continue operation and monitor vibration trend for 24 hours'). [S1] [S2] [S7] [T7]\n2. Check drive motor bearing temperature (API recommendation, matches the documents). [T7] [S2]\n3. Schedule vibration analysis at next maintenance window (API recommendation, matches the documents). [T7] [S1]\n4. Before any field inspection, apply lockout and isolation as set out in SAF-005 \u00a72. [S6]\n\n### API recommendations vs documents\n| # | API action | Verdict | Document guidance |\n|---|---|---|---|\n| 1 | Continue operation and monitor vibration trend for 24 hours | **CONFLICT** | Continued operation above 7.1 mm/s needs explicit shift supervisor approval and must not exceed 30 minutes. If vibration stays above 7.1 mm/s for more than 10 minutes, is rising, or exceeds 11.0 mm/s at any time: start the standby feed pump, transfer the load to it, and stop the affected pump. [S1] [S2] [S7] |\n| 2 | Check drive motor bearing temperature | consistent | Check the drive motor bearing temperature (alarm MTR-BRG-TEMP-HI on M-101 / M-102). [S2] |\n| 3 | Schedule vibration analysis at next maintenance window | consistent | Inform the shift supervisor and raise a maintenance notification for vibration analysis and a bearing and coupling inspection (MM-PUMP-002 section 5). [S1] |",
+  "suggestions": [
+   "Which operating procedure applies to this alarm?",
+   "Are the API recommendations consistent with the maintenance manual?",
+   "What related assets should be inspected for this alarm?",
+   "Are there active alarms on Boiler Feed Pump 101 right now?"
+  ]
+ },
+ "evidence": {
+  "intent": "investigate_asset",
+  "lookback_days": 90,
+  "asset": {
+   "asset_id": "AST-BFP-101",
+   "name": "Boiler Feed Pump 101",
+   "asset_type": "pump",
+   "site": "NorthPlant",
+   "unit": "Unit 1",
+   "criticality": "high",
+   "manufacturer": "Sulzer",
+   "model": "HPT-200"
+  },
+  "related_assets": [
+   {
+    "asset_id": "AST-MTR-101",
+    "name": "Motor M-101 (BFP 101 Drive)",
+    "asset_type": "motor",
+    "site": "NorthPlant",
+    "unit": "Unit 1",
+    "criticality": "high"
+   },
+   {
+    "asset_id": "AST-DEA-101",
+    "name": "Deaerator D-101",
+    "asset_type": "deaerator",
+    "site": "NorthPlant",
+    "unit": "Unit 1",
+    "criticality": "medium"
+   },
+   {
+    "asset_id": "AST-FV-101",
+    "name": "Feedwater Control Valve FV-101",
+    "asset_type": "valve",
+    "site": "NorthPlant",
+    "unit": "Unit 1",
+    "criticality": "medium"
+   },
+   {
+    "asset_id": "AST-BFP-102",
+    "name": "Boiler Feed Pump 102",
+    "asset_type": "pump",
+    "site": "NorthPlant",
+    "unit": "Unit 1",
+    "criticality": "high"
+   }
+  ],
+  "alarm_summary": {
+   "time_range": {
+    "start_time": "2026-04-02T00:00:00Z",
+    "end_time": "2026-07-01T00:00:00Z"
+   },
+   "totals": {
+    "alarm_count": 37,
+    "critical_count": 23,
+    "recurring_rate": 1.0,
+    "avg_ack_delay": 8.1
+   },
+   "groups": [
+    {
+     "key": {
+      "alarm_code": "PMP-VIB-HI",
+      "alarm_name": "High Vibration"
+     },
+     "kpis": {
+      "alarm_count": 24,
+      "critical_count": 23,
+      "recurring_rate": 1.0,
+      "avg_ack_delay": 6.7
+     }
+    },
+    {
+     "key": {
+      "alarm_code": "PMP-SUCT-LO",
+      "alarm_name": "Low Suction Pressure"
+     },
+     "kpis": {
+      "alarm_count": 9,
+      "critical_count": 0,
+      "recurring_rate": 1.0,
+      "avg_ack_delay": 5.3
+     }
+    },
+    {
+     "key": {
+      "alarm_code": "PMP-BRG-TEMP-HI",
+      "alarm_name": "High Bearing Temperature"
+     },
+     "kpis": {
+      "alarm_count": 4,
+      "critical_count": 0,
+      "recurring_rate": 1.0,
+      "avg_ack_delay": 22.9
+     }
+    }
+   ]
+  },
+  "top_alarm": {
+   "alarm_code": "PMP-VIB-HI",
+   "alarm_name": "High Vibration",
+   "alarm_count": 24,
+   "critical_count": 23,
+   "recurring_rate": 1.0,
+   "avg_ack_delay": 6.7
+  },
+  "trend": {
+   "direction": "increasing",
+   "first_half_avg": 1.5,
+   "second_half_avg": 2.14,
+   "change_percent": 42.9,
+   "bucket": "weekly",
+   "points": 13
+  },
+  "contributing_factors": [
+   {
+    "leading": {
+     "asset_id": "AST-MTR-101",
+     "asset_name": "Motor M-101 (BFP 101 Drive)",
+     "alarm_code": "MTR-BRG-TEMP-HI",
+     "alarm_name": "High Bearing Temperature",
+     "occurrences": 24
+    },
+    "following": {
+     "asset_id": "AST-BFP-101",
+     "asset_name": "Boiler Feed Pump 101",
+     "alarm_code": "PMP-VIB-HI",
+     "alarm_name": "High Vibration",
+     "occurrences": 24
+    },
+    "relation": "precedes",
+    "cooccurrences": 19,
+    "confidence": 0.79,
+    "median_lead_minutes": 12.0,
+    "insight": "Motor M-101 (BFP 101 Drive) 'High Bearing Temperature' fired a median 12.0 min before Boiler Feed Pump 101 'High Vibration' in 19 of 24 occurrences (79%)."
+   }
+  ],
+  "active_alarms": [],
+  "ranked_alarms": [],
+  "focus_alarm": {
+   "alarm_id": "ALM-000411",
+   "asset_id": "AST-BFP-101",
+   "asset_name": "Boiler Feed Pump 101",
+   "site": "NorthPlant",
+   "unit": "Unit 1",
+   "alarm_code": "PMP-VIB-HI",
+   "alarm_name": "High Vibration",
+   "alarm_type": "device",
+   "severity": "critical",
+   "status": "cleared",
+   "acknowledged": true,
+   "start_time": "2026-06-28T18:36:00Z",
+   "ack_time": "2026-06-28T18:42:00Z",
+   "end_time": "2026-06-28T19:20:00Z",
+   "value": 11.07,
+   "setpoint": 7.1,
+   "uom": "mm/s",
+   "message": "Boiler Feed Pump 101: High Vibration (11.07 mm/s, setpoint 7.1)"
+  },
+  "priority": {
+   "alarm_id": "ALM-000411",
+   "asset_id": "AST-BFP-101",
+   "asset_name": "Boiler Feed Pump 101",
+   "alarm_code": "PMP-VIB-HI",
+   "alarm_name": "High Vibration",
+   "severity": "critical",
+   "score": 85.0,
+   "priority": "P1",
+   "priority_label": "Immediate action",
+   "factors": [
+    {
+     "name": "severity",
+     "points": 40.0,
+     "max_points": 40.0,
+     "explanation": "severity is critical"
+    },
+    {
+     "name": "asset_criticality",
+     "points": 25.0,
+     "max_points": 25.0,
+     "explanation": "Boiler Feed Pump 101 criticality is high"
+    },
+    {
+     "name": "state",
+     "points": 0.0,
+     "max_points": 15.0,
+     "explanation": "alarm is cleared"
+    },
+    {
+     "name": "recurrence",
+     "points": 10.0,
+     "max_points": 10.0,
+     "explanation": "10 previous occurrences of this alarm on this asset in the prior 30 days"
+    },
+    {
+     "name": "concurrent_alarms",
+     "points": 10.0,
+     "max_points": 10.0,
+     "explanation": "2 other alarm(s) active on this or related assets at the same time"
+    }
+   ]
+  },
+  "recommendations": {
+   "likely_causes": [
+    "Bearing wear",
+    "Shaft misalignment",
+    "Cavitation from low suction pressure"
+   ],
+   "recommended_actions": [
+    {
+     "step": 1,
+     "action": "Continue operation and monitor vibration trend for 24 hours"
+    },
+    {
+     "step": 2,
+     "action": "Check drive motor bearing temperature"
+    },
+    {
+     "step": 3,
+     "action": "Schedule vibration analysis at next maintenance window"
+    }
+   ],
+   "source": "alarm-response-catalog",
+   "related_assets": [
+    {
+     "asset_id": "AST-MTR-101",
+     "name": "Motor M-101 (BFP 101 Drive)",
+     "asset_type": "motor",
+     "active_alarms": [],
+     "alarms_prior_7_days": 5
+    },
+    {
+     "asset_id": "AST-DEA-101",
+     "name": "Deaerator D-101",
+     "asset_type": "deaerator",
+     "active_alarms": [],
+     "alarms_prior_7_days": 1
+    },
+    {
+     "asset_id": "AST-FV-101",
+     "name": "Feedwater Control Valve FV-101",
+     "asset_type": "valve",
+     "active_alarms": [
+      {
+       "alarm_id": "ALM-000366",
+       "asset_id": "AST-FV-101",
+       "asset_name": "Feedwater Control Valve FV-101",
+       "alarm_name": "Position Deviation",
+       "severity": "medium",
+       "status": "active",
+       "start_time": "2026-06-20T07:15:00Z"
+      }
+     ],
+     "alarms_prior_7_days": 1
+    },
+    {
+     "asset_id": "AST-BFP-102",
+     "name": "Boiler Feed Pump 102",
+     "asset_type": "pump",
+     "active_alarms": [
+      {
+       "alarm_id": "ALM-000420",
+       "asset_id": "AST-BFP-102",
+       "asset_name": "Boiler Feed Pump 102",
+       "alarm_name": "Low Suction Pressure",
+       "severity": "critical",
+       "status": "active",
+       "start_time": "2026-06-30T21:50:00Z"
+      },
+      {
+       "alarm_id": "ALM-000421",
+       "asset_id": "AST-BFP-102",
+       "asset_name": "Boiler Feed Pump 102",
+       "alarm_name": "High Vibration",
+       "severity": "critical",
+       "status": "active",
+       "start_time": "2026-06-30T22:05:00Z"
+      },
+      {
+       "alarm_id": "ALM-000422",
+       "asset_id": "AST-BFP-102",
+       "asset_name": "Boiler Feed Pump 102",
+       "alarm_name": "High Bearing Temperature",
+       "severity": "high",
+       "status": "active",
+       "start_time": "2026-06-30T22:20:00Z"
+      }
+     ],
+     "alarms_prior_7_days": 1
+    }
+   ],
+   "asset_context": {
+    "asset_id": "AST-BFP-101",
+    "name": "Boiler Feed Pump 101",
+    "asset_type": "pump",
+    "site": "NorthPlant",
+    "unit": "Unit 1",
+    "criticality": "high",
+    "manufacturer": "Sulzer",
+    "model": "HPT-200",
+    "install_date": "2014-03-12"
+   },
+   "historical_pattern": {
+    "occurrences_prior_30_days": 10,
+    "occurrences_prior_90_days": 23,
+    "last_previous_occurrence": "2026-06-26T20:45:00Z",
+    "avg_duration_minutes": 56.6,
+    "avg_ack_delay_minutes": 6.7,
+    "trend_direction": "increasing"
+   }
+  },
+  "action_checks": [],
+  "passages": [
+   {
+    "rank": 1,
+    "chunk_id": "SOP-BFP-001::s03-4-1::1",
+    "text": "Continued operation above 7.1 mm/s needs explicit shift supervisor approval and must not exceed 30 minutes.\n6. Inform the shift supervisor and raise a maintenance notification for vibration analysis and a bearing and coupling inspection (MM-PUMP-002 section 5).\n7. Before any field inspection of the stopped pump, apply isolation according to SAF-005.",
+    "score": 0.03689,
+    "dense_score": 0.7729,
+    "keyword_score": 1.0,
+    "matched_terms": [
+     "hi",
+     "high",
+     "pmp",
+     "pmp-vib-hi",
+     "pump",
+     "vib",
+     "vibration"
+    ],
+    "citation": {
+     "key": "S1",
+     "label": "SOP-BFP-001 \u00a74.1",
+     "doc_id": "SOP-BFP-001",
+     "title": "Boiler Feed Pump Operation and Alarm Response",
+     "doc_type": "operating_procedure",
+     "section_title": "4.1 High vibration (PMP-VIB-HI)",
+     "revision": "C",
+     "source_path": "SOP-BFP-001_boiler_feed_pump_operation.md",
+     "chunk_id": "SOP-BFP-001::s03-4-1::1",
+     "snippet": "Continued operation above 7.1 mm/s needs explicit shift supervisor approval and must not exceed 30 minutes. 6. Inform the shift supervisor and raise a maintenance notification for vibration analysis and a bearing and coupling inspection ..."
+    }
+   },
+   {
+    "rank": 2,
+    "chunk_id": "SOP-BFP-001::s03-4-1::0",
+    "text": "1. Confirm the reading on the local vibration indicator and the DCS trend.\nNote whether the drive-end, non-drive-end or both bearings are affected.\n2. Check the drive motor bearing temperature (alarm MTR-BRG-TEMP-HI on M-101 / M-102).\nA rising motor bearing temperature shortly before pump vibration is a typical sign of coupling misalignment or a failing bearing.\nSee MM-PUMP-002 section 4.\n3. Check suction pressure and deaerator level.\nLow suction pressure causes cavitation, which also shows as high vibration.\nSee section 4.2 and TG-DEA-007.\n4. If vibration stays above 7.1 mm/s for more than 10 minutes, is rising, or exceeds 11.0 mm/s at any time: start the standby feed pump, transfer the load to it, and stop the affected pump.\n5. Do not keep a feed pump in service above the vibration alarm limit for extended monitoring.\nContinued operation above 7.1 mm/s needs explicit shift supervisor approval and must not exceed 30 minutes.",
+    "score": 0.03636,
+    "dense_score": 0.7555,
+    "keyword_score": 0.751,
+    "matched_terms": [
+     "hi",
+     "high",
+     "pmp",
+     "pmp-vib-hi",
+     "pump",
+     "vib",
+     "vibration"
+    ],
+    "citation": {
+     "key": "S2",
+     "label": "SOP-BFP-001 \u00a74.1",
+     "doc_id": "SOP-BFP-001",
+     "title": "Boiler Feed Pump Operation and Alarm Response",
+     "doc_type": "operating_procedure",
+     "section_title": "4.1 High vibration (PMP-VIB-HI)",
+     "revision": "C",
+     "source_path": "SOP-BFP-001_boiler_feed_pump_operation.md",
+     "chunk_id": "SOP-BFP-001::s03-4-1::0",
+     "snippet": "1. Confirm the reading on the local vibration indicator and the DCS trend. Note whether the drive-end, non-drive-end or both bearings are affected. 2. Check the drive motor bearing temperature (alarm MTR-BRG-TEMP-HI on M-101 / M-102). A ..."
+    }
+   },
+   {
+    "rank": 3,
+    "chunk_id": "TG-DEA-007::s01-2::0",
+    "text": "The deaerator provides the suction head (NPSH) for BFP-101 and BFP-102. A low level reduces suction\npressure within a few minutes, which triggers PMP-SUCT-LO and can make the pumps cavitate. Cavitation shows\nup as noise, unstable discharge pressure and high vibration. When low suction pressure and high vibration\nhappen together, treat the deaerator level as the first suspect.",
+    "score": 0.03208,
+    "dense_score": 0.6921,
+    "keyword_score": 0.369,
+    "matched_terms": [
+     "high",
+     "pmp",
+     "vibration"
+    ],
+    "citation": {
+     "key": "S3",
+     "label": "TG-DEA-007 \u00a72",
+     "doc_id": "TG-DEA-007",
+     "title": "Deaerator and Feedwater Troubleshooting Guide",
+     "doc_type": "troubleshooting_guide",
+     "section_title": "2. Effect on the boiler feed pumps",
+     "revision": "A",
+     "source_path": "TG-DEA-007_deaerator_feedwater_troubleshooting.md",
+     "chunk_id": "TG-DEA-007::s01-2::0",
+     "snippet": "The deaerator provides the suction head (NPSH) for BFP-101 and BFP-102. A low level reduces suction pressure within a few minutes, which triggers PMP-SUCT-LO and can make the pumps cavitate. Cavitation shows up as noise, unstable discharge ..."
+    }
+   },
+   {
+    "rank": 1,
+    "chunk_id": "MM-PUMP-002::s03-4::0",
+    "text": "Misalignment between the motor and the pump is a leading cause of combined motor bearing heating and pump\nvibration. Typical signs are:\n\n- the drive motor drive-end bearing temperature rises 5 to 15 minutes before pump vibration alarms;\n- high axial vibration and a strong component at twice running speed;\n- coupling element wear or rubber dust under the coupling guard.\n\nAlignment tolerance for feed pump couplings is 0.05 mm parallel offset and 0.05 mm per 100 mm angular.\nAlways re-check alignment after motor replacement, after foundation work, and when the motor bearing and pump\nvibration alarms occur together repeatedly.",
+    "score": 0.0358,
+    "dense_score": 0.8072,
+    "keyword_score": 1.0,
+    "matched_terms": [
+     "bearing",
+     "before",
+     "cause",
+     "high",
+     "maintenance",
+     "pump",
+     "temperature",
+     "vibration"
+    ],
+    "citation": {
+     "key": "S4",
+     "label": "MM-PUMP-002 \u00a74",
+     "doc_id": "MM-PUMP-002",
+     "title": "Pump and Drive Motor Maintenance Manual",
+     "doc_type": "maintenance_manual",
+     "section_title": "4. Coupling alignment",
+     "revision": "B",
+     "source_path": "MM-PUMP-002_pump_motor_maintenance_manual.md",
+     "chunk_id": "MM-PUMP-002::s03-4::0",
+     "snippet": "Misalignment between the motor and the pump is a leading cause of combined motor bearing heating and pump vibration. Typical signs are: - the drive motor drive-end bearing temperature rises 5 to 15 minutes before pump vibration alarms; - ..."
+    }
+   },
+   {
+    "rank": 2,
+    "chunk_id": "TG-MTR-003::s04-5::0",
+    "text": "1. Check the grease or oil condition and regreasing records (MM-PUMP-002 section 3).\n2. When the motor drives a pump, check coupling alignment and the pump vibration trend. A hot motor bearing\n followed by pump vibration is the classic misalignment pattern (MM-PUMP-002 section 4).",
+    "score": 0.03555,
+    "dense_score": 0.8489,
+    "keyword_score": 0.658,
+    "matched_terms": [
+     "bearing",
+     "high",
+     "pump",
+     "temperature",
+     "vibration"
+    ],
+    "citation": {
+     "key": "S5",
+     "label": "TG-MTR-003 \u00a75",
+     "doc_id": "TG-MTR-003",
+     "title": "Electric Motor Troubleshooting Guide",
+     "doc_type": "troubleshooting_guide",
+     "section_title": "5. High motor bearing temperature (MTR-BRG-TEMP-HI)",
+     "revision": "A",
+     "source_path": "TG-MTR-003_motor_troubleshooting_guide.md",
+     "chunk_id": "TG-MTR-003::s04-5::0",
+     "snippet": "1. Check the grease or oil condition and regreasing records (MM-PUMP-002 section 3). 2. When the motor drives a pump, check coupling alignment and the pump vibration trend. A hot motor bearing followed by pump vibration is the classic ..."
+    }
+   },
+   {
+    "rank": 1,
+    "chunk_id": "SAF-005::s01-2::0",
+    "text": "1. Stop the pump from the DCS and confirm it has stopped.\n2. Open and lock the motor circuit breaker; apply a personal lock and tag.\n3. Close and lock the suction and discharge isolation valves.\n4. Depressurize and drain the pump casing to the closed drain system.\n5. Verify zero energy: attempt a local start (try-start) and confirm the motor does not run.\n6. Only then remove the coupling guard or open bearing housings.",
+    "score": 0.03443,
+    "dense_score": 0.7913,
+    "keyword_score": 1.0,
+    "matched_terms": [
+     "isolation",
+     "lockout",
+     "pump"
+    ],
+    "citation": {
+     "key": "S6",
+     "label": "SAF-005 \u00a72",
+     "doc_id": "SAF-005",
+     "title": "Rotating Equipment Safety and Isolation Instructions",
+     "doc_type": "safety_instruction",
+     "section_title": "2. Lockout and tagout (LOTO) for a pump and its motor",
+     "revision": "F",
+     "source_path": "SAF-005_rotating_equipment_safety.md",
+     "chunk_id": "SAF-005::s01-2::0",
+     "snippet": "1. Stop the pump from the DCS and confirm it has stopped. 2. Open and lock the motor circuit breaker; apply a personal lock and tag. 3. Close and lock the suction and discharge isolation valves. 4. Depressurize and drain the pump casing to ..."
+    }
+   },
+   {
+    "rank": 1,
+    "chunk_id": "ALM-PHIL-006::s06-7::0",
+    "text": "Recommendations from decision-support tools, analytics or AI assistants are advisory. Where a recommendation\nconflicts with an approved operating procedure, the approved procedure governs and the conflict must be\nreported to the procedure owner.",
+    "score": 0.03361,
+    "dense_score": 0.8157,
+    "keyword_score": 1.0,
+    "matched_terms": [
+     "approved",
+     "conflicts",
+     "governs",
+     "operating",
+     "procedure",
+     "recommendation"
+    ],
+    "citation": {
+     "key": "S7",
+     "label": "ALM-PHIL-006 \u00a77",
+     "doc_id": "ALM-PHIL-006",
+     "title": "Alarm Management Philosophy and Response Priorities",
+     "doc_type": "alarm_philosophy",
+     "section_title": "7. Use of decision-support recommendations",
+     "revision": "B",
+     "source_path": "ALM-PHIL-006_alarm_philosophy.md",
+     "chunk_id": "ALM-PHIL-006::s06-7::0",
+     "snippet": "Recommendations from decision-support tools, analytics or AI assistants are advisory. Where a recommendation conflicts with an approved operating procedure, the approved procedure governs and the conflict must be reported to the procedure ..."
+    }
+   }
+  ],
+  "passage_purposes": {
+   "S1": "Procedure for High Vibration (PMP-VIB-HI)",
+   "S2": "Procedure for High Vibration (PMP-VIB-HI)",
+   "S3": "Procedure for High Vibration (PMP-VIB-HI)",
+   "S4": "Guidance on contributing factor: Motor M-101 (BFP 101 Drive) High Bearing Temperature",
+   "S5": "Guidance on contributing factor: Motor M-101 (BFP 101 Drive) High Bearing Temperature",
+   "S6": "Safety requirements before field inspection",
+   "S7": "Which guidance governs when advice conflicts"
+  },
+  "retrieval_confidence": "high",
+  "notes": [],
+  "missing": []
+ },
+ "discovery": {
+  "kind": "mcp_discovery",
+  "server": "alarm-management",
+  "connected": true,
+  "tool_count": 13,
+  "tools": [
+   "search_assets",
+   "get_asset_metadata",
+   "get_alarms",
+   "get_alarm_details",
+   "summarize_alarms",
+   "get_alarm_trends",
+   "correlate_alarms",
+   "analyze_alarm_floods",
+   "find_rationalization_candidates",
+   "score_alarm_priority",
+   "get_operator_recommendations",
+   "calculate_kpi",
+   "list_kpi_definitions"
+  ],
+  "error": null,
+  "duration_ms": 21.5
+ },
+ "trace": [
+  {
+   "kind": "mcp_tool",
+   "step": 1,
+   "server": "alarm-management",
+   "tool": "search_assets",
+   "purpose": "Resolve 'Boiler Feed Pump 101' to an asset id",
+   "arguments": {
+    "query": "Boiler Feed Pump 101",
+    "limit": 5
+   },
+   "status": "ok",
+   "error_code": null,
+   "error_message": null,
+   "result": {
+    "meta": {
+     "trace_id": "trace-f083af1932724e18",
+     "api_calls": [
+      {
+       "method": "GET",
+       "path": "/assets/search",
+       "status_code": 200,
+       "attempts": 1,
+       "duration_ms": 26.1,
+       "outcome": "ok",
+       "error_code": null
+      }
+     ]
+    },
+    "query": "Boiler Feed Pump 101",
+    "total": 2,
+    "results": [
+     {
+      "asset_id": "AST-BFP-101",
+      "name": "Boiler Feed Pump 101",
+      "asset_type": "pump",
+      "site": "NorthPlant",
+      "unit": "Unit 1",
+      "criticality": "high",
+      "match_score": 1.0
+     },
+     {
+      "asset_id": "AST-BFP-102",
+      "name": "Boiler Feed Pump 102",
+      "asset_type": "pump",
+      "site": "NorthPlant",
+      "unit": "Unit 1",
+      "criticality": "high",
+      "match_score": 0.68
+     }
+    ]
+   },
+   "api_calls": [
+    {
+     "method": "GET",
+     "path": "/assets/search",
+     "status_code": 200,
+     "attempts": 1,
+     "duration_ms": 26.1,
+     "outcome": "ok",
+     "error_code": null
+    }
+   ],
+   "retries": 0,
+   "duration_ms": 74.4,
+   "trace_id": "trace-f083af1932724e18",
+   "started_at": "2026-10-10T16:05:44.104103Z"
+  },
+  {
+   "kind": "mcp_tool",
+   "step": 2,
+   "server": "alarm-management",
+   "tool": "get_asset_metadata",
+   "purpose": "Asset details and related assets",
+   "arguments": {
+    "asset_id": "AST-BFP-101"
+   },
+   "status": "ok",
+   "error_code": null,
+   "error_message": null,
+   "result": {
+    "asset_id": "AST-BFP-101",
+    "name": "Boiler Feed Pump 101",
+    "asset_type": "pump",
+    "site": "NorthPlant",
+    "unit": "Unit 1",
+    "criticality": "high",
+    "meta": {
+     "trace_id": "trace-f083af1932724e18",
+     "api_calls": [
+      {
+       "method": "GET",
+       "path": "/assets/AST-BFP-101/metadata",
+       "status_code": 200,
+       "attempts": 1,
+       "duration_ms": 8.7,
+       "outcome": "ok",
+       "error_code": null
+      }
+     ]
+    },
+    "manufacturer": "Sulzer",
+    "model": "HPT-200",
+    "install_date": "2014-03-12",
+    "related_assets": [
+     {
+      "asset_id": "AST-MTR-101",
+      "name": "Motor M-101 (BFP 101 Drive)",
+      "asset_type": "motor",
+      "site": "NorthPlant",
+      "unit": "Unit 1",
+      "criticality": "high"
+     },
+     {
+      "asset_id": "AST-DEA-101",
+      "name": "Deaerator D-101",
+      "asset_type": "deaerator",
+      "site": "NorthPlant",
+      "unit": "Unit 1",
+      "criticality": "medium"
+     },
+     {
+      "asset_id": "AST-FV-101",
+      "name": "Feedwater Control Valve FV-101",
+      "asset_type": "valve",
+      "site": "NorthPlant",
+      "unit": "Unit 1",
+      "criticality": "medium"
+     },
+     {
+      "asset_id": "AST-BFP-102",
+      "name": "Boiler Feed Pump 102",
+      "asset_type": "pump",
+      "site": "NorthPlant",
+      "unit": "Unit 1",
+      "criticality": "high"
+     }
+    ],
+    "alarm_codes": [
+     "PMP-VIB-HI",
+     "PMP-SUCT-LO",
+     "PMP-BRG-TEMP-HI",
+     "PMP-SEAL-LEAK"
+    ],
+    "alarm_statistics": {
+     "total_alarms": 42,
+     "active_alarms": 0,
+     "by_severity": {
+      "high": 14,
+      "critical": 23,
+      "medium": 5
+     },
+     "first_alarm_at": "2026-04-03T14:32:00Z",
+     "last_alarm_at": "2026-06-28T18:36:00Z"
+    }
+   },
+   "api_calls": [
+    {
+     "method": "GET",
+     "path": "/assets/AST-BFP-101/metadata",
+     "status_code": 200,
+     "attempts": 1,
+     "duration_ms": 8.7,
+     "outcome": "ok",
+     "error_code": null
+    }
+   ],
+   "retries": 0,
+   "duration_ms": 83.4,
+   "trace_id": "trace-f083af1932724e18",
+   "started_at": "2026-10-10T16:05:44.178078Z"
+  },
+  {
+   "kind": "mcp_tool",
+   "step": 3,
+   "server": "alarm-management",
+   "tool": "summarize_alarms",
+   "purpose": "Which alarms recur on this asset",
+   "arguments": {
+    "asset_ids": [
+     "AST-BFP-101"
+    ],
+    "lookback_days": 90,
+    "severity": [
+     "high",
+     "critical"
+    ],
+    "group_by": [
+     "alarm_code",
+     "alarm_name"
+    ],
+    "kpis": [
+     "alarm_count",
+     "critical_count",
+     "recurring_rate",
+     "avg_ack_delay"
+    ]
+   },
+   "status": "ok",
+   "error_code": null,
+   "error_message": null,
+   "result": {
+    "meta": {
+     "trace_id": "trace-f083af1932724e18",
+     "api_calls": [
+      {
+       "method": "GET",
+       "path": "/health",
+       "status_code": 200,
+       "attempts": 1,
+       "duration_ms": 7.7,
+       "outcome": "ok",
+       "error_code": null
+      },
+      {
+       "method": "POST",
+       "path": "/alarms/summary",
+       "status_code": 200,
+       "attempts": 1,
+       "duration_ms": 44.6,
+       "outcome": "ok",
+       "error_code": null
+      }
+     ]
+    },
+    "time_range": {
+     "start_time": "2026-04-02T00:00:00Z",
+     "end_time": "2026-07-01T00:00:00Z"
+    },
+    "totals": {
+     "alarm_count": 37,
+     "critical_count": 23,
+     "recurring_rate": 1.0,
+     "avg_ack_delay": 8.1
+    },
+    "groups": [
+     {
+      "key": {
+       "alarm_code": "PMP-VIB-HI",
+       "alarm_name": "High Vibration"
+      },
+      "kpis": {
+       "alarm_count": 24,
+       "critical_count": 23,
+       "recurring_rate": 1.0,
+       "avg_ack_delay": 6.7
+      }
+     },
+     {
+      "key": {
+       "alarm_code": "PMP-SUCT-LO",
+       "alarm_name": "Low Suction Pressure"
+      },
+      "kpis": {
+       "alarm_count": 9,
+       "critical_count": 0,
+       "recurring_rate": 1.0,
+       "avg_ack_delay": 5.3
+      }
+     },
+     {
+      "key": {
+       "alarm_code": "PMP-BRG-TEMP-HI",
+       "alarm_name": "High Bearing Temperature"
+      },
+      "kpis": {
+       "alarm_count": 4,
+       "critical_count": 0,
+       "recurring_rate": 1.0,
+       "avg_ack_delay": 22.9
+      }
+     }
+    ]
+   },
+   "api_calls": [
+    {
+     "method": "GET",
+     "path": "/health",
+     "status_code": 200,
+     "attempts": 1,
+     "duration_ms": 7.7,
+     "outcome": "ok",
+     "error_code": null
+    },
+    {
+     "method": "POST",
+     "path": "/alarms/summary",
+     "status_code": 200,
+     "attempts": 1,
+     "duration_ms": 44.6,
+     "outcome": "ok",
+     "error_code": null
+    }
+   ],
+   "retries": 0,
+   "duration_ms": 104.6,
+   "trace_id": "trace-f083af1932724e18",
+   "started_at": "2026-10-10T16:05:44.262010Z"
+  },
+  {
+   "kind": "mcp_tool",
+   "step": 4,
+   "server": "alarm-management",
+   "tool": "get_alarm_trends",
+   "purpose": "Is this alarm getting more or less frequent",
+   "arguments": {
+    "asset_ids": [
+     "AST-BFP-101"
+    ],
+    "alarm_codes": [
+     "PMP-VIB-HI"
+    ],
+    "bucket": "weekly",
+    "lookback_days": 90
+   },
+   "status": "ok",
+   "error_code": null,
+   "error_message": null,
+   "result": {
+    "meta": {
+     "trace_id": "trace-f083af1932724e18",
+     "api_calls": [
+      {
+       "method": "POST",
+       "path": "/alarms/trends",
+       "status_code": 200,
+       "attempts": 1,
+       "duration_ms": 10.3,
+       "outcome": "ok",
+       "error_code": null
+      }
+     ]
+    },
+    "time_range": {
+     "start_time": "2026-04-02T00:00:00Z",
+     "end_time": "2026-07-01T00:00:00Z"
+    },
+    "bucket": "weekly",
+    "series": [
+     {
+      "bucket_start": "2026-04-02T00:00:00Z",
+      "values": {
+       "alarm_count": 2
+      }
+     },
+     {
+      "bucket_start": "2026-04-09T00:00:00Z",
+      "values": {
+       "alarm_count": 1
+      }
+     },
+     {
+      "bucket_start": "2026-04-16T00:00:00Z",
+      "values": {
+       "alarm_count": 2
+      }
+     },
+     {
+      "bucket_start": "2026-04-23T00:00:00Z",
+      "values": {
+       "alarm_count": 1
+      }
+     },
+     {
+      "bucket_start": "2026-04-30T00:00:00Z",
+      "values": {
+       "alarm_count": 2
+      }
+     },
+     {
+      "bucket_start": "2026-05-07T00:00:00Z",
+      "values": {
+       "alarm_count": 1
+      }
+     },
+     {
+      "bucket_start": "2026-05-14T00:00:00Z",
+      "values": {
+       "alarm_count": 2
+      }
+     },
+     {
+      "bucket_start": "2026-05-21T00:00:00Z",
+      "values": {
+       "alarm_count": 2
+      }
+     },
+     {
+      "bucket_start": "2026-05-28T00:00:00Z",
+      "values": {
+       "alarm_count": 1
+      }
+     },
+     {
+      "bucket_start": "2026-06-04T00:00:00Z",
+      "values": {
+       "alarm_count": 3
+      }
+     },
+     {
+      "bucket_start": "2026-06-11T00:00:00Z",
+      "values": {
+       "alarm_count": 2
+      }
+     },
+     {
+      "bucket_start": "2026-06-18T00:00:00Z",
+      "values": {
+       "alarm_count": 3
+      }
+     },
+     {
+      "bucket_start": "2026-06-25T00:00:00Z",
+      "values": {
+       "alarm_count": 2
+      }
+     }
+    ],
+    "trend": {
+     "direction": "increasing",
+     "first_half_avg": 1.5,
+     "second_half_avg": 2.14,
+     "change_percent": 42.9
+    }
+   },
+   "api_calls": [
+    {
+     "method": "POST",
+     "path": "/alarms/trends",
+     "status_code": 200,
+     "attempts": 1,
+     "duration_ms": 10.3,
+     "outcome": "ok",
+     "error_code": null
+    }
+   ],
+   "retries": 0,
+   "duration_ms": 78.1,
+   "trace_id": "trace-f083af1932724e18",
+   "started_at": "2026-10-10T16:05:44.368290Z"
+  },
+  {
+   "kind": "mcp_tool",
+   "step": 5,
+   "server": "alarm-management",
+   "tool": "correlate_alarms",
+   "purpose": "Which alarms on this or related assets come first (likely contributing factors)",
+   "arguments": {
+    "asset_ids": [
+     "AST-BFP-101",
+     "AST-MTR-101",
+     "AST-DEA-101",
+     "AST-FV-101",
+     "AST-BFP-102"
+    ],
+    "lookback_days": 90,
+    "lag_window_minutes": 30,
+    "min_support": 3
+   },
+   "status": "ok",
+   "error_code": null,
+   "error_message": null,
+   "result": {
+    "meta": {
+     "trace_id": "trace-f083af1932724e18",
+     "api_calls": [
+      {
+       "method": "POST",
+       "path": "/alarms/correlation",
+       "status_code": 200,
+       "attempts": 1,
+       "duration_ms": 47.7,
+       "outcome": "ok",
+       "error_code": null
+      }
+     ]
+    },
+    "time_range": {
+     "start_time": "2026-04-02T00:00:00Z",
+     "end_time": "2026-07-01T00:00:00Z"
+    },
+    "lag_window_minutes": 30,
+    "events_analyzed": 138,
+    "pairs": [
+     {
+      "leading": {
+       "asset_id": "AST-MTR-101",
+       "asset_name": "Motor M-101 (BFP 101 Drive)",
+       "alarm_code": "MTR-BRG-TEMP-HI",
+       "alarm_name": "High Bearing Temperature",
+       "occurrences": 24
+      },
+      "following": {
+       "asset_id": "AST-BFP-101",
+       "asset_name": "Boiler Feed Pump 101",
+       "alarm_code": "PMP-VIB-HI",
+       "alarm_name": "High Vibration",
+       "occurrences": 24
+      },
+      "relation": "precedes",
+      "cooccurrences": 19,
+      "confidence": 0.79,
+      "median_lead_minutes": 12.0,
+      "insight": "Motor M-101 (BFP 101 Drive) 'High Bearing Temperature' fired a median 12.0 min before Boiler Feed Pump 101 'High Vibration' in 19 of 24 occurrences (79%)."
+     },
+     {
+      "leading": {
+       "asset_id": "AST-DEA-101",
+       "asset_name": "Deaerator D-101",
+       "alarm_code": "DEA-LVL-LO",
+       "alarm_name": "Low Level",
+       "occurrences": 16
+      },
+      "following": {
+       "asset_id": "AST-BFP-101",
+       "asset_name": "Boiler Feed Pump 101",
+       "alarm_code": "PMP-SUCT-LO",
+       "alarm_name": "Low Suction Pressure",
+       "occurrences": 9
+      },
+      "relation": "precedes",
+      "cooccurrences": 8,
+      "confidence": 0.89,
+      "median_lead_minutes": 7.5,
+      "insight": "Deaerator D-101 'Low Level' fired a median 7.5 min before Boiler Feed Pump 101 'Low Suction Pressure' in 8 of 9 occurrences (89%)."
+     },
+     {
+      "leading": {
+       "asset_id": "AST-BFP-101",
+       "asset_name": "Boiler Feed Pump 101",
+       "alarm_code": "PMP-VIB-HI",
+       "alarm_name": "High Vibration",
+       "occurrences": 24
+      },
+      "following": {
+       "asset_id": "AST-FV-101",
+       "asset_name": "Feedwater Control Valve FV-101",
+       "alarm_code": "VLV-POS-DEV",
+       "alarm_name": "Position Deviation",
+       "occurrences": 14
+      },
+      "relation": "precedes",
+      "cooccurrences": 8,
+      "confidence": 0.57,
+      "median_lead_minutes": 10.0,
+      "insight": "Boiler Feed Pump 101 'High Vibration' fired a median 10.0 min before Feedwater Control Valve FV-101 'Position Deviation' in 8 of 14 occurrences (57%)."
+     },
+     {
+      "leading": {
+       "asset_id": "AST-MTR-101",
+       "asset_name": "Motor M-101 (BFP 101 Drive)",
+       "alarm_code": "MTR-BRG-TEMP-HI",
+       "alarm_name": "High Bearing Temperature",
+       "occurrences": 24
+      },
+      "following": {
+       "asset_id": "AST-FV-101",
+       "asset_name": "Feedwater Control Valve FV-101",
+       "alarm_code": "VLV-POS-DEV",
+       "alarm_name": "Position Deviation",
+       "occurrences": 14
+      },
+      "relation": "precedes",
+      "cooccurrences": 7,
+      "confidence": 0.5,
+      "median_lead_minutes": 23.0,
+      "insight": "Motor M-101 (BFP 101 Drive) 'High Bearing Temperature' fired a median 23.0 min before Feedwater Control Valve FV-101 'Position Deviation' in 7 of 14 occurrences (50%)."
+     }
+    ]
+   },
+   "api_calls": [
+    {
+     "method": "POST",
+     "path": "/alarms/correlation",
+     "status_code": 200,
+     "attempts": 1,
+     "duration_ms": 47.7,
+     "outcome": "ok",
+     "error_code": null
+    }
+   ],
+   "retries": 0,
+   "duration_ms": 111.3,
+   "trace_id": "trace-f083af1932724e18",
+   "started_at": "2026-10-10T16:05:44.443519Z"
+  },
+  {
+   "kind": "mcp_tool",
+   "step": 6,
+   "server": "alarm-management",
+   "tool": "get_alarms",
+   "purpose": "Most recent occurrence of this alarm",
+   "arguments": {
+    "asset_id": "AST-BFP-101",
+    "alarm_codes": [
+     "PMP-VIB-HI"
+    ],
+    "page_size": 1,
+    "sort_order": "desc"
+   },
+   "status": "ok",
+   "error_code": null,
+   "error_message": null,
+   "result": {
+    "meta": {
+     "trace_id": "trace-f083af1932724e18",
+     "api_calls": [
+      {
+       "method": "GET",
+       "path": "/alarms",
+       "status_code": 200,
+       "attempts": 1,
+       "duration_ms": 12.0,
+       "outcome": "ok",
+       "error_code": null
+      }
+     ]
+    },
+    "alarms": [
+     {
+      "alarm_id": "ALM-000411",
+      "asset_id": "AST-BFP-101",
+      "asset_name": "Boiler Feed Pump 101",
+      "site": "NorthPlant",
+      "unit": "Unit 1",
+      "alarm_code": "PMP-VIB-HI",
+      "alarm_name": "High Vibration",
+      "alarm_type": "device",
+      "severity": "critical",
+      "status": "cleared",
+      "acknowledged": true,
+      "start_time": "2026-06-28T18:36:00Z",
+      "ack_time": "2026-06-28T18:42:00Z",
+      "end_time": "2026-06-28T19:20:00Z",
+      "value": 11.07,
+      "setpoint": 7.1,
+      "uom": "mm/s",
+      "message": "Boiler Feed Pump 101: High Vibration (11.07 mm/s, setpoint 7.1)"
+     }
+    ],
+    "total_items": 24,
+    "page": 1,
+    "has_next": true,
+    "pages_fetched": 1,
+    "truncated": true
+   },
+   "api_calls": [
+    {
+     "method": "GET",
+     "path": "/alarms",
+     "status_code": 200,
+     "attempts": 1,
+     "duration_ms": 12.0,
+     "outcome": "ok",
+     "error_code": null
+    }
+   ],
+   "retries": 0,
+   "duration_ms": 97.2,
+   "trace_id": "trace-f083af1932724e18",
+   "started_at": "2026-10-10T16:05:44.559806Z"
+  },
+  {
+   "kind": "mcp_tool",
+   "step": 7,
+   "server": "alarm-management",
+   "tool": "score_alarm_priority",
+   "purpose": "How urgent is this alarm",
+   "arguments": {
+    "alarm_id": "ALM-000411"
+   },
+   "status": "ok",
+   "error_code": null,
+   "error_message": null,
+   "result": {
+    "meta": {
+     "trace_id": "trace-f083af1932724e18",
+     "api_calls": [
+      {
+       "method": "POST",
+       "path": "/alarms/priority-score",
+       "status_code": 200,
+       "attempts": 1,
+       "duration_ms": 8.7,
+       "outcome": "ok",
+       "error_code": null
+      }
+     ]
+    },
+    "alarm_id": "ALM-000411",
+    "score": 85.0,
+    "priority": "P1",
+    "priority_label": "Immediate action",
+    "factors": [
+     {
+      "name": "severity",
+      "points": 40.0,
+      "max_points": 40.0,
+      "explanation": "severity is critical"
+     },
+     {
+      "name": "asset_criticality",
+      "points": 25.0,
+      "max_points": 25.0,
+      "explanation": "Boiler Feed Pump 101 criticality is high"
+     },
+     {
+      "name": "state",
+      "points": 0.0,
+      "max_points": 15.0,
+      "explanation": "alarm is cleared"
+     },
+     {
+      "name": "recurrence",
+      "points": 10.0,
+      "max_points": 10.0,
+      "explanation": "10 previous occurrences of this alarm on this asset in the prior 30 days"
+     },
+     {
+      "name": "concurrent_alarms",
+      "points": 10.0,
+      "max_points": 10.0,
+      "explanation": "2 other alarm(s) active on this or related assets at the same time"
+     }
+    ],
+    "alarm": {
+     "alarm_id": "ALM-000411",
+     "asset_id": "AST-BFP-101",
+     "asset_name": "Boiler Feed Pump 101",
+     "alarm_name": "High Vibration",
+     "severity": "critical",
+     "status": "cleared",
+     "start_time": "2026-06-28T18:36:00Z"
+    }
+   },
+   "api_calls": [
+    {
+     "method": "POST",
+     "path": "/alarms/priority-score",
+     "status_code": 200,
+     "attempts": 1,
+     "duration_ms": 8.7,
+     "outcome": "ok",
+     "error_code": null
+    }
+   ],
+   "retries": 0,
+   "duration_ms": 58.9,
+   "trace_id": "trace-f083af1932724e18",
+   "started_at": "2026-10-10T16:05:44.658013Z"
+  },
+  {
+   "kind": "mcp_tool",
+   "step": 8,
+   "server": "alarm-management",
+   "tool": "get_operator_recommendations",
+   "purpose": "The Alarm API's recommended actions for this alarm",
+   "arguments": {
+    "alarm_id": "ALM-000411"
+   },
+   "status": "ok",
+   "error_code": null,
+   "error_message": null,
+   "result": {
+    "meta": {
+     "trace_id": "trace-f083af1932724e18",
+     "api_calls": [
+      {
+       "method": "POST",
+       "path": "/recommendations/operator-actions",
+       "status_code": 200,
+       "attempts": 1,
+       "duration_ms": 23.7,
+       "outcome": "ok",
+       "error_code": null
+      }
+     ]
+    },
+    "alarm_id": "ALM-000411",
+    "alarm": {
+     "alarm_id": "ALM-000411",
+     "asset_id": "AST-BFP-101",
+     "asset_name": "Boiler Feed Pump 101",
+     "alarm_name": "High Vibration",
+     "severity": "critical",
+     "status": "cleared",
+     "start_time": "2026-06-28T18:36:00Z"
+    },
+    "priority": {
+     "score": 85.0,
+     "priority": "P1",
+     "priority_label": "Immediate action"
+    },
+    "likely_causes": [
+     "Bearing wear",
+     "Shaft misalignment",
+     "Cavitation from low suction pressure"
+    ],
+    "recommended_actions": [
+     {
+      "step": 1,
+      "action": "Continue operation and monitor vibration trend for 24 hours"
+     },
+     {
+      "step": 2,
+      "action": "Check drive motor bearing temperature"
+     },
+     {
+      "step": 3,
+      "action": "Schedule vibration analysis at next maintenance window"
+     }
+    ],
+    "source": "alarm-response-catalog",
+    "related_assets": [
+     {
+      "asset_id": "AST-MTR-101",
+      "name": "Motor M-101 (BFP 101 Drive)",
+      "asset_type": "motor",
+      "active_alarms": [],
+      "alarms_prior_7_days": 5
+     },
+     {
+      "asset_id": "AST-DEA-101",
+      "name": "Deaerator D-101",
+      "asset_type": "deaerator",
+      "active_alarms": [],
+      "alarms_prior_7_days": 1
+     },
+     {
+      "asset_id": "AST-FV-101",
+      "name": "Feedwater Control Valve FV-101",
+      "asset_type": "valve",
+      "active_alarms": [
+       {
+        "alarm_id": "ALM-000366",
+        "asset_id": "AST-FV-101",
+        "asset_name": "Feedwater Control Valve FV-101",
+        "alarm_name": "Position Deviation",
+        "severity": "medium",
+        "status": "active",
+        "start_time": "2026-06-20T07:15:00Z"
+       }
+      ],
+      "alarms_prior_7_days": 1
+     },
+     {
+      "asset_id": "AST-BFP-102",
+      "name": "Boiler Feed Pump 102",
+      "asset_type": "pump",
+      "active_alarms": [
+       {
+        "alarm_id": "ALM-000420",
+        "asset_id": "AST-BFP-102",
+        "asset_name": "Boiler Feed Pump 102",
+        "alarm_name": "Low Suction Pressure",
+        "severity": "critical",
+        "status": "active",
+        "start_time": "2026-06-30T21:50:00Z"
+       },
+       {
+        "alarm_id": "ALM-000421",
+        "asset_id": "AST-BFP-102",
+        "asset_name": "Boiler Feed Pump 102",
+        "alarm_name": "High Vibration",
+        "severity": "critical",
+        "status": "active",
+        "start_time": "2026-06-30T22:05:00Z"
+       },
+       {
+        "alarm_id": "ALM-000422",
+        "asset_id": "AST-BFP-102",
+        "asset_name": "Boiler Feed Pump 102",
+        "alarm_name": "High Bearing Temperature",
+        "severity": "high",
+        "status": "active",
+        "start_time": "2026-06-30T22:20:00Z"
+       }
+      ],
+      "alarms_prior_7_days": 1
+     }
+    ],
+    "asset_context": {
+     "asset_id": "AST-BFP-101",
+     "name": "Boiler Feed Pump 101",
+     "asset_type": "pump",
+     "site": "NorthPlant",
+     "unit": "Unit 1",
+     "criticality": "high",
+     "manufacturer": "Sulzer",
+     "model": "HPT-200",
+     "install_date": "2014-03-12"
+    },
+    "historical_pattern": {
+     "occurrences_prior_30_days": 10,
+     "occurrences_prior_90_days": 23,
+     "last_previous_occurrence": "2026-06-26T20:45:00Z",
+     "avg_duration_minutes": 56.6,
+     "avg_ack_delay_minutes": 6.7,
+     "trend_direction": "increasing"
+    }
+   },
+   "api_calls": [
+    {
+     "method": "POST",
+     "path": "/recommendations/operator-actions",
+     "status_code": 200,
+     "attempts": 1,
+     "duration_ms": 23.7,
+     "outcome": "ok",
+     "error_code": null
+    }
+   ],
+   "retries": 0,
+   "duration_ms": 137.0,
+   "trace_id": "trace-f083af1932724e18",
+   "started_at": "2026-10-10T16:05:44.715532Z"
+  },
+  {
+   "kind": "rag_retrieval",
+   "step": 9,
+   "purpose": "Procedure for High Vibration (PMP-VIB-HI)",
+   "query": "pump High Vibration (PMP-VIB-HI)",
+   "filters": {
+    "site": "NorthPlant",
+    "alarm_codes": [
+     "PMP-VIB-HI"
+    ]
+   },
+   "status": "ok",
+   "confidence": "high",
+   "top_dense_score": 0.7729,
+   "results": [
+    {
+     "key": "S1",
+     "label": "SOP-BFP-001 \u00a74.1",
+     "chunk_id": "SOP-BFP-001::s03-4-1::1",
+     "dense_score": 0.7729,
+     "keyword_score": 1.0
+    },
+    {
+     "key": "S2",
+     "label": "SOP-BFP-001 \u00a74.1",
+     "chunk_id": "SOP-BFP-001::s03-4-1::0",
+     "dense_score": 0.7555,
+     "keyword_score": 0.751
+    },
+    {
+     "key": "S3",
+     "label": "TG-DEA-007 \u00a72",
+     "chunk_id": "TG-DEA-007::s01-2::0",
+     "dense_score": 0.6921,
+     "keyword_score": 0.369
+    }
+   ],
+   "quarantined_withheld": 1,
+   "error_message": null,
+   "duration_ms": 32.0,
+   "trace_id": "trace-f083af1932724e18",
+   "started_at": "2026-10-10T16:05:44.853608Z"
+  },
+  {
+   "kind": "rag_retrieval",
+   "step": 10,
+   "purpose": "Guidance on contributing factor: Motor M-101 (BFP 101 Drive) High Bearing Temperature",
+   "query": "High Bearing Temperature before pump High Vibration: cause and maintenance checks",
+   "filters": {
+    "doc_types": [
+     "maintenance_manual",
+     "troubleshooting_guide",
+     "knowledge_article"
+    ],
+    "alarm_codes": [
+     "MTR-BRG-TEMP-HI",
+     "PMP-VIB-HI"
+    ]
+   },
+   "status": "ok",
+   "confidence": "high",
+   "top_dense_score": 0.8489,
+   "results": [
+    {
+     "key": "S4",
+     "label": "MM-PUMP-002 \u00a74",
+     "chunk_id": "MM-PUMP-002::s03-4::0",
+     "dense_score": 0.8072,
+     "keyword_score": 1.0
+    },
+    {
+     "key": "S5",
+     "label": "TG-MTR-003 \u00a75",
+     "chunk_id": "TG-MTR-003::s04-5::0",
+     "dense_score": 0.8489,
+     "keyword_score": 0.658
+    }
+   ],
+   "quarantined_withheld": 0,
+   "error_message": null,
+   "duration_ms": 26.2,
+   "trace_id": "trace-f083af1932724e18",
+   "started_at": "2026-10-10T16:05:44.884790Z"
+  },
+  {
+   "kind": "rag_retrieval",
+   "step": 11,
+   "purpose": "Safety requirements before field inspection",
+   "query": "lockout and isolation before opening or inspecting a pump",
+   "filters": {
+    "doc_types": [
+     "safety_instruction"
+    ]
+   },
+   "status": "ok",
+   "confidence": "high",
+   "top_dense_score": 0.7913,
+   "results": [
+    {
+     "key": "S6",
+     "label": "SAF-005 \u00a72",
+     "chunk_id": "SAF-005::s01-2::0",
+     "dense_score": 0.7913,
+     "keyword_score": 1.0
+    }
+   ],
+   "quarantined_withheld": 0,
+   "error_message": null,
+   "duration_ms": 25.0,
+   "trace_id": "trace-f083af1932724e18",
+   "started_at": "2026-10-10T16:05:44.912264Z"
+  },
+  {
+   "kind": "rag_retrieval",
+   "step": 12,
+   "purpose": "Which guidance governs when advice conflicts",
+   "query": "recommendation conflicts with an approved operating procedure, which one governs",
+   "filters": {
+    "doc_types": [
+     "alarm_philosophy"
+    ]
+   },
+   "status": "ok",
+   "confidence": "high",
+   "top_dense_score": 0.8157,
+   "results": [
+    {
+     "key": "S7",
+     "label": "ALM-PHIL-006 \u00a77",
+     "chunk_id": "ALM-PHIL-006::s06-7::0",
+     "dense_score": 0.8157,
+     "keyword_score": 1.0
+    }
+   ],
+   "quarantined_withheld": 0,
+   "error_message": null,
+   "duration_ms": 25.0,
+   "trace_id": "trace-f083af1932724e18",
+   "started_at": "2026-10-10T16:05:44.942004Z"
+  }
+ ],
+ "timings": {
+  "understanding_ms": 4.4,
+  "investigation_ms": 885.7,
+  "answer_ms": 7.6,
+  "total_ms": 898.1
+ }
+}

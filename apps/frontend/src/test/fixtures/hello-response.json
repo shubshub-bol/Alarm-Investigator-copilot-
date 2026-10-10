@@ -1,0 +1,79 @@
+{
+ "conversation_id": "conv-9587db4fd75b",
+ "trace_id": "trace-c8e5a11541c848d9",
+ "question": "hello",
+ "status": "ok",
+ "understanding": {
+  "intent": "conversation",
+  "asset_query": null,
+  "asset_type": null,
+  "site": null,
+  "unit": null,
+  "lookback_days": null,
+  "severities": null,
+  "status": null,
+  "alarm_topic": null,
+  "uses_context": false,
+  "rationale": "keyword rules",
+  "question": "hello",
+  "method": "rules",
+  "fallback_reason": null
+ },
+ "answer": {
+  "summary": "Hello. I investigate plant alarms. Ask about an asset (for example Boiler Feed Pump 101), the active alarms on an asset or site, which alarm has the highest priority, or which procedure applies to an alarm. Every answer shows the alarm data and the plant documents it is based on.",
+  "findings": [],
+  "likely_causes": [],
+  "procedure": [],
+  "recommended_actions": [],
+  "action_assessments": [],
+  "gaps": [],
+  "facts": [],
+  "citations": [],
+  "grounding": {
+   "mode": "template",
+   "degraded": false,
+   "degraded_reason": null,
+   "removed_statements": 0,
+   "unknown_citations": [],
+   "retrieval_confidence": "none",
+   "model": null,
+   "llm_latency_ms": null
+  },
+  "markdown": "Hello. I investigate plant alarms. Ask about an asset (for example Boiler Feed Pump 101), the active alarms on an asset or site, which alarm has the highest priority, or which procedure applies to an alarm. Every answer shows the alarm data and the plant documents it is based on.",
+  "suggestions": [
+   "Investigate recurring high-severity alarms for Boiler Feed Pump 101 over the last 90 days, identify likely contributing factors, retrieve the relevant operating procedure, and provide recommended actions with source evidence.",
+   "Show active critical alarms for Boiler Feed Pump 102 and recommend immediate actions.",
+   "Why are compressor discharge pressure alarms repeatedly occurring?",
+   "Which alarm has the highest priority in EastRefinery, and why?"
+  ]
+ },
+ "evidence": {
+  "intent": "conversation",
+  "lookback_days": null,
+  "asset": null,
+  "related_assets": [],
+  "alarm_summary": null,
+  "top_alarm": null,
+  "trend": null,
+  "contributing_factors": [],
+  "active_alarms": [],
+  "ranked_alarms": [],
+  "focus_alarm": null,
+  "priority": null,
+  "recommendations": null,
+  "action_checks": [],
+  "passages": [],
+  "passage_purposes": {},
+  "retrieval_confidence": "none",
+  "notes": [],
+  "missing": []
+ },
+ "discovery": null,
+ "trace": [],
+ "timings": {
+  "understanding_ms": 0.3,
+  "investigation_ms": 0.0,
+  "answer_ms": 0.0,
+  "total_ms": 1.3
+ }
+}

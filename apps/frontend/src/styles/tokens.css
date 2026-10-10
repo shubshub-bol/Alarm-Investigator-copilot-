@@ -1,0 +1,72 @@
+/*
+ * Design tokens.
+ *
+ * Follows the ISA-101 high-performance HMI idea used on plant control screens: a calm grey field where
+ * colour is reserved for abnormal conditions. Only alarm priorities, conflicts and degraded states are
+ * coloured; everything that is normal stays in greys. Priorities are also coded by shape (square,
+ * triangle, diamond, circle) so they never rely on colour alone.
+ */
+
+:root {
+  color-scheme: light;
+
+  --field: #e4e6e8; /* app background */
+  --panel: #f2f3f5; /* bars, rail, composer */
+  --surface: #fbfbfc; /* answer sheet */
+  --ink: #1f2429; /* primary text */
+  --ink-2: #48515a; /* secondary text, tool chips */
+  --ink-3: #636c75; /* muted text (4.6:1 on --panel) */
+  --rule: #c9ced3;
+  --rule-strong: #9aa2aa;
+  --wash: #d8dce0; /* neutral highlight for selected evidence */
+
+  /* abnormal only */
+  --p1: #c8102e;
+  --p1-ink: #ffffff;
+  --p2: #d97000;
+  --p2-ink: #1f2429;
+  --p3: #e3c200;
+  --p3-ink: #1f2429;
+  --p4: #2e6db4;
+  --p4-ink: #ffffff;
+
+  --font-sans: "Atkinson Hyperlegible Next Variable", "Atkinson Hyperlegible Next", system-ui, sans-serif;
+  --font-tag: "Atkinson Hyperlegible Mono", ui-monospace, "Cascadia Mono", monospace;
+
+  /* type scale, ratio ~1.15 around a 15px UI size; answers read at 16px */
+  --fs-xs: 0.78rem;
+  --fs-sm: 0.86rem;
+  --fs-base: 0.94rem;
+  --fs-read: 1rem;
+  --fs-md: 1.13rem;
+  --fs-lg: 1.32rem;
+
+  --radius: 3px;
+  --rail-width: clamp(320px, 34vw, 480px); /* evidence rail scales with the window */
+  --measure: 46rem; /* answer column: ~72 characters per line */
+}
+
+@media (prefers-color-scheme: dark) {
+  /* dimmed control-room variant */
+  :root {
+    color-scheme: dark;
+    --field: #262b30;
+    --panel: #2e343a;
+    --surface: #343b42;
+    --ink: #e8eaec;
+    --ink-2: #c0c7cd;
+    --ink-3: #9aa3ab;
+    --rule: #49515a;
+    --rule-strong: #6b747d;
+    --wash: #434c55;
+
+    --p1: #f04d5d;
+    --p1-ink: #14171a;
+    --p2: #f39a33;
+    --p2-ink: #14171a;
+    --p3: #ebcf3a;
+    --p3-ink: #14171a;
+    --p4: #6aa6e8;
+    --p4-ink: #14171a;
+  }
+}
