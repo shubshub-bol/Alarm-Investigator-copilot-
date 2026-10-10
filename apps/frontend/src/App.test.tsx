@@ -1,4 +1,4 @@
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { ChatResponse, ConversationSummary } from "./api/types";
 import { App } from "./App";
@@ -40,12 +40,19 @@ interface Backend {
   chat?: () => Promise<Response>;
   saved?: ConversationSummary[]; // what GET /api/conversations returns (read at call time)
   open?: (id: string) => Promise<Response>;
+  reachable?: () => boolean; // false: every request fails as if the backend were not listening yet
 }
 
-function mockBackend({ chat = async () => sseResponse(streamText), saved = [], open = openSaved }: Backend = {}) {
+function mockBackend({
+  chat = async () => sseResponse(streamText),
+  saved = [],
+  open = openSaved,
+  reachable = () => true,
+}: Backend = {}) {
   vi.stubGlobal(
     "fetch",
     vi.fn(async (url: string, init?: RequestInit) => {
+      if (!reachable()) throw new TypeError("Failed to fetch");
       if (url.endsWith("/api/health")) return Response.json(health);
       if (url.endsWith("/api/tools")) return Response.json(tools);
       if (url.endsWith("/api/examples")) return Response.json({ examples: [QUESTION] });
@@ -60,9 +67,17 @@ function mockBackend({ chat = async () => sseResponse(streamText), saved = [], o
 }
 
 afterEach(() => {
+  vi.useRealTimers();
   vi.unstubAllGlobals();
   window.history.replaceState(null, "", "/");
 });
+
+/** Health is checked every 5 s while the backend is unreachable and every 30 s once it answers. */
+async function waitForHealthCheck(ms: number) {
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(ms);
+  });
+}
 
 async function askAndWait(question = QUESTION) {
   await userEvent.type(screen.getByRole("textbox", { name: "Question" }), `${question}{Enter}`);
@@ -129,11 +144,40 @@ test("a chat that can't be opened yet can be tried again", async () => {
     open: async (id) => (down ? new Response("starting", { status: 503 }) : openSaved(id)),
   });
   render(<App />);
-  await screen.findByText("Ready"); // after this, the one automatic retry (backend reachable) has already run
+  await screen.findByText("Ready"); // the first health check has answered, so its automatic retry has run
   const alert = await screen.findByRole("alert");
   expect(alert).toHaveTextContent("Couldn't open this chat");
   down = false;
   await userEvent.click(within(alert).getByRole("button", { name: "Try again" }));
+  expect(await screen.findByRole("article", { name: "Answer" })).toBeInTheDocument();
+});
+
+test("a chat reloaded while the backend was down opens by itself once the backend is back", async () => {
+  vi.useFakeTimers({ shouldAdvanceTime: true });
+  window.history.replaceState(null, "", "/c/conv-a14c5ce4373f");
+  let up = false;
+  mockBackend({ saved: [SAVED], reachable: () => up });
+  render(<App />);
+  expect(await screen.findByText("Copilot service unreachable")).toBeInTheDocument();
+  expect(await screen.findByRole("alert")).toHaveTextContent("Couldn't open this chat");
+  up = true;
+  await waitForHealthCheck(5_000);
+  expect(await screen.findByRole("article", { name: "Answer" })).toBeInTheDocument();
+});
+
+test("a chat that failed to open while the backend was up opens by itself at the next health check", async () => {
+  vi.useFakeTimers({ shouldAdvanceTime: true });
+  window.history.replaceState(null, "", "/c/conv-a14c5ce4373f");
+  let busy = true;
+  mockBackend({
+    saved: [SAVED],
+    open: async (id) => (busy ? new Response("storage busy", { status: 503 }) : openSaved(id)),
+  });
+  render(<App />);
+  await screen.findByText("Ready");
+  expect(await screen.findByRole("alert")).toHaveTextContent("Couldn't open this chat");
+  busy = false;
+  await waitForHealthCheck(30_000);
   expect(await screen.findByRole("article", { name: "Answer" })).toBeInTheDocument();
 });
 

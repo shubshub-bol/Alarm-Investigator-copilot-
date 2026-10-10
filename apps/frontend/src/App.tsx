@@ -76,10 +76,11 @@ export function App() {
     else chat.reset();
   }, [route.conversationId]); // only a change of address opens another chat
 
-  // A chat that failed to open while the backend was starting opens by itself once the backend is reachable.
+  // A chat that failed to open (backend still starting, storage busy) is retried at each successful health check,
+  // so it opens by itself; Try again does the same at once.
   useEffect(() => {
     if (backendUp && chat.status === "error" && route.conversationId) void chat.load(route.conversationId);
-  }, [backendUp]); // only the backend coming back retries
+  }, [health]); // every check is a new object: at most one retry per check, never a loop
 
   const newChat = (mode: "push" | "replace" = "push") => {
     setDrawer(CLOSED);
