@@ -136,20 +136,23 @@ Philosophy". Titles are plain text and shown as text, never as HTML.
 
 ```
 ┌──────────────────────┬──────────────────────────────────────────┐
-│ Alarm Copilot    [◧] │                                 ● Ready  │
+│ [◧]                  │ Alarm Investigation Copilot     ● Ready  │
 │ ✎ New chat           │                                          │
 │ ⌕ Search chats       │      What would you like to investigate? │
 │                      │  ╭────────────────────────────────────╮  │
 │ BFP-102 Critical Al… │  │ Ask about an alarm, asset or site ⬆│  │
-│ EastRefinery: High…  │  ╰────────────────────────────────────╯  │
+│ P1 Priority Score M… │  ╰────────────────────────────────────╯  │
 │ New chat             │    Investigate recurring alarms on …     │
 │                      │    Show active critical alarms for …     │
 └──────────────────────┴──────────────────────────────────────────┘
 ```
 
-- Sidebar: app name and collapse button, New chat, search box, chat list (newest first, open chat highlighted).
-  Collapsed, it is a thin strip of icons (expand, new chat, search), remembered in `localStorage`. Under 768 px it
-  is hidden and opens over the page from a menu button.
+- Sidebar: collapse button, New chat, search box, chat list (newest first, open chat highlighted). A title too
+  long for the sidebar ends in "…" on screen only; the full title shows on hover. Collapsed, the sidebar is a thin
+  strip of icons (expand, new chat, search), remembered in `localStorage`. Under 768 px it is hidden and opens over
+  the page from a menu button.
+- Main area header: the app name at the top left (like ChatGPT's model name, so it stays visible when the sidebar
+  is collapsed) and the status at the right.
 - Empty chat: the greeting, the input box and the starter questions centred on the page.
 - Chat with turns: each question is a bubble on the right; each answer is plain text on the page (no card); the
   input box sits at the bottom. The progress line, evidence drawer, citation chips and follow-up suggestions stay.
