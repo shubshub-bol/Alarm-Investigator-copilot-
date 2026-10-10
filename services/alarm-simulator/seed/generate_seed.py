@@ -479,7 +479,7 @@ def main() -> None:
     for a in data["alarms"]:
         a.pop("_pattern")
     args.out.parent.mkdir(parents=True, exist_ok=True)
-    args.out.write_text(json.dumps(data, indent=2), encoding="utf-8")
+    args.out.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8", newline="\n")
     print(f"\nWrote {args.out}")
 
 
