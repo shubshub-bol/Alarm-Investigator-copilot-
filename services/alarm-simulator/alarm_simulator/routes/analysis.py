@@ -82,7 +82,7 @@ def correlation(store: Store, req: CorrelationRequest) -> CorrelationResponse:
 @router.post("/alarms/flood-analysis", response_model=FloodResponse)
 def flood_analysis(store: Store, req: FloodRequest) -> FloodResponse:
     alarms, start, end = scoped_alarms(store, req)
-    windows = analysis.detect_floods(store, alarms, req.threshold_count, req.rolling_window_minutes)
+    windows = analysis.detect_floods(alarms, req.threshold_count, req.rolling_window_minutes)
     flood_minutes = sum(w.duration_minutes for w in windows)
     return FloodResponse(
         time_range=ResolvedTimeRange(start_time=start, end_time=end),

@@ -23,19 +23,19 @@ KPI_DEFINITIONS = [
 CALCULATION_TYPES = [
     {
         "name": "alarm_flood_index",
-        "unit": "ratio",
-        "description": "Share of 10-minute windows containing more than 10 alarms (ISA-18.2 flood threshold).",
+        "unit": "%",
+        "description": "Percentage of the period spent in alarm flood (more than 10 alarms in 10 minutes, ISA-18.2).",
     },
     {"name": "critical_alarm_density", "unit": "alarms/day", "description": "Critical alarms per day in the period."},
     {
         "name": "operator_response_efficiency",
-        "unit": "ratio",
-        "description": "Share of acknowledged alarms acknowledged within 10 minutes.",
+        "unit": "%",
+        "description": "Percentage of acknowledged alarms that were acknowledged within 10 minutes.",
     },
     {
         "name": "nuisance_alarm_score",
         "unit": "0-100",
-        "description": "Weighted score of chattering, stale and recurring alarms. Higher means more nuisance.",
+        "description": "100 x (0.4 x chattering share + 0.3 x stale share + 0.3 x share of alarms repeating 5+ times).",
     },
 ]
 

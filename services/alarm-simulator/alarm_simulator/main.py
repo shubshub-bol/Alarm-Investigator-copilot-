@@ -6,11 +6,12 @@ from fastapi import Depends, FastAPI
 
 from alarm_simulator import __version__
 from alarm_simulator.auth import require_bearer_token
+from alarm_simulator.calculations import CalculationRegistry
 from alarm_simulator.config import DEMO_TOKEN, Settings
 from alarm_simulator.data import DataStore
 from alarm_simulator.errors import install_error_handlers
 from alarm_simulator.observability import configure_logging, trace_middleware
-from alarm_simulator.routes import alarms, analysis, analytics, assets, health
+from alarm_simulator.routes import actions, alarms, analysis, analytics, assets, health
 
 log = logging.getLogger("alarm_simulator")
 
@@ -24,6 +25,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app = FastAPI(title="Alarm Management API Simulator", version=__version__)
     app.state.settings = settings
     app.state.store = DataStore.load(settings.seed_data_path)
+    app.state.calculations = CalculationRegistry()
 
     install_error_handlers(app)
     app.middleware("http")(trace_middleware)
@@ -31,6 +33,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     # /health is public; everything else needs the bearer token.
     app.include_router(health.router)
     protected = [Depends(require_bearer_token)]
-    for module in (assets, alarms, analysis, analytics):
+    for module in (assets, alarms, analysis, actions, analytics):
         app.include_router(module.router, dependencies=protected)
     return app

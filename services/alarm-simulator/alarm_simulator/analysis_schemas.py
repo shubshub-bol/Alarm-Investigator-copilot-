@@ -224,3 +224,123 @@ class PriorityResponse(BaseModel):
     priority_label: str
     factors: list[PriorityFactor]
     alarm: PriorityAlarm
+
+
+# ------------------------------------------------------- operator recommendations
+class RecommendationRequest(StrictModel):
+    alarm_id: str = Field(min_length=1, max_length=32)
+    include_related: bool = False
+    include_asset_context: bool = False
+    include_historical_pattern: bool = False
+
+
+class ActionStep(BaseModel):
+    step: int
+    action: str
+
+
+class RelatedAssetStatus(BaseModel):
+    asset_id: str
+    name: str
+    asset_type: str
+    active_alarms: list[PriorityAlarm]
+    alarms_prior_7_days: int
+
+
+class AssetContext(BaseModel):
+    asset_id: str
+    name: str
+    asset_type: str
+    site: str
+    unit: str
+    criticality: str
+    manufacturer: str
+    model: str
+    install_date: str
+
+
+class HistoricalPattern(BaseModel):
+    occurrences_prior_30_days: int
+    occurrences_prior_90_days: int
+    last_previous_occurrence: datetime | None
+    avg_duration_minutes: float | None
+    avg_ack_delay_minutes: float | None
+    trend_direction: Literal["increasing", "decreasing", "stable"]
+
+
+class PrioritySnapshot(BaseModel):
+    score: float
+    priority: Literal["P1", "P2", "P3", "P4"]
+    priority_label: str
+
+
+class RecommendationResponse(BaseModel):
+    alarm_id: str
+    alarm: PriorityAlarm
+    priority: PrioritySnapshot
+    likely_causes: list[str]
+    recommended_actions: list[ActionStep]
+    source: str = Field(description="Where the guidance comes from. Verify against site procedures.")
+    related_assets: list[RelatedAssetStatus] | None = None
+    asset_context: AssetContext | None = None
+    historical_pattern: HistoricalPattern | None = None
+
+
+# ------------------------------------------------------------- KPI calculations
+CalculationType = Literal[
+    "alarm_flood_index", "critical_alarm_density", "operator_response_efficiency", "nuisance_alarm_score"
+]
+
+
+class CalculationFilters(StrictModel):
+    site: str | None = Field(None, max_length=64)
+    unit: str | None = Field(None, max_length=64)
+    asset_ids: list[str] | None = Field(None, min_length=1, max_length=50)
+    start_time: datetime | None = None
+    end_time: datetime | None = None
+
+    @model_validator(mode="after")
+    def _check_range(self) -> "CalculationFilters":
+        if self.start_time:
+            self.start_time = as_utc(self.start_time)
+        if self.end_time:
+            self.end_time = as_utc(self.end_time)
+        if self.start_time and self.end_time and self.start_time >= self.end_time:
+            raise ValueError("start_time must be before end_time")
+        return self
+
+
+class GenerateRequest(StrictModel):
+    calculation_type: CalculationType
+    filters: CalculationFilters = Field(default_factory=CalculationFilters)
+
+
+class GenerateResponse(BaseModel):
+    calculation_id: str
+    calculation_type: CalculationType
+    description: str
+    language: str
+    code: str
+    executable: bool = Field(description="Always false: the code is shown for transparency and never evaluated")
+    filters: CalculationFilters
+    created_at: datetime
+
+
+class ExecuteRequest(StrictModel):
+    calculation_id: str = Field(min_length=1, max_length=64)
+    filters: CalculationFilters | None = None
+
+
+class CalculationResult(BaseModel):
+    value: float
+    unit: str
+    interpretation: str
+    details: dict[str, float | int | str | None]
+
+
+class ExecuteResponse(BaseModel):
+    calculation_id: str
+    calculation_type: CalculationType
+    filters: CalculationFilters
+    result: CalculationResult
+    executed_at: datetime

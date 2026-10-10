@@ -198,7 +198,7 @@ def correlate(store: DataStore, alarms: list[Alarm], lag_minutes: int, min_suppo
 
 
 # --------------------------------------------------------------------- floods
-def detect_floods(store: DataStore, alarms: list[Alarm], threshold: int, window_minutes: int) -> list[FloodWindow]:
+def detect_floods(alarms: list[Alarm], threshold: int, window_minutes: int) -> list[FloodWindow]:
     """Slide a window over alarm start times. Any window holding MORE than `threshold` alarms is a
     flood (ISA-18.2: >10 alarms in 10 minutes). Overlapping flood windows merge into one episode."""
     times = [a.start_time for a in alarms]  # alarms arrive sorted by start_time
