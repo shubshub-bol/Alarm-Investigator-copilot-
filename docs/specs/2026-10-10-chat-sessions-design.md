@@ -45,8 +45,10 @@ CREATE TABLE turns (
     created_at      TEXT NOT NULL,
     PRIMARY KEY (conversation_id, seq)
 );
-CREATE INDEX conversations_by_update ON conversations (updated_at DESC);
 ```
+
+The list is ordered by when each chat's latest turn was saved (turn rowids only grow), not by `updated_at`: on
+Windows the clock is coarse enough that two quick saves can share a timestamp.
 
 Each call opens its own short-lived connection, so the store is safe to use from FastAPI's thread pool. The async
 chat path calls it through `asyncio.to_thread`; the list, open, rename and delete endpoints are plain `def`

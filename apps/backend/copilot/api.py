@@ -25,7 +25,7 @@ from pydantic import BaseModel, Field
 
 from copilot import __version__
 from copilot.config import CopilotSettings
-from copilot.conversations import Conversation, ConversationStore
+from copilot.conversations import ConversationDetail, ConversationStore
 from copilot.llm import LlmProvider, build_provider
 from copilot.mcp_client import http_connector
 from copilot.service import ChatResponse, CopilotService, ToolsResponse
@@ -87,7 +87,7 @@ def create_app(
                 connector=http_connector(settings.mcp_server_url, token),
                 retriever=load_retriever(),
                 llm=llm or build_provider(settings.llm_provider, settings.llm_model, key, settings.llm_thinking_level),
-                conversations=ConversationStore(settings.max_conversations),
+                conversations=ConversationStore(settings.db_path),
             )
         yield
 
@@ -167,12 +167,12 @@ def create_app(
     async def tools(request: Request) -> ToolsResponse:
         return await svc(request).list_tools()
 
-    @app.get("/api/conversations/{conversation_id}", response_model=Conversation)
-    async def conversation(conversation_id: str, request: Request) -> Conversation:
-        conv = svc(request).conversations.get(conversation_id)
-        if conv is None:
+    @app.get("/api/conversations/{conversation_id}", response_model=ConversationDetail)
+    def get_conversation(conversation_id: str, request: Request) -> ConversationDetail:
+        detail = svc(request).conversations.get(conversation_id)
+        if detail is None:
             raise HTTPException(404, "Conversation not found")
-        return conv
+        return detail
 
     @app.get("/api/examples")
     async def examples() -> dict:

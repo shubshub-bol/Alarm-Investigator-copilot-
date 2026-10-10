@@ -1,3 +1,4 @@
+from pathlib import Path
 from typing import Literal
 
 from pydantic import AliasChoices, Field, SecretStr
@@ -27,5 +28,5 @@ class CopilotSettings(BaseSettings):
     llm_thinking_level: str | None = Field(
         "LOW", validation_alias=AliasChoices("LLM_THINKING_LEVEL", "llm_thinking_level")
     )
-    max_conversations: int = Field(200, validation_alias=AliasChoices("COPILOT_MAX_CONVERSATIONS", "max_conversations"))
+    db_path: Path = Field(Path(".data/copilot.sqlite3"), validation_alias=AliasChoices("COPILOT_DB_PATH", "db_path"))
     log_level: str = Field("INFO", validation_alias=AliasChoices("LOG_LEVEL", "log_level"))

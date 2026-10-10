@@ -1,16 +1,16 @@
 """One copilot request end to end: understand -> MCP session (discover, playbook) -> grounded answer."""
 
+import asyncio
 import logging
 import time
 import uuid
 from collections.abc import Awaitable, Callable
-from datetime import UTC, datetime
 from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, Field
 
 from copilot.answer import CopilotAnswer, compose_answer, conversation_answer
-from copilot.conversations import Conversation, ConversationStore, Turn
+from copilot.conversations import ConversationStore, OpenConversation, StorageError, new_conversation_id
 from copilot.investigation import Evidence, investigate
 from copilot.llm import LlmProvider
 from copilot.mcp_client import Connector, McpToolClient
@@ -98,7 +98,7 @@ class CopilotService:
 
         started = time.perf_counter()
         trace_id = new_trace_id()
-        conv = self.conversations.get_or_create(conversation_id)
+        conv = await self._resume(conversation_id)
         await emit("started", {"trace_id": trace_id, "conversation_id": conv.conversation_id})
 
         t0 = time.perf_counter()
@@ -106,7 +106,9 @@ class CopilotService:
         understanding_ms = _ms(t0)
         await emit("understanding", u.model_dump(mode="json"))
         if u.intent == "conversation":
-            return self._reply_without_tools(question, u, conv, trace_id, started, understanding_ms)
+            response = self._reply_without_tools(question, u, conv, trace_id, started, understanding_ms)
+            await self._save(conv, question, response, title=None)  # small talk leaves the chat as "New chat"
+            return response
 
         t0 = time.perf_counter()
         async with McpToolClient(self.connector, server_name=self.server_name) as mcp:
@@ -134,16 +136,6 @@ class CopilotService:
             status = "partial"
         else:
             status = "ok"
-        conv.turns.append(
-            Turn(
-                question=question,
-                intent=u.intent,
-                summary=answer.summary,
-                trace_id=trace_id,
-                status=status,
-                at=datetime.now(UTC),
-            )
-        )
         response = ChatResponse(
             conversation_id=conv.conversation_id,
             trace_id=trace_id,
@@ -161,6 +153,7 @@ class CopilotService:
                 total_ms=_ms(started),
             ),
         )
+        await self._save(conv, question, response, title=None)
         log.info(
             "chat",
             extra={
@@ -184,22 +177,12 @@ class CopilotService:
         self,
         question: str,
         u: QueryUnderstanding,
-        conv: Conversation,
+        conv: OpenConversation,
         trace_id: str,
         started: float,
         understanding_ms: float,
     ) -> ChatResponse:
         answer = conversation_answer(question)
-        conv.turns.append(
-            Turn(
-                question=question,
-                intent=u.intent,
-                summary=answer.summary,
-                trace_id=trace_id,
-                status="ok",
-                at=datetime.now(UTC),
-            )
-        )
         log.info("chat", extra={"fields": {"trace_id": trace_id, "intent": u.intent, "tool_calls": 0}})
         return ChatResponse(
             conversation_id=conv.conversation_id,
@@ -213,6 +196,32 @@ class CopilotService:
             trace=[],
             timings=Timings(understanding_ms=understanding_ms, investigation_ms=0, answer_ms=0, total_ms=_ms(started)),
         )
+
+    async def _resume(self, conversation_id: str | None) -> OpenConversation:
+        """The conversation to continue. Without working storage the question is answered as a new chat."""
+        try:
+            return await asyncio.to_thread(self.conversations.resume, conversation_id)
+        except StorageError as exc:
+            log.error("could not load the conversation", extra={"fields": {"error": str(exc)}})
+            return OpenConversation(conversation_id=new_conversation_id())
+
+    async def _save(self, conv: OpenConversation, question: str, response: ChatResponse, title: str | None) -> None:
+        """Save the answered turn. A storage failure is logged and reported by health; the answer still goes out."""
+        try:
+            await asyncio.to_thread(
+                self.conversations.save_turn, conv, question, response.model_dump(mode="json"), title
+            )
+        except StorageError as exc:
+            log.error(
+                "could not save the turn",
+                extra={
+                    "fields": {
+                        "trace_id": response.trace_id,
+                        "conversation_id": conv.conversation_id,
+                        "error": str(exc),
+                    }
+                },
+            )
 
     async def list_tools(self) -> ToolsResponse:
         async with McpToolClient(self.connector, server_name=self.server_name) as mcp:

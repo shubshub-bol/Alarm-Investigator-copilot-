@@ -24,6 +24,9 @@ dist/
 # Generated retrieval index (rebuilt with `make ingest`)
 rag/index/
 
+# Saved chats (SQLite)
+.data/
+
 # Editors / OS
 .vscode/
 .idea/

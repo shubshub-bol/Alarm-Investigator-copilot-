@@ -82,7 +82,10 @@ def test_follow_up_question_uses_conversation_context(api):
     assert follow["conversation_id"] == first["conversation_id"]
     assert follow["trace"][0]["tool"] == "get_alarm_details"
     history = api.get(f"/api/conversations/{first['conversation_id']}").json()
-    assert [t["intent"] for t in history["turns"]] == ["investigate_asset", "procedure_lookup"]
+    assert [t["response"]["understanding"]["intent"] for t in history["turns"]] == [
+        "investigate_asset",
+        "procedure_lookup",
+    ]
 
 
 def test_unknown_conversation_starts_a_new_one(api):
