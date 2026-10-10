@@ -17,6 +17,9 @@ dependencies = [
     "tokenizers>=0.19",
     "huggingface-hub>=0.24",
     "pypdf>=4.0",
+    "google-genai>=1.30",
+    "jsonschema>=4.20",
+    "httpx2>=2.0",
 ]
 
 [build-system]
@@ -30,6 +33,7 @@ packages = [
     "connectors/alarm_api_client",
     "mcp-servers/alarm-management/alarm_mcp",
     "rag",
+    "apps/backend/copilot",
 ]
 exclude = ["rag/tests", "rag/index"]
 
@@ -42,7 +46,7 @@ dev = [
 ]
 
 [tool.pytest.ini_options]
-testpaths = ["tests", "services", "mcp-servers", "rag/tests"]
+testpaths = ["tests", "services", "mcp-servers", "rag/tests", "apps/backend/tests"]
 pythonpath = ["mcp-servers/alarm-management/tests"]  # shared test helpers
 addopts = "-q --import-mode=importlib"
 
@@ -63,4 +67,4 @@ python_version = "3.12"
 ignore_missing_imports = true
 
 [tool.ruff.lint.isort]
-known-first-party = ["alarm_simulator", "alarm_api_client", "alarm_mcp", "mcp_test_helpers", "rag"]
+known-first-party = ["alarm_simulator", "alarm_api_client", "alarm_mcp", "mcp_test_helpers", "rag", "copilot"]
