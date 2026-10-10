@@ -36,6 +36,7 @@ DEFAULT_OUT = Path(__file__).resolve().parent.parent / "data" / "seed_data.json"
 SITES = [
     {"site": "NorthPlant", "description": "Coal-fired power station", "units": ["Unit 1", "Unit 2"]},
     {"site": "EastRefinery", "description": "Crude oil refinery", "units": ["Unit 3", "Unit 4", "Unit 5"]},
+    {"site": "SouthPlant", "description": "Combined-cycle power station", "units": ["Unit 6"]},
 ]
 
 # --------------------------------------------------------------------------- assets
@@ -93,44 +94,56 @@ ASSETS = [
     {"asset_id": "AST-MTR-502", "name": "Motor M-502 (Cooling Water Pump)", "asset_type": "motor", "site": "EastRefinery", "unit": "Unit 5",
      "criticality": "medium", "manufacturer": "WEG", "model": "W22", "install_date": "2019-01-22",
      "related_assets": ["AST-MTR-501"]},
+    # SouthPlant / Unit 6 - cooling water (background data only; used by the KPI/trend chains)
+    {"asset_id": "AST-PMP-601", "name": "Cooling Water Pump 601", "asset_type": "pump", "site": "SouthPlant", "unit": "Unit 6",
+     "criticality": "medium", "manufacturer": "Grundfos", "model": "NK-300", "install_date": "2020-05-11",
+     "related_assets": ["AST-MTR-601"]},
+    {"asset_id": "AST-MTR-601", "name": "Motor M-601 (CW Pump 601 Drive)", "asset_type": "motor", "site": "SouthPlant", "unit": "Unit 6",
+     "criticality": "medium", "manufacturer": "WEG", "model": "W22", "install_date": "2020-05-11",
+     "related_assets": ["AST-PMP-601"]},
+    {"asset_id": "AST-CMP-601", "name": "Instrument Air Compressor C-601", "asset_type": "compressor", "site": "SouthPlant", "unit": "Unit 6",
+     "criticality": "medium", "manufacturer": "Kaeser", "model": "DSD-145", "install_date": "2021-02-03",
+     "related_assets": []},
 ]
 
 # ------------------------------------------------------------------ alarm definitions
-# direction: "hi" = value above setpoint, "lo" = below setpoint, None = discrete event
+# alarm_type: "process" (process variable out of range), "safety" (trip / protective action),
+#             "device" (equipment health, e.g. vibration, bearings, seals, valve position)
+# direction:  "hi" = value above setpoint, "lo" = below setpoint, None = discrete event
 ALARM_DEFINITIONS = {
     # pumps
-    "PMP-VIB-HI": {"alarm_name": "High Vibration", "asset_type": "pump", "severity": "critical", "uom": "mm/s", "setpoint": 7.1, "direction": "hi"},
-    "PMP-SUCT-LO": {"alarm_name": "Low Suction Pressure", "asset_type": "pump", "severity": "high", "uom": "bar", "setpoint": 2.5, "direction": "lo"},
-    "PMP-BRG-TEMP-HI": {"alarm_name": "High Bearing Temperature", "asset_type": "pump", "severity": "high", "uom": "degC", "setpoint": 85, "direction": "hi"},
-    "PMP-SEAL-LEAK": {"alarm_name": "Seal Leak Detected", "asset_type": "pump", "severity": "medium", "uom": None, "setpoint": None, "direction": None},
+    "PMP-VIB-HI": {"alarm_name": "High Vibration", "asset_type": "pump", "alarm_type": "device", "severity": "critical", "uom": "mm/s", "setpoint": 7.1, "direction": "hi"},
+    "PMP-SUCT-LO": {"alarm_name": "Low Suction Pressure", "asset_type": "pump", "alarm_type": "process", "severity": "high", "uom": "bar", "setpoint": 2.5, "direction": "lo"},
+    "PMP-BRG-TEMP-HI": {"alarm_name": "High Bearing Temperature", "asset_type": "pump", "alarm_type": "device", "severity": "high", "uom": "degC", "setpoint": 85, "direction": "hi"},
+    "PMP-SEAL-LEAK": {"alarm_name": "Seal Leak Detected", "asset_type": "pump", "alarm_type": "device", "severity": "medium", "uom": None, "setpoint": None, "direction": None},
     # motors
-    "MTR-TRIP": {"alarm_name": "Motor Trip", "asset_type": "motor", "severity": "critical", "uom": None, "setpoint": None, "direction": None},
-    "MTR-OVERLOAD": {"alarm_name": "Overload Current", "asset_type": "motor", "severity": "high", "uom": "A", "setpoint": 410, "direction": "hi"},
-    "MTR-WIND-TEMP-HI": {"alarm_name": "High Winding Temperature", "asset_type": "motor", "severity": "high", "uom": "degC", "setpoint": 130, "direction": "hi"},
-    "MTR-BRG-TEMP-HI": {"alarm_name": "High Bearing Temperature", "asset_type": "motor", "severity": "high", "uom": "degC", "setpoint": 90, "direction": "hi"},
+    "MTR-TRIP": {"alarm_name": "Motor Trip", "asset_type": "motor", "alarm_type": "safety", "severity": "critical", "uom": None, "setpoint": None, "direction": None},
+    "MTR-OVERLOAD": {"alarm_name": "Overload Current", "asset_type": "motor", "alarm_type": "device", "severity": "high", "uom": "A", "setpoint": 410, "direction": "hi"},
+    "MTR-WIND-TEMP-HI": {"alarm_name": "High Winding Temperature", "asset_type": "motor", "alarm_type": "device", "severity": "high", "uom": "degC", "setpoint": 130, "direction": "hi"},
+    "MTR-BRG-TEMP-HI": {"alarm_name": "High Bearing Temperature", "asset_type": "motor", "alarm_type": "device", "severity": "high", "uom": "degC", "setpoint": 90, "direction": "hi"},
     # compressors
-    "CMP-DISCH-PRESS-HI": {"alarm_name": "High Discharge Pressure", "asset_type": "compressor", "severity": "critical", "uom": "bar", "setpoint": 42, "direction": "hi"},
-    "CMP-SURGE": {"alarm_name": "Surge Detected", "asset_type": "compressor", "severity": "critical", "uom": None, "setpoint": None, "direction": None},
-    "CMP-VIB-HI": {"alarm_name": "High Vibration", "asset_type": "compressor", "severity": "high", "uom": "mm/s", "setpoint": 9.0, "direction": "hi"},
+    "CMP-DISCH-PRESS-HI": {"alarm_name": "High Discharge Pressure", "asset_type": "compressor", "alarm_type": "process", "severity": "critical", "uom": "bar", "setpoint": 42, "direction": "hi"},
+    "CMP-SURGE": {"alarm_name": "Surge Detected", "asset_type": "compressor", "alarm_type": "safety", "severity": "critical", "uom": None, "setpoint": None, "direction": None},
+    "CMP-VIB-HI": {"alarm_name": "High Vibration", "asset_type": "compressor", "alarm_type": "device", "severity": "high", "uom": "mm/s", "setpoint": 9.0, "direction": "hi"},
     # valves
-    "VLV-POS-DEV": {"alarm_name": "Position Deviation", "asset_type": "valve", "severity": "medium", "uom": "%", "setpoint": 5, "direction": "hi"},
-    "VLV-STUCK": {"alarm_name": "Valve Stuck", "asset_type": "valve", "severity": "high", "uom": None, "setpoint": None, "direction": None},
+    "VLV-POS-DEV": {"alarm_name": "Position Deviation", "asset_type": "valve", "alarm_type": "device", "severity": "medium", "uom": "%", "setpoint": 5, "direction": "hi"},
+    "VLV-STUCK": {"alarm_name": "Valve Stuck", "asset_type": "valve", "alarm_type": "device", "severity": "high", "uom": None, "setpoint": None, "direction": None},
     # deaerator
-    "DEA-LVL-LO": {"alarm_name": "Low Level", "asset_type": "deaerator", "severity": "high", "uom": "%", "setpoint": 35, "direction": "lo"},
-    "DEA-PRESS-LO": {"alarm_name": "Low Pressure", "asset_type": "deaerator", "severity": "medium", "uom": "bar", "setpoint": 1.2, "direction": "lo"},
+    "DEA-LVL-LO": {"alarm_name": "Low Level", "asset_type": "deaerator", "alarm_type": "process", "severity": "high", "uom": "%", "setpoint": 35, "direction": "lo"},
+    "DEA-PRESS-LO": {"alarm_name": "Low Pressure", "asset_type": "deaerator", "alarm_type": "process", "severity": "medium", "uom": "bar", "setpoint": 1.2, "direction": "lo"},
     # boiler
-    "BLR-FLAME-FAIL": {"alarm_name": "Flame Failure", "asset_type": "boiler", "severity": "critical", "uom": None, "setpoint": None, "direction": None},
-    "BLR-DRUM-LVL-LO": {"alarm_name": "Low Drum Level", "asset_type": "boiler", "severity": "critical", "uom": "%", "setpoint": 30, "direction": "lo"},
-    "BLR-STEAM-PRESS-HI": {"alarm_name": "High Steam Pressure", "asset_type": "boiler", "severity": "high", "uom": "bar", "setpoint": 165, "direction": "hi"},
+    "BLR-FLAME-FAIL": {"alarm_name": "Flame Failure", "asset_type": "boiler", "alarm_type": "safety", "severity": "critical", "uom": None, "setpoint": None, "direction": None},
+    "BLR-DRUM-LVL-LO": {"alarm_name": "Low Drum Level", "asset_type": "boiler", "alarm_type": "safety", "severity": "critical", "uom": "%", "setpoint": 30, "direction": "lo"},
+    "BLR-STEAM-PRESS-HI": {"alarm_name": "High Steam Pressure", "asset_type": "boiler", "alarm_type": "process", "severity": "high", "uom": "bar", "setpoint": 165, "direction": "hi"},
     # fan
-    "FAN-TRIP": {"alarm_name": "Fan Trip", "asset_type": "fan", "severity": "critical", "uom": None, "setpoint": None, "direction": None},
-    "FAN-VIB-HI": {"alarm_name": "High Vibration", "asset_type": "fan", "severity": "medium", "uom": "mm/s", "setpoint": 6.3, "direction": "hi"},
+    "FAN-TRIP": {"alarm_name": "Fan Trip", "asset_type": "fan", "alarm_type": "safety", "severity": "critical", "uom": None, "setpoint": None, "direction": None},
+    "FAN-VIB-HI": {"alarm_name": "High Vibration", "asset_type": "fan", "alarm_type": "device", "severity": "medium", "uom": "mm/s", "setpoint": 6.3, "direction": "hi"},
     # heat exchanger
-    "HX-OUT-TEMP-HI": {"alarm_name": "High Outlet Temperature", "asset_type": "heat_exchanger", "severity": "high", "uom": "degC", "setpoint": 55, "direction": "hi"},
-    "HX-DP-HI": {"alarm_name": "High Differential Pressure", "asset_type": "heat_exchanger", "severity": "medium", "uom": "bar", "setpoint": 0.8, "direction": "hi"},
+    "HX-OUT-TEMP-HI": {"alarm_name": "High Outlet Temperature", "asset_type": "heat_exchanger", "alarm_type": "process", "severity": "high", "uom": "degC", "setpoint": 55, "direction": "hi"},
+    "HX-DP-HI": {"alarm_name": "High Differential Pressure", "asset_type": "heat_exchanger", "alarm_type": "process", "severity": "medium", "uom": "bar", "setpoint": 0.8, "direction": "hi"},
     # fired heater
-    "HTR-TUBE-TEMP-HI": {"alarm_name": "High Tube Skin Temperature", "asset_type": "fired_heater", "severity": "high", "uom": "degC", "setpoint": 540, "direction": "hi"},
-    "HTR-O2-LO": {"alarm_name": "Low Excess O2", "asset_type": "fired_heater", "severity": "medium", "uom": "%", "setpoint": 2.0, "direction": "lo"},
+    "HTR-TUBE-TEMP-HI": {"alarm_name": "High Tube Skin Temperature", "asset_type": "fired_heater", "alarm_type": "safety", "severity": "high", "uom": "degC", "setpoint": 540, "direction": "hi"},
+    "HTR-O2-LO": {"alarm_name": "Low Excess O2", "asset_type": "fired_heater", "alarm_type": "process", "severity": "medium", "uom": "%", "setpoint": 2.0, "direction": "lo"},
 }
 
 # ------------------------------------------------------------- API recommendations
@@ -251,6 +264,7 @@ class AlarmFactory:
             "unit": asset["unit"],
             "alarm_code": code,
             "alarm_name": d["alarm_name"],
+            "alarm_type": d["alarm_type"],
             "severity": severity or d["severity"],
             "status": "active" if end is None else "cleared",
             "acknowledged": ack is not None,
