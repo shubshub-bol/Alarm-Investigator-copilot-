@@ -16,6 +16,7 @@ from rag.ingestion.chunker import chunk_section
 from rag.ingestion.loaders import load_documents, parse_front_matter, read_pdf_text
 from rag.ingestion.pipeline import check_index, ingest
 from rag.ingestion.safety import sanitize, screen_for_injection
+from rag.ingestion.tables import linearize_tables
 
 DOCS = Path(__file__).resolve().parents[1] / "documents"
 
@@ -121,6 +122,23 @@ def test_paragraphs_are_not_split_when_they_fit():
     chunks = chunk_section(text.strip(), max_words=200, overlap_words=0)
     assert len(chunks) == 2
     assert chunks[1].startswith("para three")
+
+
+def test_tables_become_one_sentence_per_row():
+    table = "Intro.\n\n| Priority | Meaning | Response within |\n|---|---|---|\n| P1 | Immediate | 5 minutes |\n"
+    table += "| P2 | Urgent | - |\n\nAfter."
+    assert linearize_tables(table) == (
+        "Intro.\n\nPriority: P1; Meaning: Immediate; Response within: 5 minutes.\n"
+        "Priority: P2; Meaning: Urgent.\n\nAfter."
+    )
+
+
+def test_ingested_table_rows_keep_their_headers(built):
+    settings, _ = built
+    table_chunk = next(c for c in load_index(settings.index_dir).chunks if c.citation_label == "ALM-PHIL-006 §2")
+    assert "Priority: P1;" in table_chunk.text
+    assert "Response required within: 5 minutes." in table_chunk.text
+    assert "|" not in table_chunk.text
 
 
 # --------------------------------------------------------------- injection

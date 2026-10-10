@@ -14,6 +14,7 @@ from rag.index_store import load_manifest, save_index
 from rag.ingestion.chunker import chunk_section
 from rag.ingestion.loaders import load_documents
 from rag.ingestion.safety import sanitize, screen_for_injection
+from rag.ingestion.tables import linearize_tables
 from rag.models import Chunk, Document
 
 log = logging.getLogger("rag.ingestion")
@@ -35,7 +36,7 @@ def build_chunks(doc: Document, max_words: int, overlap_words: int) -> list[Chun
     chunks = []
     for s_idx, section in enumerate(doc.sections):
         flagged, reasons = screen_for_injection(section.text)  # raw text, so hidden comments are seen
-        clean = sanitize(section.text)
+        clean = linearize_tables(sanitize(section.text))
         if not clean:
             continue
         for i, piece in enumerate(chunk_section(clean, max_words, overlap_words)):
