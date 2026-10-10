@@ -60,6 +60,29 @@ async def test_outputs_feed_later_steps(mcp, retriever):
     assert by_tool["summarize_alarms"].arguments["severity"] == ["high", "critical"]
 
 
+async def test_retrieval_steps_use_the_same_keys_as_the_answer(mcp, retriever):
+    """[S2] in the trace must be the same passage as [S2] in the answer."""
+    run = await investigate(understand_with_rules(ACCEPTANCE), mcp, retriever, ConversationState(), trace_id="t")
+    by_key = {p.citation.key: p.chunk_id for p in run.evidence.passages}
+    refs = [r for s in run.steps if s.kind == "rag_retrieval" for r in s.results]
+    assert refs
+    for ref in refs:
+        if ref.key is not None:
+            assert by_key[ref.key] == ref.chunk_id
+
+
+async def test_steps_are_reported_as_they_happen(mcp, retriever):
+    seen = []
+
+    async def on_step(record):
+        seen.append((record.step, record.kind))
+
+    run = await investigate(
+        understand_with_rules(ACCEPTANCE), mcp, retriever, ConversationState(), trace_id="t", on_step=on_step
+    )
+    assert seen == [(s.step, s.kind) for s in run.steps]
+
+
 async def test_trace_id_is_shared_by_every_step(mcp, retriever):
     run = await investigate(understand_with_rules(ACCEPTANCE), mcp, retriever, ConversationState(), trace_id="t-share")
     assert {s.trace_id for s in run.steps} == {"t-share"}

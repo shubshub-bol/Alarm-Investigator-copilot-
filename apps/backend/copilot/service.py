@@ -3,8 +3,9 @@
 import logging
 import time
 import uuid
+from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
-from typing import Annotated, Literal
+from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, Field
 
@@ -20,6 +21,7 @@ from rag.retrieval import Retriever
 log = logging.getLogger("copilot.service")
 
 TraceStep = Annotated[ToolCallRecord | RetrievalRecord, Field(discriminator="kind")]
+EventCallback = Callable[[str, dict[str, Any]], Awaitable[None]]  # (event name, JSON-ready data)
 
 
 class DiscoveryRecord(BaseModel):
@@ -82,14 +84,27 @@ class CopilotService:
         self.conversations = conversations or ConversationStore()
         self.server_name = server_name
 
-    async def ask(self, question: str, conversation_id: str | None = None) -> ChatResponse:
+    async def ask(
+        self, question: str, conversation_id: str | None = None, on_event: EventCallback | None = None
+    ) -> ChatResponse:
+        """Run one question. If on_event is given, progress is reported as it happens (for streaming)."""
+
+        async def emit(event: str, data: dict[str, Any]) -> None:
+            if on_event is not None:
+                await on_event(event, data)
+
+        async def on_step(record: ToolCallRecord | RetrievalRecord) -> None:
+            await emit("step", record.model_dump(mode="json"))
+
         started = time.perf_counter()
         trace_id = new_trace_id()
         conv = self.conversations.get_or_create(conversation_id)
+        await emit("started", {"trace_id": trace_id, "conversation_id": conv.conversation_id})
 
         t0 = time.perf_counter()
         u = await understand(question, self.llm)
         understanding_ms = _ms(t0)
+        await emit("understanding", u.model_dump(mode="json"))
 
         t0 = time.perf_counter()
         async with McpToolClient(self.connector, server_name=self.server_name) as mcp:
@@ -102,7 +117,8 @@ class CopilotService:
                 error=None if mcp.connected else mcp.last_error,
                 duration_ms=_ms(t0),
             )
-            run = await investigate(u, mcp, self.retriever, conv.state, trace_id=trace_id)
+            await emit("discovery", discovery.model_dump(mode="json"))
+            run = await investigate(u, mcp, self.retriever, conv.state, trace_id=trace_id, on_step=on_step)
         investigation_ms = _ms(t0)
 
         t0 = time.perf_counter()

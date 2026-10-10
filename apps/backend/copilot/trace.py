@@ -41,7 +41,7 @@ class ToolCallRecord(BaseModel):
 
 
 class RetrievedRef(BaseModel):
-    key: str
+    key: str | None  # the answer's citation key; None if found but not used
     label: str
     chunk_id: str
     dense_score: float

@@ -8,6 +8,7 @@ and the playbook carries on with what it has, so the answer can still be given w
 import logging
 import re
 import time
+from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
 from typing import Any
 
@@ -68,6 +69,10 @@ class InvestigationRun(BaseModel):
     steps: list[ToolCallRecord | RetrievalRecord]
 
 
+StepRecord = ToolCallRecord | RetrievalRecord
+StepCallback = Callable[[StepRecord], Awaitable[None]]
+
+
 class Investigation:
     def __init__(
         self,
@@ -76,21 +81,29 @@ class Investigation:
         retriever: Retriever | None,
         state: ConversationState,
         trace_id: str,
+        on_step: StepCallback | None = None,
     ):
         self.u, self.mcp, self.retriever, self.state, self.trace_id = u, mcp, retriever, state, trace_id
+        self.on_step = on_step
         self.evidence = Evidence(intent=u.intent)
-        self.steps: list[ToolCallRecord | RetrievalRecord] = []
+        self.steps: list[StepRecord] = []
         self.mcp_down = False
         self.lookback = u.lookback_days or DEFAULT_LOOKBACK_DAYS
 
     # =============================================================== primitives
+    async def _record(self, record: StepRecord) -> None:
+        """Every step goes through here: numbered, kept for the trace, and streamed to the GUI."""
+        record.step = len(self.steps) + 1
+        self.steps.append(record)
+        if self.on_step is not None:
+            await self.on_step(record)
+
     async def tool(self, name: str, purpose: str, **arguments: Any) -> dict | None:
         if self.mcp_down:
             return None
         args = {k: v for k, v in arguments.items() if v is not None}
         record = await self.mcp.call(name, args, trace_id=self.trace_id, purpose=purpose)
-        record.step = len(self.steps) + 1
-        self.steps.append(record)
+        await self._record(record)
         if record.status == "ok":
             return record.result
         if record.error_code == "MCP_UNAVAILABLE":
@@ -116,10 +129,9 @@ class Investigation:
             "filters": filters.model_dump(exclude_none=True, exclude_defaults=True),
             "trace_id": self.trace_id,
             "started_at": started_at,
-            "step": len(self.steps) + 1,
         }
         if self.retriever is None:
-            self.steps.append(
+            await self._record(
                 RetrievalRecord(status="error", error_message="No retrieval index", duration_ms=0, **common)
             )
             if "The document index is not available." not in self.evidence.missing:
@@ -128,7 +140,7 @@ class Investigation:
         try:
             result = await anyio.to_thread.run_sync(lambda: self.retriever.search(query, k=k, filters=filters))
         except Exception as exc:  # noqa: BLE001 - a retrieval failure must not end the investigation
-            self.steps.append(
+            await self._record(
                 RetrievalRecord(
                     status="error",
                     error_message=f"{type(exc).__name__}: {exc}"[:200],
@@ -139,14 +151,32 @@ class Investigation:
             self.evidence.notes.append(f"Document search failed: {type(exc).__name__}")
             return []
 
-        self.steps.append(
+        if _CONFIDENCE_ORDER.index(result.confidence) > _CONFIDENCE_ORDER.index(self.evidence.retrieval_confidence):
+            self.evidence.retrieval_confidence = result.confidence
+        kept, key_of = [], {}
+        for passage in result.passages:
+            existing = next((p for p in self.evidence.passages if p.chunk_id == passage.chunk_id), None)
+            if existing:
+                kept.append(existing)
+                key_of[passage.chunk_id] = existing.citation.key
+                continue
+            if len(self.evidence.passages) >= MAX_PASSAGES:
+                continue
+            key = f"S{len(self.evidence.passages) + 1}"  # one numbering across all searches = the answer's keys
+            renumbered = passage.model_copy(update={"citation": passage.citation.model_copy(update={"key": key})})
+            self.evidence.passages.append(renumbered)
+            self.evidence.passage_purposes[key] = purpose
+            kept.append(renumbered)
+            key_of[passage.chunk_id] = key
+
+        await self._record(
             RetrievalRecord(
                 status="ok",
                 confidence=result.confidence,
                 top_dense_score=result.top_dense_score,
                 results=[
                     RetrievedRef(
-                        key=p.citation.key,
+                        key=key_of.get(p.chunk_id),  # None = found but not used (evidence limit reached)
                         label=p.citation.label,
                         chunk_id=p.chunk_id,
                         dense_score=p.dense_score,
@@ -159,21 +189,6 @@ class Investigation:
                 **common,
             )
         )
-        if _CONFIDENCE_ORDER.index(result.confidence) > _CONFIDENCE_ORDER.index(self.evidence.retrieval_confidence):
-            self.evidence.retrieval_confidence = result.confidence
-        kept = []
-        for passage in result.passages:
-            existing = next((p for p in self.evidence.passages if p.chunk_id == passage.chunk_id), None)
-            if existing:
-                kept.append(existing)
-                continue
-            if len(self.evidence.passages) >= MAX_PASSAGES:
-                continue
-            key = f"S{len(self.evidence.passages) + 1}"  # renumber across searches
-            renumbered = passage.model_copy(update={"citation": passage.citation.model_copy(update={"key": key})})
-            self.evidence.passages.append(renumbered)
-            self.evidence.passage_purposes[key] = purpose
-            kept.append(renumbered)
         return kept
 
     # ============================================================ building blocks
@@ -666,5 +681,6 @@ async def investigate(
     state: ConversationState,
     *,
     trace_id: str,
+    on_step: StepCallback | None = None,
 ) -> InvestigationRun:
-    return await Investigation(u, mcp, retriever, state, trace_id).run()
+    return await Investigation(u, mcp, retriever, state, trace_id, on_step).run()
