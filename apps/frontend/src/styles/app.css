@@ -166,6 +166,252 @@ button {
   cursor: pointer;
 }
 
+/* ---------------------------------------------------------------- sidebar */
+
+.sidebar {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  width: 16.5rem;
+  min-height: 0;
+  padding: 0.55rem 0.5rem 1rem;
+  overflow-y: auto;
+  border-right: 1px solid var(--rule);
+  background: var(--panel);
+}
+
+.sidebar-rail {
+  width: 3.25rem;
+  align-items: center;
+}
+
+.sidebar-backdrop {
+  display: none; /* small screens only */
+}
+
+.sidebar-head {
+  display: flex;
+  align-items: center;
+  min-height: 2.25rem;
+  margin-bottom: 0.35rem;
+}
+
+.icon-button {
+  display: inline-grid;
+  flex: none;
+  place-items: center;
+  width: 2.25rem;
+  height: 2.25rem;
+  padding: 0;
+  border: 0;
+  border-radius: 8px;
+  background: none;
+  color: var(--ink-2);
+  cursor: pointer;
+}
+
+.icon-button:hover {
+  background: var(--wash);
+  color: var(--ink);
+}
+
+.sidebar-action,
+.sidebar-search {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  min-height: 2.25rem;
+  padding: 0 0.55rem;
+  border-radius: 8px;
+}
+
+.sidebar-action {
+  border: 0;
+  background: none;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+}
+
+.sidebar-action:hover {
+  background: var(--wash);
+}
+
+.sidebar-search {
+  color: var(--ink-3);
+}
+
+.sidebar-search:focus-within {
+  outline: 2px solid var(--ink-3);
+}
+
+.sidebar-search input {
+  flex: 1;
+  min-width: 0;
+  padding: 0.3rem 0;
+  border: 0;
+  background: none;
+  color: var(--ink);
+  font: inherit;
+}
+
+.sidebar-search input:focus-visible {
+  outline: none; /* the row above shows focus */
+}
+
+.sidebar-label {
+  margin: 1rem 0.55rem 0.3rem;
+  color: var(--ink-3);
+  font-size: var(--fs-sm);
+  font-weight: 600;
+}
+
+.sidebar-note {
+  margin: 0.3rem 0.55rem;
+  color: var(--ink-3);
+  font-size: var(--fs-sm);
+}
+
+.chat-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.chat-item {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  border-radius: 8px;
+}
+
+.chat-item:hover,
+.chat-item[data-active="true"] {
+  background: var(--wash);
+}
+
+.chat-open {
+  flex: 1;
+  min-width: 0;
+  padding: 0.45rem 0.55rem;
+  overflow: hidden;
+  border: 0;
+  background: none;
+  text-align: left;
+  text-overflow: ellipsis; /* on screen only: the full title is in the tooltip and the accessible name */
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.chat-item[data-active="true"] .chat-open {
+  font-weight: 600;
+}
+
+.chat-menu-box {
+  position: relative;
+}
+
+.chat-more {
+  width: 2rem;
+  height: 2rem;
+  opacity: 0;
+}
+
+.chat-item:hover .chat-more,
+.chat-item[data-active="true"] .chat-more,
+.chat-more:focus-visible,
+.chat-more[aria-expanded="true"] {
+  opacity: 1;
+}
+
+@media (hover: none) {
+  .chat-more {
+    opacity: 1; /* touch screens have no hover to reveal it */
+  }
+}
+
+.chat-menu {
+  position: absolute;
+  top: calc(100% + 0.2rem);
+  right: 0;
+  z-index: 5;
+  display: grid;
+  min-width: 8rem;
+  padding: 0.25rem;
+  border: 1px solid var(--rule-strong);
+  border-radius: 8px;
+  background: var(--surface);
+  box-shadow: 0 8px 24px rgb(0 0 0 / 0.18);
+}
+
+.chat-menu button {
+  padding: 0.45rem 0.6rem;
+  border: 0;
+  border-radius: 6px;
+  background: none;
+  text-align: left;
+  cursor: pointer;
+}
+
+.chat-menu button:hover {
+  background: var(--wash);
+}
+
+.chat-rename {
+  flex: 1;
+  min-width: 0;
+  margin: 0.15rem;
+  padding: 0.3rem 0.45rem;
+  border: 1px solid var(--ink-3);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--ink);
+  font: inherit;
+}
+
+.chat-error {
+  flex-basis: 100%;
+  margin: 0 0.55rem 0.45rem;
+  font-size: var(--fs-sm);
+}
+
+/* confirm dialog */
+
+.confirm {
+  width: min(24rem, calc(100vw - 2rem));
+  padding: 1.2rem 1.3rem;
+  border: 1px solid var(--rule-strong);
+  border-radius: 12px;
+  background: var(--surface);
+  color: var(--ink);
+}
+
+.confirm::backdrop {
+  background: rgb(20 23 26 / 0.45);
+}
+
+.confirm h2 {
+  font-size: var(--fs-md);
+}
+
+.confirm p {
+  margin: 0.5rem 0 1.1rem;
+  color: var(--ink-2);
+  overflow-wrap: anywhere;
+}
+
+.confirm-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+}
+
+.button-danger {
+  border-color: var(--p1);
+  background: var(--p1);
+  color: var(--p1-ink);
+}
+
 /* ----------------------------------------------------------- conversation */
 
 .conversation {

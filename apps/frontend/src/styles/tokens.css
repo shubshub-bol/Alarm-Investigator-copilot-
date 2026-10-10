@@ -2,9 +2,9 @@
  * Design tokens.
  *
  * Follows the ISA-101 high-performance HMI idea used on plant control screens: a calm grey field where
- * colour is reserved for abnormal conditions. Only alarm priorities, conflicts and degraded states are
- * coloured; everything that is normal stays in greys. Priorities are also coded by shape (square,
- * triangle, diamond, circle) so they never rely on colour alone.
+ * colour is reserved for abnormal conditions. Only alarm priorities, conflicts, degraded states and the one
+ * destructive action (Delete) are coloured; everything that is normal stays in greys. Priorities are also coded
+ * by shape (square, triangle, diamond, circle) so they never rely on colour alone.
  */
 
 :root {
