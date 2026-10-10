@@ -27,7 +27,14 @@ class LlmProvider(Protocol):
 
 
 class GeminiProvider:
-    def __init__(self, api_key: str, model: str, timeout_seconds: float = 45, temperature: float = 0.1):
+    def __init__(
+        self,
+        api_key: str,
+        model: str,
+        timeout_seconds: float = 45,
+        temperature: float = 0.1,
+        thinking_level: str | None = None,
+    ):
         from google import genai
         from google.genai import types
 
@@ -38,6 +45,7 @@ class GeminiProvider:
         self.model = model
         self.name = f"gemini:{model}"
         self.temperature = temperature
+        self.thinking_level = thinking_level  # MINIMAL/LOW/MEDIUM/HIGH; None = model default
         self.last_call: dict = {}
 
     async def _generate(self, system: str, prompt: str, **config: object) -> str:
@@ -50,6 +58,9 @@ class GeminiProvider:
                     system_instruction=system,
                     temperature=self.temperature,
                     max_output_tokens=8192,  # thinking models spend output tokens on reasoning first
+                    thinking_config=(
+                        self._types.ThinkingConfig(thinking_level=self.thinking_level) if self.thinking_level else None
+                    ),
                     **config,
                 ),
             )
@@ -82,12 +93,14 @@ class GeminiProvider:
         return await self._generate(system, prompt)
 
 
-def build_provider(provider: str, model: str, api_key: str | None) -> LlmProvider | None:
+def build_provider(
+    provider: str, model: str, api_key: str | None, thinking_level: str | None = None
+) -> LlmProvider | None:
     if provider == "offline":
         return None
     if provider == "gemini":
         if not api_key or api_key == "replace-me":
             log.warning("LLM_PROVIDER=gemini but LLM_API_KEY is not set; running offline")
             return None
-        return GeminiProvider(api_key=api_key, model=model)
+        return GeminiProvider(api_key=api_key, model=model, thinking_level=thinking_level)
     raise ValueError(f"Unknown LLM_PROVIDER '{provider}'. Use 'gemini' or 'offline'.")
