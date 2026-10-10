@@ -1,10 +1,11 @@
 /*
  * Design tokens.
  *
- * Follows the ISA-101 high-performance HMI idea used on plant control screens: a calm grey field where
- * colour is reserved for abnormal conditions. Only alarm priorities, conflicts, degraded states and the one
- * destructive action (Delete) are coloured; everything that is normal stays in greys. Priorities are also coded
- * by shape (square, triangle, diamond, circle) so they never rely on colour alone.
+ * Follows the ISA-101 high-performance HMI idea used on plant control screens: a calm neutral field (grey in
+ * light mode, black in dark mode) where colour is reserved for abnormal conditions. Only alarm priorities,
+ * conflicts, degraded states and the one destructive action (Delete) are coloured; everything that is normal
+ * stays neutral. Priorities are also coded by shape (square, triangle, diamond, circle) so they never rely on
+ * colour alone.
  */
 
 :root {
@@ -46,18 +47,18 @@
 }
 
 @media (prefers-color-scheme: dark) {
-  /* dimmed control-room variant */
+  /* black, like ChatGPT's dark mode: a black page, near-black panels, dark grey for what you type into */
   :root {
     color-scheme: dark;
-    --field: #262b30;
-    --panel: #2e343a;
-    --surface: #343b42;
-    --ink: #e8eaec;
-    --ink-2: #c0c7cd;
-    --ink-3: #9aa3ab;
-    --rule: #49515a;
-    --rule-strong: #6b747d;
-    --wash: #434c55;
+    --field: #000000;
+    --panel: #111111;
+    --surface: #1f1f1f;
+    --ink: #ececec;
+    --ink-2: #b4b4b4;
+    --ink-3: #8e8e8e; /* 5.1:1 on --surface */
+    --rule: #262626;
+    --rule-strong: #3d3d3d;
+    --wash: #262626;
 
     --p1: #f04d5d;
     --p1-ink: #14171a;
