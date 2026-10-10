@@ -9,7 +9,7 @@ from copilot.investigation import Evidence
 from copilot.llm import LlmError
 from copilot.mcp_client import in_memory_connector
 from copilot.service import CopilotService
-from copilot.titles import clean_title, rule_title
+from copilot.titles import TITLE_SYSTEM, clean_title, rule_title
 from copilot.understanding import QueryUnderstanding
 from copilot_test_helpers import simulator_transport
 from mcp_test_helpers import make_server
@@ -113,7 +113,7 @@ def test_rule_titles_name_the_subject_and_topic(u, evidence, documents, expected
 
 
 class TitleLlm:
-    """Writes titles only: structured calls fail, so understanding and answers use rules and templates."""
+    """Writes titles only: every other call fails, so understanding, answers and small talk use rules and templates."""
 
     name = "fake"
 
@@ -125,6 +125,8 @@ class TitleLlm:
         raise LlmError("structured output is not used in these tests")
 
     async def generate_text(self, system, prompt):
+        if system != TITLE_SYSTEM:
+            raise LlmError("only titles are written in these tests")
         self.title_calls += 1
         await asyncio.sleep(self.delay)
         if self.fail:

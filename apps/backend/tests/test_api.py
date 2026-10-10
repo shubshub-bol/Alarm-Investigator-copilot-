@@ -167,7 +167,8 @@ def test_greeting_is_answered_without_tools_or_documents(retriever):
     assert body["trace"] == []
     assert body["discovery"] is None  # no MCP session was opened
     assert transport.requests == []  # nothing reached the Alarm API
-    assert body["status"] == "ok"  # no LLM was needed, so nothing is degraded
+    assert body["status"] == "ok"  # the fixed reply stands in for the failed language model
+    assert body["answer"]["grounding"]["mode"] == "template"
     assert body["answer"]["citations"] == []
     assert "alarm" in body["answer"]["summary"].lower()
     assert len(body["answer"]["suggestions"]) >= 3

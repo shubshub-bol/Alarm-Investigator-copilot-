@@ -385,19 +385,24 @@ CAPABILITIES = (
     "asset or site, which alarm has the highest priority, or which procedure applies to an alarm. Every answer "
     "shows the alarm data and the plant documents it is based on."
 )
+CONVERSATION_SYSTEM = (
+    "You are the Alarm Investigation Copilot, an assistant for plant operators. The user's message is not a question "
+    "about plant alarms: it is a greeting, thanks, a question about you, or something off-topic. Reply in one to "
+    "three short sentences of plain text, warmly and without markdown.\n"
+    "- Greeting or thanks: reply briefly, then say in one line what you can do.\n"
+    "- A question about you: you investigate plant alarms with live alarm data and the plant's procedures and "
+    "manuals, and every answer shows the evidence it is based on.\n"
+    "- Anything else (jokes, weather, general knowledge, code): say plainly that you can't help with that, then offer "
+    "one thing you can do.\n"
+    "Never state facts about alarms, assets, sites, readings or procedures: nothing has been looked up for this "
+    "message. Things you can offer: investigate recurring alarms on Boiler Feed Pump 101, show the active critical "
+    "alarms on Boiler Feed Pump 102, find the highest-priority alarm in EastRefinery, or say which procedure applies "
+    "to an alarm."
+)
+MAX_REPLY = 500  # characters; a longer reply is not small talk any more
 
 
-def conversation_answer(question: str) -> CopilotAnswer:
-    """Instant reply to small talk: no tools, no documents, no language model."""
-    lower = question.lower()
-    if re.search(r"\b(thanks|thank you|cheers)\b", lower):
-        summary = "You're welcome. Ask another question whenever you need to."
-    elif re.search(r"\b(bye|goodbye)\b", lower):
-        summary = "Goodbye."
-    elif re.search(r"\b(hi|hello|hey|hiya|morning|afternoon|evening)\b", lower):
-        summary = f"Hello. {CAPABILITIES}"
-    else:
-        summary = CAPABILITIES
+def _reply(summary: str, grounding: Grounding) -> CopilotAnswer:
     return CopilotAnswer(
         summary=summary,
         findings=[],
@@ -408,7 +413,40 @@ def conversation_answer(question: str) -> CopilotAnswer:
         gaps=[],
         facts=[],
         citations=[],
-        grounding=Grounding(mode="template", retrieval_confidence="none"),
+        grounding=grounding,
         markdown=summary,
         suggestions=STARTER_QUESTIONS,
     )
+
+
+def conversation_answer(question: str) -> CopilotAnswer:
+    """The fixed reply to small talk, used offline or when the language model cannot write one."""
+    lower = question.lower()
+    if re.search(r"\b(thanks|thank you|cheers)\b", lower):
+        summary = "You're welcome. Ask another question whenever you need to."
+    elif re.search(r"\b(bye|goodbye)\b", lower):
+        summary = "Goodbye."
+    elif re.search(r"\b(hi|hello|hey|hiya|morning|afternoon|evening)\b", lower):
+        summary = f"Hello. {CAPABILITIES}"
+    else:
+        summary = CAPABILITIES
+    return _reply(summary, Grounding(mode="template", retrieval_confidence="none"))
+
+
+async def conversation_reply(question: str, llm: LlmProvider | None) -> CopilotAnswer:
+    """Reply to small talk or an off-topic message without tools or documents.
+
+    The language model writes a short reply that fits the message; offline, or if that fails, the fixed reply is used.
+    """
+    if llm is None:
+        return conversation_answer(question)
+    try:
+        reply = " ".join((await llm.generate_text(CONVERSATION_SYSTEM, f"Message: {question}")).split())
+    except LlmError as exc:
+        log.warning("llm reply failed; using the fixed reply", extra={"fields": {"reason": str(exc)[:200]}})
+        return conversation_answer(question)
+    if not reply or len(reply) > MAX_REPLY:
+        log.warning("llm reply unusable; using the fixed reply", extra={"fields": {"length": len(reply)}})
+        return conversation_answer(question)
+    latency = getattr(llm, "last_call", {}).get("latency_ms")
+    return _reply(reply, Grounding(mode="llm", retrieval_confidence="none", model=llm.name, llm_latency_ms=latency))

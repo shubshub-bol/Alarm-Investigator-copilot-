@@ -9,7 +9,7 @@ from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, Field
 
-from copilot.answer import CopilotAnswer, compose_answer, conversation_answer
+from copilot.answer import CopilotAnswer, compose_answer, conversation_reply
 from copilot.conversations import ConversationStore, OpenConversation, StorageError, new_conversation_id
 from copilot.investigation import Evidence, investigate
 from copilot.llm import LlmProvider
@@ -108,7 +108,7 @@ class CopilotService:
         understanding_ms = _ms(t0)
         await emit("understanding", u.model_dump(mode="json"))
         if u.intent == "conversation":
-            response = self._reply_without_tools(question, u, conv, trace_id, started, understanding_ms)
+            response = await self._reply_without_tools(question, u, conv, trace_id, started, understanding_ms)
             await self._save(conv, question, response, title=None)  # small talk leaves the chat as "New chat"
             return response
 
@@ -182,7 +182,7 @@ class CopilotService:
         )
         return response
 
-    def _reply_without_tools(
+    async def _reply_without_tools(
         self,
         question: str,
         u: QueryUnderstanding,
@@ -191,8 +191,21 @@ class CopilotService:
         started: float,
         understanding_ms: float,
     ) -> ChatResponse:
-        answer = conversation_answer(question)
-        log.info("chat", extra={"fields": {"trace_id": trace_id, "intent": u.intent, "tool_calls": 0}})
+        """Small talk and off-topic messages: a short reply, with no tools and no documents."""
+        t0 = time.perf_counter()
+        answer = await conversation_reply(question, self.llm)
+        answer_ms = _ms(t0)
+        log.info(
+            "chat",
+            extra={
+                "fields": {
+                    "trace_id": trace_id,
+                    "intent": u.intent,
+                    "answer_mode": answer.grounding.mode,
+                    "tool_calls": 0,
+                }
+            },
+        )
         return ChatResponse(
             conversation_id=conv.conversation_id,
             trace_id=trace_id,
@@ -203,7 +216,9 @@ class CopilotService:
             evidence=Evidence(intent=u.intent),
             discovery=None,
             trace=[],
-            timings=Timings(understanding_ms=understanding_ms, investigation_ms=0, answer_ms=0, total_ms=_ms(started)),
+            timings=Timings(
+                understanding_ms=understanding_ms, investigation_ms=0, answer_ms=answer_ms, total_ms=_ms(started)
+            ),
         )
 
     async def _title(
