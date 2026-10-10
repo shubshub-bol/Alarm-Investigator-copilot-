@@ -50,6 +50,7 @@ class PageResult:
     truncated: bool = False
     total_items: int | None = None
     trace_id: str = ""
+    calls: list[ApiResponse] = field(default_factory=list)  # one per page, for tracing
 
 
 def new_trace_id() -> str:
@@ -270,6 +271,7 @@ class AlarmApiClient:
         while has_next and len(result.items) < max_items:
             resp = await self.list_alarms(page=page, page_size=page_size, trace_id=trace_id, **filters)
             result.items.extend(resp.data["data"])
+            result.calls.append(resp)
             result.pages_fetched += 1
             pagination = resp.data.get("pagination", {})
             result.total_items = pagination.get("total_items", result.total_items)
