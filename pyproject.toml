@@ -23,8 +23,10 @@ dev = [
 
 [tool.pytest.ini_options]
 testpaths = ["tests", "services", "rag/tests"]
-pythonpath = ["services/alarm-simulator"]
+pythonpath = ["services/alarm-simulator", "connectors"]
 addopts = "-q --import-mode=importlib"
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
 
 [tool.ruff]
 line-length = 120
@@ -43,4 +45,4 @@ python_version = "3.12"
 ignore_missing_imports = true
 
 [tool.ruff.lint.isort]
-known-first-party = ["alarm_simulator"]
+known-first-party = ["alarm_simulator", "alarm_api_client"]
