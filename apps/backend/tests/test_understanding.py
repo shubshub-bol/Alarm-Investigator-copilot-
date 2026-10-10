@@ -96,6 +96,13 @@ def test_site_and_unit_names():
     assert (u.site, u.unit) == ("EastRefinery", "Unit 3")
 
 
+@pytest.mark.parametrize(
+    "text", ["Which procedure covers this alarm?", "Inspect what for this high-severity motor trip alarm?"]
+)
+def test_follow_up_references_are_detected(text):
+    assert understand_with_rules(text).uses_context is True
+
+
 def test_general_document_question_needs_no_tools():
     u = understand_with_rules("What does the safety instruction say about lockout?")
     assert u.intent == "knowledge_question"

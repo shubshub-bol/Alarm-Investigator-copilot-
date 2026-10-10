@@ -83,8 +83,10 @@ _N_UNITS = re.compile(r"\b(?:last|past|previous)\s+(\d{1,3})\s*(day|week|month|y
 _ONE_UNIT = re.compile(r"\b(?:last|past|previous)\s+(day|week|month|quarter|year)\b", re.I)
 _BARE_DAYS = re.compile(r"\b(\d{1,3})\s*days?\b", re.I)
 _ACTIVE = re.compile(r"\b(active|current(ly)?|right now|ongoing|standing|still on)\b", re.I)
-_CONTEXT = re.compile(
-    r"\b(this|that|these|those|the same)\s+(alarms?|assets?|pumps?|motors?|compressors?|one|issue)\b", re.I
+_CONTEXT = re.compile(  # "this alarm", "this high-severity motor trip alarm", "that one"
+    r"\b(this|that|these|those|the same)\s+(?:[\w-]+\s+){0,3}?"
+    r"(alarms?|assets?|pumps?|motors?|compressors?|one|issue)\b",
+    re.I,
 )
 
 _INTENT_RULES: list[tuple[Intent, re.Pattern]] = [
