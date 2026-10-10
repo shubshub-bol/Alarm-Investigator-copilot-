@@ -29,3 +29,6 @@ rag/index/
 .idea/
 .DS_Store
 Thumbs.db
+
+# Downloaded embedding model files
+.cache/

@@ -1,0 +1,34 @@
+---
+doc_id: KB-008
+title: Knowledge Article - Boiler Feed Pump Vibration Past Cases
+doc_type: knowledge_article
+equipment_types: [pump, motor]
+alarm_codes: [PMP-VIB-HI, MTR-BRG-TEMP-HI, PMP-SUCT-LO]
+site: NorthPlant
+revision: 3
+effective_date: 2026-03-02
+owner: Reliability Engineering
+---
+
+KNOWLEDGE ARTICLE KB-008: BOILER FEED PUMP VIBRATION - PAST CASES AND RESOLUTIONS
+
+CASE 1 - BFP-102, MARCH 2025 - COUPLING MISALIGNMENT AFTER MOTOR REPLACEMENT
+Symptom: repeated high vibration alarms on BFP-102 over three weeks. In most events the drive motor M-102
+drive-end bearing temperature alarm came 8 to 14 minutes before the pump vibration alarm.
+Root cause: the motor was replaced in February 2025 and the coupling was not laser-aligned afterwards.
+Parallel offset was 0.21 mm against a 0.05 mm tolerance.
+Resolution: laser realignment and coupling element replacement. No further vibration alarms in 60 days.
+
+CASE 2 - BFP-101, NOVEMBER 2024 - CAVITATION FROM LOW DEAERATOR LEVEL
+Symptom: vibration alarms together with low suction pressure alarms, mainly at high load.
+Root cause: makeup water valve sticking, causing low deaerator level and cavitation.
+Resolution: makeup valve overhaul. Vibration returned to normal once suction pressure was stable.
+
+CASE 3 - BFP-101, JUNE 2023 - BEARING WEAR AT END OF LIFE
+Symptom: slowly rising vibration over two months, then frequent alarms. Bearing at 33,500 running hours.
+Resolution: bearing replacement during a planned changeover to BFP-102.
+
+LESSONS LEARNED
+- Motor bearing heating that leads pump vibration by several minutes points to coupling alignment.
+- Vibration together with low suction pressure points to the deaerator, not the pump itself.
+- Always change over to the standby pump rather than running a vibrating feed pump for long periods.
