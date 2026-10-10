@@ -10,7 +10,7 @@ from alarm_simulator.config import DEMO_TOKEN, Settings
 from alarm_simulator.data import DataStore
 from alarm_simulator.errors import install_error_handlers
 from alarm_simulator.observability import configure_logging, trace_middleware
-from alarm_simulator.routes import analytics, health
+from alarm_simulator.routes import alarms, analytics, assets, health
 
 log = logging.getLogger("alarm_simulator")
 
@@ -31,5 +31,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     # /health is public; everything else needs the bearer token.
     app.include_router(health.router)
     protected = [Depends(require_bearer_token)]
-    app.include_router(analytics.router, dependencies=protected)
+    for module in (assets, alarms, analytics):
+        app.include_router(module.router, dependencies=protected)
     return app
