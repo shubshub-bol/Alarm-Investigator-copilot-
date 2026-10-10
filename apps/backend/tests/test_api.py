@@ -38,6 +38,7 @@ def test_health_reports_all_dependencies(api):
     assert body["mcp"] == {"server": "alarm-management", "connected": True, "tools": 13, "error": None}
     assert body["rag"]["index_loaded"] and body["rag"]["chunks"] > 40
     assert body["llm"] == {"provider": "offline"}
+    assert body["storage"] == {"ok": True, "conversations": 0}
 
 
 def test_tool_discovery_view_has_schemas(api):
@@ -116,7 +117,7 @@ def test_invalid_requests_are_rejected(api, body):
 
 
 def test_unknown_conversation_lookup_is_404(api):
-    assert api.get("/api/conversations/conv-nope").status_code == 404
+    assert api.get("/api/conversations/conv-000000000000").status_code == 404
 
 
 # ------------------------------------------------------------------ degraded modes

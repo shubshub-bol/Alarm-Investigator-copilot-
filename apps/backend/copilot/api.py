@@ -1,12 +1,15 @@
 """HTTP API for the GUI.
 
-POST /api/chat                      ask a question (optionally continuing a conversation)
-POST /api/chat/stream               the same as Server-Sent Events: started, understanding, discovery,
+POST   /api/chat                    ask a question (optionally continuing a conversation)
+POST   /api/chat/stream             the same as Server-Sent Events: started, understanding, discovery,
                                     one 'step' per tool call or document search, then 'answer' (or 'error')
-GET  /api/tools                     MCP tool discovery view (names, descriptions, schemas)
-GET  /api/health                    MCP / RAG / LLM readiness
-GET  /api/conversations/{id}        conversation history
-GET  /api/examples                  example questions for the GUI
+GET    /api/conversations           saved chats, newest activity first
+GET    /api/conversations/{id}      one saved chat with every answer
+PATCH  /api/conversations/{id}      rename a chat
+DELETE /api/conversations/{id}      delete a chat and its answers
+GET    /api/tools                   MCP tool discovery view (names, descriptions, schemas)
+GET    /api/health                  MCP / RAG / LLM / storage readiness
+GET    /api/examples                example questions for the GUI
 """
 
 import asyncio
@@ -16,16 +19,21 @@ import time
 import uuid
 from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
-from typing import Any
+from typing import Annotated, Any
 
-from fastapi import FastAPI, HTTPException, Request, Response
+from fastapi import FastAPI, HTTPException, Path, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse
-from pydantic import BaseModel, Field
+from fastapi.responses import JSONResponse, StreamingResponse
+from pydantic import BaseModel, Field, StringConstraints
 
 from copilot import __version__
 from copilot.config import CopilotSettings
-from copilot.conversations import ConversationDetail, ConversationStore
+from copilot.conversations import (
+    ConversationDetail,
+    ConversationStore,
+    ConversationSummary,
+    StorageError,
+)
 from copilot.llm import LlmProvider, build_provider
 from copilot.mcp_client import http_connector
 from copilot.service import ChatResponse, CopilotService, ToolsResponse
@@ -36,9 +44,21 @@ from rag.retrieval import Retriever
 log = logging.getLogger("copilot.api")
 
 
+CONVERSATION_ID = r"^conv-[a-f0-9]{12}$"
+ConversationId = Annotated[str, Path(pattern=CONVERSATION_ID)]
+
+
 class ChatRequest(BaseModel):
     message: str = Field(min_length=1, max_length=2000)
-    conversation_id: str | None = Field(None, pattern=r"^conv-[a-f0-9]{12}$")
+    conversation_id: str | None = Field(None, pattern=CONVERSATION_ID)
+
+
+class ConversationList(BaseModel):
+    conversations: list[ConversationSummary]
+
+
+class RenameRequest(BaseModel):
+    title: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=80)]
 
 
 class JsonFormatter(logging.Formatter):
@@ -93,7 +113,10 @@ def create_app(
 
     app = FastAPI(title="Alarm Investigation Copilot", version=__version__, lifespan=lifespan)
     app.add_middleware(
-        CORSMiddleware, allow_origins=settings.cors_origins, allow_methods=["GET", "POST"], allow_headers=["*"]
+        CORSMiddleware,
+        allow_origins=settings.cors_origins,
+        allow_methods=["GET", "POST", "PATCH", "DELETE"],
+        allow_headers=["*"],
     )
 
     @app.middleware("http")
@@ -118,6 +141,13 @@ def create_app(
 
     def svc(request: Request) -> CopilotService:
         return request.app.state.service
+
+    @app.exception_handler(StorageError)
+    async def storage_unavailable(request: Request, exc: StorageError) -> JSONResponse:
+        log.error("conversation storage failed", extra={"fields": {"path": request.url.path, "error": str(exc)}})
+        return JSONResponse(
+            {"detail": "Saved chats are unavailable right now. Check the backend logs."}, status_code=503
+        )
 
     @app.post("/api/chat", response_model=ChatResponse)
     async def chat(body: ChatRequest, request: Request) -> ChatResponse:
@@ -167,12 +197,31 @@ def create_app(
     async def tools(request: Request) -> ToolsResponse:
         return await svc(request).list_tools()
 
+    @app.get("/api/conversations", response_model=ConversationList)
+    def list_conversations(request: Request) -> ConversationList:
+        return ConversationList(conversations=svc(request).conversations.list_conversations())
+
     @app.get("/api/conversations/{conversation_id}", response_model=ConversationDetail)
-    def get_conversation(conversation_id: str, request: Request) -> ConversationDetail:
+    def get_conversation(conversation_id: ConversationId, request: Request) -> ConversationDetail:
         detail = svc(request).conversations.get(conversation_id)
         if detail is None:
             raise HTTPException(404, "Conversation not found")
         return detail
+
+    @app.patch("/api/conversations/{conversation_id}", response_model=ConversationSummary)
+    def rename_conversation(
+        conversation_id: ConversationId, body: RenameRequest, request: Request
+    ) -> ConversationSummary:
+        summary = svc(request).conversations.rename(conversation_id, body.title)
+        if summary is None:
+            raise HTTPException(404, "Conversation not found")
+        return summary
+
+    @app.delete("/api/conversations/{conversation_id}", status_code=204)
+    def delete_conversation(conversation_id: ConversationId, request: Request) -> Response:
+        if not svc(request).conversations.delete(conversation_id):
+            raise HTTPException(404, "Conversation not found")
+        return Response(status_code=204)
 
     @app.get("/api/examples")
     async def examples() -> dict:
@@ -189,7 +238,8 @@ def create_app(
             "embedder": retriever.embedder.name if retriever else None,
         }
         llm_info = {"provider": "offline"} if s.llm is None else {"provider": s.llm.name}
-        ready = listed.connected and retriever is not None
+        storage = await asyncio.to_thread(s.conversations.health)
+        ready = listed.connected and retriever is not None and storage["ok"]
         return {
             "status": "ok" if ready else "degraded",
             "version": __version__,
@@ -201,6 +251,7 @@ def create_app(
             },
             "rag": rag,
             "llm": llm_info,
+            "storage": storage,
         }
 
     return app
