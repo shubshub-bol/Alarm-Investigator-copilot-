@@ -38,3 +38,30 @@ class ToolCallRecord(BaseModel):
     duration_ms: float
     trace_id: str
     started_at: datetime
+
+
+class RetrievedRef(BaseModel):
+    key: str
+    label: str
+    chunk_id: str
+    dense_score: float
+    keyword_score: float
+
+
+class RetrievalRecord(BaseModel):
+    """One RAG search, shown in the same execution timeline as the tool calls."""
+
+    kind: Literal["rag_retrieval"] = "rag_retrieval"
+    step: int = 0
+    purpose: str
+    query: str
+    filters: dict[str, Any]
+    status: Literal["ok", "error"]
+    confidence: str | None = None
+    top_dense_score: float | None = None
+    results: list[RetrievedRef] = []
+    quarantined_withheld: int = 0
+    error_message: str | None = None
+    duration_ms: float
+    trace_id: str
+    started_at: datetime

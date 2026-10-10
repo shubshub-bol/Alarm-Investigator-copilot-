@@ -58,6 +58,7 @@ class LlmUnderstanding(BaseModel):
 class QueryUnderstanding(LlmUnderstanding):
     model_config = ConfigDict(extra="forbid")
 
+    question: str = ""  # the original text, kept for document search
     method: Literal["rules", "llm"] = "rules"
     fallback_reason: str | None = None
 
@@ -171,6 +172,7 @@ def understand_with_rules(question: str) -> QueryUnderstanding:
         alarm_topic=topic,
         uses_context=uses_context,
         rationale="keyword rules",
+        question=question,
         method="rules",
     )
 
@@ -205,7 +207,7 @@ async def understand(question: str, llm: LlmProvider | None) -> QueryUnderstandi
             merged[name] = getattr(rules, name)
     merged["severities"] = at_or_above(merged["severities"])
     merged["uses_context"] = merged["uses_context"] or rules.uses_context
-    return QueryUnderstanding(**merged, method="llm")
+    return QueryUnderstanding(**merged, question=question, method="llm")
 
 
 _GAP_FILL_FIELDS = ("asset_type", "site", "unit", "lookback_days", "severities", "alarm_topic", "status")
