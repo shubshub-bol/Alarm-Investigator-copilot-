@@ -1,18 +1,26 @@
-import type { Evidence } from "../../api/types";
+import type { ReactElement } from "react";
+import type { ActionAssessment, Evidence } from "../../api/types";
 import { percent, shortTime, signed } from "../../lib/format";
 import type { Turn } from "../../state/useChat";
+import { StatementList, chipRenderer } from "../Answer";
 import { PriorityBadge } from "../PriorityBadge";
 
-/** The alarm summary panel: what the tools established about the asset and its alarms. */
-export function EvidencePanel({ turn }: { turn: Turn }) {
-  const evidence = turn.response?.evidence;
-  if (!evidence) {
-    return <p className="muted">Evidence appears here when the investigation finishes.</p>;
-  }
+interface Props {
+  turn: Turn;
+  selectedKey: string | null;
+  onCite: (key: string) => void;
+}
+
+/** Alarm summary and the full detail behind the answer: data, causes, procedure, API check, gaps. */
+export function EvidencePanel({ turn, selectedKey, onCite }: Props) {
+  const response = turn.response;
+  if (!response) return <p className="muted">Evidence appears here when the investigation finishes.</p>;
+  const { evidence, answer } = response;
   if (evidence.intent === "conversation") {
     return <p className="muted">No evidence was needed for this reply: it used no tools and no documents.</p>;
   }
-  const nothing =
+  const chip = chipRenderer(response, selectedKey, onCite);
+  const noAlarmData =
     !evidence.asset && !evidence.top_alarm && evidence.ranked_alarms.length === 0 && !evidence.focus_alarm;
   return (
     <div className="evidence">
@@ -33,8 +41,67 @@ export function EvidencePanel({ turn }: { turn: Turn }) {
         </section>
       )}
       <RelatedStatus evidence={evidence} />
-      {nothing && <p className="muted">This answer is based on documents only; no live alarm data was used.</p>}
+      {noAlarmData && <p className="ev-block muted">No live alarm data was used for this answer.</p>}
+
+      {answer.likely_causes.length > 0 && (
+        <section className="ev-block">
+          <h3>Likely causes</h3>
+          <StatementList items={answer.likely_causes} chip={chip} />
+        </section>
+      )}
+      {answer.procedure.length > 0 && (
+        <section className="ev-block">
+          <h3>Applicable procedure</h3>
+          <StatementList items={answer.procedure} chip={chip} />
+        </section>
+      )}
+      {answer.action_assessments.length > 0 && <Verdicts assessments={answer.action_assessments} chip={chip} />}
+      {answer.findings.length > 0 && (
+        <section className="ev-block">
+          <h3>Measured data</h3>
+          <StatementList items={answer.findings} chip={chip} />
+        </section>
+      )}
+      {answer.gaps.length > 0 && (
+        <section className="ev-block">
+          <h3>Gaps and assumptions</h3>
+          <ul>
+            {answer.gaps.map((gap, i) => (
+              <li key={i}>{gap}</li>
+            ))}
+          </ul>
+        </section>
+      )}
     </div>
+  );
+}
+
+const VERDICT_TEXT: Record<ActionAssessment["verdict"], string> = {
+  conflict: "Conflict",
+  consistent: "Matches",
+  not_covered: "Not covered",
+};
+
+function Verdicts({ assessments, chip }: { assessments: ActionAssessment[]; chip: (key: string) => ReactElement }) {
+  return (
+    <section className="ev-block">
+      <h3>Alarm API advice checked against the documents</h3>
+      <ul className="verdicts">
+        {assessments.map((a) => (
+          <li key={a.step} data-verdict={a.verdict}>
+            <p>
+              <span className="verdict" data-verdict={a.verdict}>
+                {VERDICT_TEXT[a.verdict]}
+              </span>{" "}
+              {a.action}
+            </p>
+            <p className="muted">
+              {a.document_guidance ?? a.explanation} <span className="chips">{a.citation_keys.map(chip)}</span>
+            </p>
+          </li>
+        ))}
+      </ul>
+    </section>
   );
 }
 

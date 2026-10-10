@@ -8,40 +8,52 @@ import { Answer } from "./Answer";
 const response = chat as unknown as ChatResponse;
 const greeting = hello as unknown as ChatResponse;
 
-function renderAnswer(props: Partial<Parameters<typeof Answer>[0]> = {}) {
-  const onCite = vi.fn();
-  const onAsk = vi.fn();
-  render(<Answer response={response} selectedKey={null} onCite={onCite} onAsk={onAsk} canAsk {...props} />);
-  return { onCite, onAsk };
+function renderAnswer(overrides: { response?: ChatResponse; selectedKey?: string | null; canAsk?: boolean } = {}) {
+  const handlers = { onCite: vi.fn(), onAsk: vi.fn(), onShowEvidence: vi.fn() };
+  render(
+    <Answer
+      response={overrides.response ?? response}
+      selectedKey={overrides.selectedKey ?? null}
+      canAsk={overrides.canAsk ?? true}
+      {...handlers}
+    />,
+  );
+  return handlers;
 }
 
-test("shows the priority, the asset and the recommended actions", () => {
+test("shows the priority, the subject and what to do", () => {
   renderAnswer();
   expect(screen.getByTitle(/^P1/)).toBeInTheDocument();
-  expect(screen.getByText(/Boiler Feed Pump 101, High Vibration/)).toBeInTheDocument();
-  const actions = screen.getByRole("heading", { name: "Recommended actions" }).closest("section")!;
-  expect(within(actions).getAllByRole("listitem").length).toBe(response.answer.recommended_actions.length);
+  expect(screen.getByText("Boiler Feed Pump 101, High Vibration")).toBeInTheDocument();
+  const todo = screen.getByRole("heading", { name: "What to do" }).closest("section")!;
+  expect(within(todo).getAllByRole("listitem")).toHaveLength(response.answer.recommended_actions.length);
+});
+
+test("keeps the answer short: details stay in the evidence drawer", () => {
+  renderAnswer();
+  expect(screen.queryByText("Likely causes")).not.toBeInTheDocument();
+  expect(screen.queryByText("Measured data")).not.toBeInTheDocument();
+  expect(screen.queryByRole("table")).not.toBeInTheDocument();
 });
 
 test("every action carries its evidence chips", () => {
   renderAnswer();
-  const actions = screen.getByRole("heading", { name: "Recommended actions" }).closest("section")!;
-  for (const item of within(actions).getAllByRole("listitem")) {
+  const todo = screen.getByRole("heading", { name: "What to do" }).closest("section")!;
+  for (const item of within(todo).getAllByRole("listitem")) {
     expect(within(item).getAllByRole("button", { name: /show evidence/ }).length).toBeGreaterThan(0);
   }
 });
 
-test("flags the API advice that conflicts with the procedure", () => {
+test("warns when the API advice contradicts the procedure", () => {
   renderAnswer();
-  const table = screen.getByRole("table");
-  const conflictRow = within(table).getByText("Conflict").closest("tr")!;
-  expect(conflictRow).toHaveTextContent("Continue operation");
+  const warning = screen.getByRole("note");
+  expect(warning).toHaveTextContent("Check before acting");
+  expect(warning).toHaveTextContent("Continue operation and monitor vibration trend for 24 hours");
 });
 
 test("clicking a chip asks for that evidence", async () => {
   const { onCite } = renderAnswer();
-  const [first] = screen.getAllByRole("button", { name: /Document source 1: show evidence/ });
-  await userEvent.click(first);
+  await userEvent.click(screen.getAllByRole("button", { name: /Document source 1: show evidence/ })[0]);
   expect(onCite).toHaveBeenCalledWith("S1");
 });
 
@@ -52,7 +64,13 @@ test("the selected chip is marked as pressed", () => {
   }
 });
 
-test("offers follow-up questions", async () => {
+test("'Show evidence' opens the drawer", async () => {
+  const { onShowEvidence } = renderAnswer();
+  await userEvent.click(screen.getByRole("button", { name: "Show evidence" }));
+  expect(onShowEvidence).toHaveBeenCalled();
+});
+
+test("offers follow-up questions on the latest answer only", async () => {
   const { onAsk } = renderAnswer();
   await userEvent.click(screen.getByRole("button", { name: "Which operating procedure applies to this alarm?" }));
   expect(onAsk).toHaveBeenCalledWith("Which operating procedure applies to this alarm?");
@@ -63,17 +81,17 @@ test("older answers do not offer follow-ups", () => {
   expect(screen.queryByRole("navigation", { name: "Suggested next questions" })).not.toBeInTheDocument();
 });
 
-test("a greeting is a short reply with starter questions and no evidence sections", () => {
-  render(<Answer response={greeting} selectedKey={null} onCite={vi.fn()} onAsk={vi.fn()} canAsk />);
+test("a greeting is a short reply with starter questions", () => {
+  renderAnswer({ response: greeting });
   expect(screen.getByText(/I investigate plant alarms/)).toBeInTheDocument();
-  expect(screen.queryByRole("table")).not.toBeInTheDocument();
-  expect(screen.getAllByRole("button").length).toBe(greeting.answer.suggestions.length);
+  expect(screen.queryByRole("button", { name: "Show evidence" })).not.toBeInTheDocument();
+  expect(screen.getAllByRole("button")).toHaveLength(greeting.answer.suggestions.length);
 });
 
 test("text from documents is shown as text, never as HTML", () => {
   const hostile = structuredClone(response);
   hostile.answer.summary = '<img src=x onerror="alert(1)"> pump is fine';
-  render(<Answer response={hostile} selectedKey={null} onCite={vi.fn()} onAsk={vi.fn()} canAsk={false} />);
+  renderAnswer({ response: hostile, canAsk: false });
   expect(screen.getByText(/<img src=x onerror="alert\(1\)"> pump is fine/)).toBeInTheDocument();
   expect(document.querySelector("img")).toBeNull();
 });

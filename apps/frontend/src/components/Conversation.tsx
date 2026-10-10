@@ -1,8 +1,9 @@
 import { type FormEvent, type KeyboardEvent, useEffect, useRef, useState } from "react";
+import type { ChatResponse } from "../api/types";
 import { plural, seconds } from "../lib/format";
 import type { Turn } from "../state/useChat";
 import { Answer } from "./Answer";
-import { LiveSteps } from "./LiveSteps";
+import { Progress } from "./Progress";
 
 interface Props {
   turns: Turn[];
@@ -12,10 +13,12 @@ interface Props {
   onAsk: (question: string) => void;
   onRetry: (turnId: string) => void;
   onCite: (turnId: string, key: string) => void;
-  onShowTrace: (turnId: string) => void;
+  onShowEvidence: (turnId: string) => void;
+  onShowSteps: (turnId: string) => void;
 }
 
-export function Conversation({ turns, running, examples, selection, onAsk, onRetry, onCite, onShowTrace }: Props) {
+export function Conversation(props: Props) {
+  const { turns, running, examples, selection, onAsk, onRetry, onCite, onShowEvidence, onShowSteps } = props;
   const log = useRef<HTMLDivElement>(null);
   const end = useRef<HTMLDivElement>(null);
   const lastTurn = turns[turns.length - 1];
@@ -25,7 +28,7 @@ export function Conversation({ turns, running, examples, selection, onAsk, onRet
     end.current?.scrollIntoView({ block: "end" });
   }, [turns.length]);
 
-  // Live steps and the answer: follow along only if the reader is already at the bottom.
+  // Progress and the answer: follow along only if the reader is already at the bottom.
   useEffect(() => {
     const el = log.current;
     if (el && el.scrollHeight - el.scrollTop - el.clientHeight < 160) end.current?.scrollIntoView({ block: "end" });
@@ -34,58 +37,71 @@ export function Conversation({ turns, running, examples, selection, onAsk, onRet
   return (
     <main className="conversation">
       <div className="log" ref={log}>
-        {turns.length === 0 ? (
-          <EmptyState examples={examples} onAsk={onAsk} disabled={running} />
-        ) : (
-          turns.map((turn) => (
-            <section key={turn.id} className="turn" aria-label={`Question: ${turn.question}`}>
-              <p className="question">{turn.question}</p>
-              {turn.phase === "running" && <LiveSteps turn={turn} />}
-              {turn.phase === "failed" && (
-                <div className="failure" role="alert">
-                  <p>The investigation did not finish. {turn.error}</p>
-                  <button type="button" className="button" onClick={() => onRetry(turn.id)} disabled={running}>
-                    Try again
-                  </button>
-                </div>
-              )}
-              {turn.phase === "done" && turn.response && (
-                <>
-                  {turn.response.trace.length > 0 && (
-                    <p className="run-summary">
-                      {plural(turn.response.trace.length, "step")} in {seconds(turn.response.timings.total_ms)}
-                      <button type="button" className="link" onClick={() => onShowTrace(turn.id)}>
-                        View trace
-                      </button>
-                    </p>
-                  )}
-                  <Answer
-                    response={turn.response}
-                    selectedKey={selection?.turnId === turn.id ? selection.key : null}
-                    onCite={(key) => onCite(turn.id, key)}
-                    onAsk={onAsk}
-                    canAsk={!running && turn === turns[turns.length - 1]}
-                  />
-                </>
-              )}
-            </section>
-          ))
-        )}
-        <div ref={end} />
+        <div className="column">
+          {turns.length === 0 ? (
+            <EmptyState examples={examples} onAsk={onAsk} disabled={running} />
+          ) : (
+            turns.map((turn) => (
+              <section key={turn.id} className="turn" aria-label={`Question: ${turn.question}`}>
+                <p className="question">{turn.question}</p>
+                {turn.phase === "running" && <Progress turn={turn} onShowSteps={() => onShowSteps(turn.id)} />}
+                {turn.phase === "failed" && (
+                  <div className="failure" role="alert">
+                    <p>The investigation did not finish. {turn.error}</p>
+                    <button type="button" className="button" onClick={() => onRetry(turn.id)} disabled={running}>
+                      Try again
+                    </button>
+                  </div>
+                )}
+                {turn.phase === "done" && turn.response && (
+                  <>
+                    <RunLine response={turn.response} onShowSteps={() => onShowSteps(turn.id)} />
+                    <Answer
+                      response={turn.response}
+                      selectedKey={selection?.turnId === turn.id ? selection.key : null}
+                      onCite={(key) => onCite(turn.id, key)}
+                      onAsk={onAsk}
+                      onShowEvidence={() => onShowEvidence(turn.id)}
+                      canAsk={!running && turn === lastTurn}
+                    />
+                  </>
+                )}
+              </section>
+            ))
+          )}
+          <div ref={end} />
+        </div>
       </div>
       <Composer onAsk={onAsk} running={running} />
     </main>
   );
 }
 
+/** What the copilot did, in one line: "Checked 8 alarm tools and 4 document searches in 12.3 s". */
+function RunLine({ response, onShowSteps }: { response: ChatResponse; onShowSteps: () => void }) {
+  if (response.trace.length === 0) return null;
+  const tools = response.trace.filter((s) => s.kind === "mcp_tool").length;
+  const searches = response.trace.length - tools;
+  const failed = response.trace.filter((s) => s.status !== "ok").length;
+  return (
+    <p className="run-line">
+      <span>
+        Checked {plural(tools, "alarm tool")} and {plural(searches, "document search", "document searches")} in{" "}
+        {seconds(response.timings.total_ms)}
+        {failed > 0 && <strong className="run-failed">, {plural(failed, "step")} failed</strong>}
+      </span>
+      <button type="button" className="link" onClick={onShowSteps}>
+        Show steps
+      </button>
+    </p>
+  );
+}
+
 function EmptyState({ examples, onAsk, disabled }: { examples: string[]; onAsk: (q: string) => void; disabled: boolean }) {
   return (
     <section className="empty" aria-labelledby="empty-title">
-      <h2 id="empty-title">Start an investigation</h2>
-      <p>
-        Ask about an asset, an alarm or a site. The copilot queries the alarm system, reads the plant procedures and
-        shows the evidence behind every statement.
-      </p>
+      <h2 id="empty-title">What would you like to investigate?</h2>
+      <p>Ask about an asset, an alarm or a site. Every answer shows the alarm data and documents behind it.</p>
       <ul className="examples">
         {examples.map((example) => (
           <li key={example}>
@@ -126,27 +142,22 @@ function Composer({ onAsk, running }: { onAsk: (question: string) => void; runni
 
   return (
     <form className="composer" onSubmit={submit}>
-      <label htmlFor="question" className="visually-hidden">
-        Question
-      </label>
-      <textarea
-        id="question"
-        ref={input}
-        rows={2}
-        maxLength={MAX_LENGTH}
-        value={text}
-        placeholder="Ask about an asset, alarm or site. For example: why does Boiler Feed Pump 101 keep alarming?"
-        onChange={(event) => setText(event.target.value)}
-        onKeyDown={onKeyDown}
-      />
-      <div className="composer-actions">
-        {text.length > MAX_LENGTH - 200 && (
-          <span className="muted">
-            {text.length}/{MAX_LENGTH}
-          </span>
-        )}
+      <div className="column composer-row">
+        <label htmlFor="question" className="visually-hidden">
+          Question
+        </label>
+        <textarea
+          id="question"
+          ref={input}
+          rows={1}
+          maxLength={MAX_LENGTH}
+          value={text}
+          placeholder="Ask about an alarm, asset or site"
+          onChange={(event) => setText(event.target.value)}
+          onKeyDown={onKeyDown}
+        />
         <button type="submit" className="button button-primary" disabled={!question || running}>
-          {running ? "Investigating" : "Investigate"}
+          {running ? "Working" : "Ask"}
         </button>
       </div>
     </form>

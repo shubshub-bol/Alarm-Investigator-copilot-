@@ -36,42 +36,51 @@ function mockBackend(chat: () => Promise<Response>) {
 
 afterEach(() => vi.unstubAllGlobals());
 
-async function ask(question: string) {
-  const box = screen.getByRole("textbox", { name: "Question" });
-  await userEvent.type(box, `${question}{Enter}`);
+async function askAndWait(question = QUESTION) {
+  await userEvent.type(screen.getByRole("textbox", { name: "Question" }), `${question}{Enter}`);
+  return screen.findByRole("article", { name: "Answer" });
 }
 
-test("shows backend status and starter questions", async () => {
+test("starts simple: one status, starter questions, no evidence panel", async () => {
   mockBackend(async () => sseResponse(streamText));
   render(<App />);
-  expect(await screen.findByText("13 available")).toBeInTheDocument();
-  expect(screen.getByText("54 passages")).toBeInTheDocument();
+  expect(await screen.findByText("Ready")).toBeInTheDocument();
   expect(await screen.findByRole("button", { name: QUESTION })).toBeInTheDocument();
+  expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
 });
 
-test("streams the investigation, then shows the answer and its evidence", async () => {
+test("answers with a one-line summary of the work done", async () => {
   mockBackend(async () => sseResponse(streamText));
   render(<App />);
-  await ask(QUESTION);
-
-  expect(await screen.findByRole("article", { name: "Answer" })).toBeInTheDocument();
-  expect(screen.getByText(/12 steps in/)).toBeInTheDocument();
-  // the rail switches to the alarm summary when the answer arrives
-  expect(screen.getByRole("tab", { name: "Evidence" })).toHaveAttribute("aria-selected", "true");
-  expect(screen.getByRole("heading", { name: "Boiler Feed Pump 101" })).toBeInTheDocument();
+  await askAndWait();
+  expect(screen.getByText(/Checked 8 alarm tools and 4 document searches in/)).toBeInTheDocument();
+  expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
 });
 
-test("a tool chip opens the trace step it came from", async () => {
+test("'Show evidence' opens the alarm summary in a drawer that closes with Escape", async () => {
   mockBackend(async () => sseResponse(streamText));
   render(<App />);
-  await ask(QUESTION);
-  const answer = await screen.findByRole("article", { name: "Answer" });
+  const answer = await askAndWait();
 
-  const chip = within(answer).getAllByRole("button", { name: /Tool fact \d+: show evidence/ })[0];
-  await userEvent.click(chip);
+  await userEvent.click(within(answer).getByRole("button", { name: "Show evidence" }));
+  const drawer = screen.getByRole("dialog", { name: "Evidence for this answer" });
+  expect(within(drawer).getByRole("tab", { name: "Evidence" })).toHaveAttribute("aria-selected", "true");
+  expect(within(drawer).getByRole("heading", { name: "Boiler Feed Pump 101" })).toBeInTheDocument();
 
-  expect(screen.getByRole("tab", { name: /Trace/ })).toHaveAttribute("aria-selected", "true");
-  const highlighted = document.querySelector('.trace-step[data-target="true"]');
+  await userEvent.keyboard("{Escape}");
+  expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+});
+
+test("a tool chip opens the step it came from", async () => {
+  mockBackend(async () => sseResponse(streamText));
+  render(<App />);
+  const answer = await askAndWait();
+
+  await userEvent.click(within(answer).getAllByRole("button", { name: /Tool fact \d+: show evidence/ })[0]);
+
+  const drawer = screen.getByRole("dialog");
+  expect(within(drawer).getByRole("tab", { name: /Steps/ })).toHaveAttribute("aria-selected", "true");
+  const highlighted = drawer.querySelector('.trace-step[data-target="true"]');
   expect(highlighted).not.toBeNull();
   expect(highlighted).toHaveAttribute("open");
 });
@@ -79,14 +88,13 @@ test("a tool chip opens the trace step it came from", async () => {
 test("a document chip opens the cited passage", async () => {
   mockBackend(async () => sseResponse(streamText));
   render(<App />);
-  await ask(QUESTION);
-  const answer = await screen.findByRole("article", { name: "Answer" });
+  const answer = await askAndWait();
 
   await userEvent.click(within(answer).getAllByRole("button", { name: /Document source 1: show evidence/ })[0]);
 
-  expect(screen.getByRole("tab", { name: /Sources/ })).toHaveAttribute("aria-selected", "true");
-  const passage = document.querySelector('.source[data-target="true"]');
-  expect(passage).toHaveTextContent("S1");
+  const drawer = screen.getByRole("dialog");
+  expect(within(drawer).getByRole("tab", { name: /Sources/ })).toHaveAttribute("aria-selected", "true");
+  expect(drawer.querySelector('.source[data-target="true"]')).toHaveTextContent("S1");
 });
 
 test("a failed request explains itself and can be retried", async () => {
@@ -96,7 +104,7 @@ test("a failed request explains itself and can be retried", async () => {
     return calls === 1 ? new Response("upstream down", { status: 503 }) : sseResponse(streamText);
   });
   render(<App />);
-  await ask(QUESTION);
+  await userEvent.type(screen.getByRole("textbox", { name: "Question" }), `${QUESTION}{Enter}`);
 
   const alert = await screen.findByRole("alert");
   expect(alert).toHaveTextContent("HTTP 503");
@@ -104,8 +112,8 @@ test("a failed request explains itself and can be retried", async () => {
   await waitFor(() => expect(screen.getByRole("article", { name: "Answer" })).toBeInTheDocument());
 });
 
-test("an unreachable backend is shown in the status bar", async () => {
+test("an unreachable backend is the one thing the status shows", async () => {
   vi.stubGlobal("fetch", vi.fn(async () => Promise.reject(new TypeError("Failed to fetch"))));
   render(<App />);
-  expect(await screen.findByText("unreachable")).toBeInTheDocument();
+  expect(await screen.findByText("Copilot service unreachable")).toBeInTheDocument();
 });

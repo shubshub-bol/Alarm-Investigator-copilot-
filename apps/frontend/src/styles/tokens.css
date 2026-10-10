@@ -42,7 +42,6 @@
   --fs-lg: 1.32rem;
 
   --radius: 3px;
-  --rail-width: clamp(320px, 34vw, 480px); /* evidence rail scales with the window */
   --measure: 46rem; /* answer column: ~72 characters per line */
 }
 

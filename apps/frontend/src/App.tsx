@@ -1,8 +1,8 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { getExamples, getTools } from "./api/client";
 import type { ToolsResponse } from "./api/types";
 import { Conversation } from "./components/Conversation";
-import { EvidenceRail, type RailTab } from "./components/EvidenceRail";
+import { type DrawerTab, EvidenceDrawer } from "./components/EvidenceDrawer";
 import { TopBar } from "./components/TopBar";
 import { useChat } from "./state/useChat";
 import { useHealth } from "./state/useHealth";
@@ -13,19 +13,24 @@ export const FALLBACK_EXAMPLES = [
   "Which alarm has the highest priority in EastRefinery, and why?",
 ];
 
+interface DrawerState {
+  open: boolean;
+  tab: DrawerTab;
+  turnId: string | null;
+  key: string | null; // citation the user clicked, highlighted in the drawer
+}
+
+const CLOSED: DrawerState = { open: false, tab: "evidence", turnId: null, key: null };
+
 export function App() {
   const { turns, running, ask, retry, reset } = useChat();
   const health = useHealth();
   const [examples, setExamples] = useState<string[]>(FALLBACK_EXAMPLES);
   const [tools, setTools] = useState<ToolsResponse | null>(null);
   const [toolsError, setToolsError] = useState<string | null>(null);
-  const [tab, setTab] = useState<RailTab>("evidence");
-  const [selection, setSelection] = useState<{ turnId: string; key: string } | null>(null);
-  const [pinnedTurnId, setPinnedTurnId] = useState<string | null>(null);
-  const autoTab = useRef(true); // false once the user picks a tab themselves
+  const [drawer, setDrawer] = useState<DrawerState>(CLOSED);
 
   const backendUp = health.kind === "ok";
-
   const loadTools = useCallback(() => {
     setToolsError(null);
     getTools()
@@ -42,37 +47,10 @@ export function App() {
       .catch(() => undefined); // keep the built-in examples
   }, [backendUp, loadTools]);
 
-  const latest = turns[turns.length - 1];
-  const railTurn = turns.find((t) => t.id === pinnedTurnId) ?? latest;
-
-  // A new question: follow it in the rail and watch its steps arrive.
-  useEffect(() => {
-    if (latest?.phase !== "running") return;
-    setPinnedTurnId(null);
-    setSelection(null);
-    autoTab.current = true;
-    setTab("trace");
-  }, [latest?.id, latest?.phase]);
-
-  // Finished: switch to the evidence summary, unless the user chose a tab meanwhile.
-  useEffect(() => {
-    if (latest?.phase === "done" && autoTab.current) setTab("evidence");
-  }, [latest?.phase]);
-
-  const chooseTab = (next: RailTab) => {
-    autoTab.current = false;
-    setTab(next);
-  };
-
-  const showEvidence = (turnId: string, key: string | null, next: RailTab) => {
-    autoTab.current = false;
-    setPinnedTurnId(turnId);
-    setSelection(key ? { turnId, key } : null);
-    setTab(next);
-    if (window.matchMedia?.("(max-width: 900px)").matches) {
-      document.querySelector(".rail")?.scrollIntoView({ block: "start" });
-    }
-  };
+  const open = (turnId: string, tab: DrawerTab, key: string | null = null) =>
+    setDrawer({ open: true, tab, turnId, key });
+  const close = useCallback(() => setDrawer((d) => ({ ...d, open: false, key: null })), []);
+  const drawerTurn = turns.find((t) => t.id === drawer.turnId) ?? turns[turns.length - 1];
 
   return (
     <div className="app">
@@ -81,33 +59,32 @@ export function App() {
         canReset={turns.length > 0}
         onNew={() => {
           reset();
-          setSelection(null);
-          setPinnedTurnId(null);
-          setTab("evidence");
+          setDrawer(CLOSED);
         }}
       />
-      <div className="workspace">
-        <Conversation
-          turns={turns}
-          running={running}
-          examples={examples}
-          selection={selection}
-          onAsk={(q) => void ask(q)}
-          onRetry={retry}
-          onCite={(turnId, key) => showEvidence(turnId, key, key.startsWith("T") ? "trace" : "sources")}
-          onShowTrace={(turnId) => showEvidence(turnId, null, "trace")}
-        />
-        <EvidenceRail
-          turn={railTurn}
-          tab={tab}
-          onTab={chooseTab}
-          selectedKey={selection && selection.turnId === railTurn?.id ? selection.key : null}
-          onCite={(key) => railTurn && showEvidence(railTurn.id, key, key.startsWith("T") ? "trace" : "sources")}
-          tools={tools}
-          toolsError={toolsError}
-          onReloadTools={loadTools}
-        />
-      </div>
+      <Conversation
+        turns={turns}
+        running={running}
+        examples={examples}
+        selection={drawer.open && drawer.turnId && drawer.key ? { turnId: drawer.turnId, key: drawer.key } : null}
+        onAsk={(q) => void ask(q)}
+        onRetry={retry}
+        onCite={(turnId, key) => open(turnId, key.startsWith("T") ? "steps" : "sources", key)}
+        onShowEvidence={(turnId) => open(turnId, "evidence")}
+        onShowSteps={(turnId) => open(turnId, "steps")}
+      />
+      <EvidenceDrawer
+        open={drawer.open}
+        onClose={close}
+        turn={drawerTurn}
+        tab={drawer.tab}
+        onTab={(tab) => setDrawer((d) => ({ ...d, tab, key: null }))}
+        selectedKey={drawer.key}
+        onCite={(key) => setDrawer((d) => ({ ...d, tab: key.startsWith("T") ? "steps" : "sources", key }))}
+        tools={tools}
+        toolsError={toolsError}
+        onReloadTools={loadTools}
+      />
     </div>
   );
 }

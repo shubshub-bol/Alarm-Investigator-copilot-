@@ -1,50 +1,43 @@
 import type { HealthState } from "../state/useHealth";
 
-interface Item {
-  label: string;
-  value: string;
+interface Status {
+  text: string;
+  detail: string;
   abnormal: boolean;
 }
 
-function items(state: HealthState): Item[] {
-  if (state.kind === "loading") return [{ label: "Copilot service", value: "checking", abnormal: false }];
-  if (state.kind === "unreachable") return [{ label: "Copilot service", value: "unreachable", abnormal: true }];
+function status(state: HealthState): Status {
+  if (state.kind === "loading") return { text: "Connecting", detail: "Checking the copilot service", abnormal: false };
+  if (state.kind === "unreachable") {
+    return { text: "Copilot service unreachable", detail: "Start the backend and this page reconnects", abnormal: true };
+  }
   const { mcp, rag, llm } = state.health;
-  return [
-    {
-      label: "Alarm tools",
-      value: mcp.connected ? `${mcp.tools} available` : "unavailable",
-      abnormal: !mcp.connected,
-    },
-    {
-      label: "Documents",
-      value: rag.index_loaded ? `${rag.chunks} passages` : "not indexed",
-      abnormal: !rag.index_loaded,
-    },
-    {
-      label: "Language model",
-      value: llm.provider === "offline" ? "off (template answers)" : llm.provider.replace(/^gemini:/, ""),
-      abnormal: false,
-    },
-  ];
+  const model = llm.provider === "offline" ? "template answers (no language model)" : llm.provider.replace(/^gemini:/, "");
+  const detail = `${mcp.tools} alarm tools, ${rag.chunks} document passages, ${model}`;
+  const problems = [
+    !mcp.connected && "alarm data unavailable",
+    !rag.index_loaded && "documents not indexed",
+  ].filter(Boolean) as string[];
+  if (problems.length) {
+    const text = problems.join(", ");
+    return { text: text[0].toUpperCase() + text.slice(1), detail, abnormal: true };
+  }
+  return { text: "Ready", detail, abnormal: false };
 }
 
-/** Status follows the control-room rule: normal stays grey, only problems get colour. */
+/** One status: grey when everything is normal, amber only when something needs attention. */
 export function TopBar({ health, onNew, canReset }: { health: HealthState; onNew: () => void; canReset: boolean }) {
+  const s = status(health);
   return (
     <header className="topbar">
       <h1>Alarm Investigation Copilot</h1>
-      <ul className="status-list" aria-label="System status">
-        {items(health).map((item) => (
-          <li key={item.label} className="status-item" data-abnormal={item.abnormal}>
-            <span className="status-mark" aria-hidden="true" />
-            <span className="status-label">{item.label}</span>
-            <span className="status-value">{item.value}</span>
-          </li>
-        ))}
-      </ul>
+      <p className="status" data-abnormal={s.abnormal} title={s.detail}>
+        <span className="status-mark" aria-hidden="true" />
+        {s.text}
+        <span className="visually-hidden">: {s.detail}</span>
+      </p>
       <button type="button" className="button" onClick={onNew} disabled={!canReset}>
-        New investigation
+        New chat
       </button>
     </header>
   );
