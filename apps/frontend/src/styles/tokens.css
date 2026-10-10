@@ -11,8 +11,8 @@
   color-scheme: light;
 
   --field: #e4e6e8; /* app background */
-  --panel: #f2f3f5; /* bars, rail, composer */
-  --surface: #fbfbfc; /* answer sheet */
+  --panel: #f2f3f5; /* evidence drawer, tags, quiet boxes */
+  --surface: #fbfbfc; /* answer sheet, composer */
   --ink: #1f2429; /* primary text */
   --ink-2: #48515a; /* secondary text, tool chips */
   --ink-3: #636c75; /* muted text (4.6:1 on --panel) */
