@@ -131,6 +131,21 @@ async def test_llm_answer_citations_are_validated(acceptance_run):
     assert "UNTRUSTED" in llm.prompt.upper() or "untrusted" in llm.prompt  # documents passed as untrusted data
 
 
+async def test_grouped_inline_citations_are_parsed_and_validated(acceptance_run):
+    """Seen with Gemini: it writes '[T2, T3]' inside the text."""
+    reply = {
+        "summary": "Vibration is rising [T2, T99] and needs action [S2].",
+        "findings": [{"text": "24 alarms, rising 43% [T2, T3].", "citations": []}],
+        "recommended_actions": [{"text": "Change over to the standby pump [S2; S77].", "citations": ["S2"]}],
+    }
+    answer = await compose_answer(ACCEPTANCE, acceptance_run, llm=FakeLlm(reply=reply))
+    assert answer.summary == "Vibration is rising [T2] and needs action [S2]."
+    assert answer.findings[0].text == "24 alarms, rising 43%."
+    assert answer.findings[0].citations == ["T2", "T3"]
+    assert answer.recommended_actions[0].citations == ["S2"]
+    assert {"T99", "S77"} <= set(answer.grounding.unknown_citations)
+
+
 async def test_missing_llm_assessments_are_filled_and_conflicts_kept(acceptance_run):
     reply = {
         "summary": "s",

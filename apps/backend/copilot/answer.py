@@ -21,7 +21,8 @@ from rag.retrieval import Citation, RetrievedPassage, render_context
 
 log = logging.getLogger("copilot.answer")
 
-_KEY = re.compile(r"\[([TS]\d+)\]")
+_KEY_IN_GROUP = re.compile(r"[TS]\d+")
+_CITATION_GROUP = re.compile(r"\[\s*[TS]\d+(?:\s*[,;]\s*[TS]\d+)*\s*\]")  # [T2] or [T2, S3] or [S1; S4]
 
 
 class Statement(BaseModel):
@@ -231,23 +232,42 @@ def _llm_prompt(question: str, run: InvestigationRun, facts: list[Fact]) -> str:
 
 
 # ------------------------------------------------------------------------ validation
+def _split_citations(text: str) -> tuple[str, list[str]]:
+    """Remove inline citation groups ('[T2]', '[T2, S3]', '[S1; S4]') from text and return their keys."""
+    keys: list[str] = []
+
+    def take(match: re.Match) -> str:
+        keys.extend(_KEY_IN_GROUP.findall(match.group(0)))
+        return ""
+
+    stripped = _CITATION_GROUP.sub(take, text)
+    stripped = re.sub(r"\s+([.,;:])", r"\1", re.sub(r"\s{2,}", " ", stripped)).strip()
+    return stripped, keys
+
+
 def _validate(draft: LlmAnswer, valid: set[str], grounding: Grounding) -> LlmAnswer:
     unknown: set[str] = set()
 
     def clean_text(text: str) -> str:
-        for key in _KEY.findall(text):
-            if key not in valid:
-                unknown.add(key)
-        return _KEY.sub(lambda m: m.group(0) if m.group(1) in valid else "", text).strip()
+        """Keep inline citations in running text, normalised to one [key] each, valid keys only."""
+
+        def keep_valid(match: re.Match) -> str:
+            keys = _KEY_IN_GROUP.findall(match.group(0))
+            unknown.update(k for k in keys if k not in valid)
+            return " ".join(f"[{k}]" for k in keys if k in valid)
+
+        cleaned = _CITATION_GROUP.sub(keep_valid, text)
+        return re.sub(r"\s+([.,;:])", r"\1", re.sub(r"\s{2,}", " ", cleaned)).strip()
 
     def clean_list(items: list[Statement]) -> list[Statement]:
         kept = []
         for s in items:
-            keys = list(dict.fromkeys(s.citations + _KEY.findall(s.text)))
+            text, inline = _split_citations(s.text)
+            keys = list(dict.fromkeys(s.citations + inline))
             unknown.update(k for k in keys if k not in valid)
             good = [k for k in keys if k in valid]
             if good:
-                kept.append(Statement(text=_KEY.sub("", s.text).strip(), citations=good))
+                kept.append(Statement(text=text, citations=good))
             else:
                 grounding.removed_statements += 1
         return kept
