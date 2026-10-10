@@ -71,9 +71,20 @@ button {
 
 .app {
   display: grid;
-  grid-template-rows: auto minmax(0, 1fr);
+  grid-template-columns: auto minmax(0, 1fr);
   height: 100vh;
   height: 100dvh;
+}
+
+.main {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  min-width: 0;
+  min-height: 0;
+}
+
+.topbar-menu {
+  display: none; /* small screens only */
 }
 
 /* The bar and the composer stay in place (only .log scrolls) but sit on the page colour, so they don't read as frames. */
@@ -430,13 +441,18 @@ button {
   margin-bottom: 2.5rem;
 }
 
+/* the user's question: a bubble on the right, as in ChatGPT */
 .question {
-  margin: 0 0 0.75rem;
-  padding-left: 0.85rem;
-  border-left: 3px solid var(--ink);
-  font-size: var(--fs-md);
-  font-weight: 650;
-  line-height: 1.4;
+  width: fit-content;
+  max-width: min(80%, 36rem);
+  margin: 0 0 1rem auto;
+  padding: 0.6rem 0.95rem;
+  border-radius: 18px;
+  background: var(--surface);
+  font-size: var(--fs-read);
+  line-height: 1.5;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 
 .run-line {
@@ -452,33 +468,48 @@ button {
   color: var(--ink);
 }
 
-/* empty state */
+/* empty chat and chat messages: centred, a little above the middle */
+
+.conversation.conversation-centred {
+  grid-template-rows: none;
+  align-content: center;
+  padding: 1rem clamp(1rem, 4vw, 2rem) 16vh;
+  overflow-y: auto;
+}
+
+.empty {
+  display: grid;
+  gap: 1.25rem;
+}
 
 .empty h2 {
   font-size: var(--fs-lg);
-  font-weight: 700;
+  font-weight: 650;
+  text-align: center;
 }
 
-.empty > p {
-  margin: 0.5rem 0 1.4rem;
-  color: var(--ink-2);
-  font-size: var(--fs-read);
+.conversation-centred .composer {
+  padding: 0;
+}
+
+.conversation-centred .composer-row::before {
+  display: none; /* nothing above it to fade out */
 }
 
 .examples {
   margin: 0;
   padding: 0;
   list-style: none;
-  border-top: 1px solid var(--rule);
 }
 
 .examples button {
   display: block;
   width: 100%;
-  padding: 0.7rem 0.75rem;
+  padding: 0.6rem 0.9rem;
   border: 0;
-  border-bottom: 1px solid var(--rule);
+  border-radius: 10px;
   background: none;
+  color: var(--ink-2);
   text-align: left;
   font-size: var(--fs-read);
   line-height: 1.45;
@@ -486,7 +517,24 @@ button {
 }
 
 .examples button:hover:not(:disabled) {
-  background: var(--panel);
+  background: var(--wash);
+  color: var(--ink);
+}
+
+.chat-message {
+  display: grid;
+  justify-items: center;
+  gap: 0.6rem;
+  text-align: center;
+}
+
+.chat-message h2 {
+  font-size: var(--fs-lg);
+}
+
+.chat-message p {
+  margin: 0;
+  color: var(--ink-2);
 }
 
 /* progress while the copilot works */
@@ -530,9 +578,9 @@ button {
   display: flex;
   align-items: flex-end;
   gap: 0.4rem;
-  padding: 0.3rem;
+  padding: 0.35rem 0.35rem 0.35rem 0.6rem;
   border: 1px solid var(--rule-strong);
-  border-radius: 10px;
+  border-radius: 1.6rem;
   background: var(--surface);
 }
 
@@ -574,19 +622,31 @@ button {
   color: var(--ink-3);
 }
 
-.composer .button-primary {
-  min-width: 4.5rem;
-  min-height: 2.5rem;
-  border-radius: 7px;
+/* send: a round button with an arrow, as in ChatGPT */
+.send {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 2.25rem;
+  height: 2.25rem;
+  margin: 0.15rem;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: var(--ink);
+  color: var(--surface);
+  cursor: pointer;
+}
+
+.send:disabled {
+  opacity: 0.35;
+  cursor: default;
 }
 
 /* ------------------------------------------------------------------ answer */
 
+/* the answer reads as plain text on the page, as in ChatGPT */
 .answer {
-  padding: 1.1rem 1.3rem 1.2rem;
-  border: 1px solid var(--rule);
-  border-radius: var(--radius);
-  background: var(--surface);
   font-size: var(--fs-read);
 }
 
@@ -1261,6 +1321,46 @@ button {
 
 /* ----------------------------------------------------------- small screens */
 
+/* below 768 px the sidebar is hidden and slides in over the page from the menu button */
+@media (max-width: 767px) {
+  .app {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .sidebar-rail {
+    display: none;
+  }
+
+  .sidebar {
+    position: fixed;
+    inset: 0 auto 0 0;
+    z-index: 9;
+    width: min(18rem, 85vw);
+    transform: translateX(-100%);
+    visibility: hidden;
+    transition:
+      transform 0.18s ease-out,
+      visibility 0.18s;
+  }
+
+  .sidebar[data-open="true"] {
+    transform: none;
+    visibility: visible;
+  }
+
+  .sidebar-backdrop {
+    display: block;
+    position: fixed;
+    inset: 0;
+    z-index: 8;
+    background: rgb(20 23 26 / 0.35);
+  }
+
+  .topbar-menu {
+    display: inline-grid;
+  }
+}
+
 @media (max-width: 640px) {
   .topbar {
     flex-wrap: wrap;
@@ -1277,16 +1377,8 @@ button {
     margin: 0;
   }
 
-  .topbar .button {
-    margin-left: auto;
-  }
-
   .log {
     padding-top: 1.25rem;
-  }
-
-  .answer {
-    padding: 0.9rem 1rem 1rem;
   }
 
   .kpis dd {

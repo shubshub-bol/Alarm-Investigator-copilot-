@@ -1,11 +1,21 @@
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import type { ChatResponse, ConversationSummary } from "./api/types";
 import { App } from "./App";
+import chat from "./test/fixtures/chat-response.json";
 import health from "./test/fixtures/health.json";
 import streamText from "./test/fixtures/chat-stream.txt?raw";
 import tools from "./test/fixtures/tools.json";
 
 const QUESTION = "Investigate Boiler Feed Pump 101";
+const response = chat as unknown as ChatResponse;
+const SAVED: ConversationSummary = {
+  conversation_id: "conv-a14c5ce4373f", // the id in the recorded stream
+  title: "Boiler Feed Pump 101: High Vibration",
+  created_at: "2026-10-10T09:00:00Z",
+  updated_at: "2026-10-10T09:00:00Z",
+};
+const DETAIL = { ...SAVED, turns: [{ question: response.question, created_at: SAVED.created_at, response }] };
 
 /** A stream that hands over the recorded SSE text in small pieces, like the network does. */
 function sseResponse(text: string, chunkSize = 700): Response {
@@ -21,44 +31,137 @@ function sseResponse(text: string, chunkSize = 700): Response {
   return new Response(body, { headers: { "Content-Type": "text/event-stream" } });
 }
 
-function mockBackend(chat: () => Promise<Response>) {
+const openSaved = async (id: string) =>
+  id === DETAIL.conversation_id
+    ? Response.json(DETAIL)
+    : Response.json({ detail: "Conversation not found" }, { status: 404 });
+
+interface Backend {
+  chat?: () => Promise<Response>;
+  saved?: ConversationSummary[]; // what GET /api/conversations returns (read at call time)
+  open?: (id: string) => Promise<Response>;
+}
+
+function mockBackend({ chat = async () => sseResponse(streamText), saved = [], open = openSaved }: Backend = {}) {
   vi.stubGlobal(
     "fetch",
-    vi.fn(async (url: string) => {
+    vi.fn(async (url: string, init?: RequestInit) => {
       if (url.endsWith("/api/health")) return Response.json(health);
       if (url.endsWith("/api/tools")) return Response.json(tools);
       if (url.endsWith("/api/examples")) return Response.json({ examples: [QUESTION] });
       if (url.endsWith("/api/chat/stream")) return chat();
+      if (url.endsWith("/api/conversations")) return Response.json({ conversations: saved });
+      const id = /\/api\/conversations\/([^/]+)$/.exec(url)?.[1];
+      if (id && init?.method === "DELETE") return new Response(null, { status: 204 });
+      if (id) return open(decodeURIComponent(id));
       return new Response("not found", { status: 404 });
     }),
   );
 }
 
-afterEach(() => vi.unstubAllGlobals());
+afterEach(() => {
+  vi.unstubAllGlobals();
+  window.history.replaceState(null, "", "/");
+});
 
 async function askAndWait(question = QUESTION) {
   await userEvent.type(screen.getByRole("textbox", { name: "Question" }), `${question}{Enter}`);
   return screen.findByRole("article", { name: "Answer" });
 }
 
-test("starts simple: one status, starter questions, no evidence panel", async () => {
-  mockBackend(async () => sseResponse(streamText));
+const sidebar = () => screen.getByRole("navigation", { name: "Chats" });
+
+test("starts simple: a greeting, the input, starter questions, no evidence panel", async () => {
+  mockBackend();
   render(<App />);
   expect(await screen.findByText("Ready")).toBeInTheDocument();
+  expect(screen.getByRole("heading", { name: "What would you like to investigate?" })).toBeInTheDocument();
   expect(await screen.findByRole("button", { name: QUESTION })).toBeInTheDocument();
   expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
 });
 
 test("answers with a one-line summary of the work done", async () => {
-  mockBackend(async () => sseResponse(streamText));
+  mockBackend();
   render(<App />);
   await askAndWait();
   expect(screen.getByText(/Checked 8 alarm tools and 4 document searches in/)).toBeInTheDocument();
   expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
 });
 
+test("a new chat gets its address and appears in the list after its first answer", async () => {
+  const saved: ConversationSummary[] = [];
+  mockBackend({
+    saved,
+    chat: async () => {
+      saved.push(SAVED); // the backend saves the chat before it sends the answer
+      return sseResponse(streamText);
+    },
+  });
+  render(<App />);
+  await askAndWait();
+  await waitFor(() => expect(window.location.pathname).toBe("/c/conv-a14c5ce4373f"));
+  expect(await within(sidebar()).findByRole("button", { name: SAVED.title })).toHaveAttribute("aria-current", "page");
+});
+
+test("opening a chat's address shows its saved answers", async () => {
+  window.history.replaceState(null, "", "/c/conv-a14c5ce4373f");
+  mockBackend({ saved: [SAVED] });
+  render(<App />);
+  expect(await screen.findByRole("article", { name: "Answer" })).toBeInTheDocument();
+  expect(screen.getByText(response.question)).toBeInTheDocument();
+});
+
+test("an address for a deleted chat says so and offers a new chat", async () => {
+  window.history.replaceState(null, "", "/c/conv-000000000000");
+  mockBackend();
+  render(<App />);
+  expect(await screen.findByRole("heading", { name: "This chat doesn't exist" })).toBeInTheDocument();
+  await userEvent.click(within(screen.getByRole("main")).getByRole("button", { name: "New chat" }));
+  expect(window.location.pathname).toBe("/");
+  expect(screen.getByRole("heading", { name: "What would you like to investigate?" })).toBeInTheDocument();
+});
+
+test("a chat that can't be opened yet can be tried again", async () => {
+  window.history.replaceState(null, "", "/c/conv-a14c5ce4373f");
+  let down = true;
+  mockBackend({
+    saved: [SAVED],
+    open: async (id) => (down ? new Response("starting", { status: 503 }) : openSaved(id)),
+  });
+  render(<App />);
+  await screen.findByText("Ready"); // after this, the one automatic retry (backend reachable) has already run
+  const alert = await screen.findByRole("alert");
+  expect(alert).toHaveTextContent("Couldn't open this chat");
+  down = false;
+  await userEvent.click(within(alert).getByRole("button", { name: "Try again" }));
+  expect(await screen.findByRole("article", { name: "Answer" })).toBeInTheDocument();
+});
+
+test("New chat in the sidebar goes back to an empty chat", async () => {
+  window.history.replaceState(null, "", "/c/conv-a14c5ce4373f");
+  mockBackend({ saved: [SAVED] });
+  render(<App />);
+  await screen.findByRole("article", { name: "Answer" });
+  await userEvent.click(within(sidebar()).getByRole("button", { name: "New chat" }));
+  expect(window.location.pathname).toBe("/");
+  expect(screen.queryByRole("article", { name: "Answer" })).not.toBeInTheDocument();
+});
+
+test("deleting the open chat goes back to a new chat", async () => {
+  window.history.replaceState(null, "", "/c/conv-a14c5ce4373f");
+  mockBackend({ saved: [SAVED] });
+  render(<App />);
+  await screen.findByRole("article", { name: "Answer" });
+  await userEvent.click(await within(sidebar()).findByRole("button", { name: `Options for ${SAVED.title}` }));
+  await userEvent.click(within(sidebar()).getByRole("button", { name: "Delete" }));
+  await userEvent.click(within(screen.getByRole("dialog", { name: "Delete chat?" })).getByRole("button", { name: "Delete" }));
+  await waitFor(() => expect(window.location.pathname).toBe("/"));
+  expect(within(sidebar()).queryByRole("button", { name: SAVED.title })).not.toBeInTheDocument();
+  expect(screen.getByRole("heading", { name: "What would you like to investigate?" })).toBeInTheDocument();
+});
+
 test("'Show evidence' opens the alarm summary in a drawer that closes with Escape", async () => {
-  mockBackend(async () => sseResponse(streamText));
+  mockBackend();
   render(<App />);
   const answer = await askAndWait();
 
@@ -72,7 +175,7 @@ test("'Show evidence' opens the alarm summary in a drawer that closes with Escap
 });
 
 test("a tool chip opens the step it came from", async () => {
-  mockBackend(async () => sseResponse(streamText));
+  mockBackend();
   render(<App />);
   const answer = await askAndWait();
 
@@ -86,7 +189,7 @@ test("a tool chip opens the step it came from", async () => {
 });
 
 test("a document chip opens the cited passage", async () => {
-  mockBackend(async () => sseResponse(streamText));
+  mockBackend();
   render(<App />);
   const answer = await askAndWait();
 
@@ -99,9 +202,11 @@ test("a document chip opens the cited passage", async () => {
 
 test("a failed request explains itself and can be retried", async () => {
   let calls = 0;
-  mockBackend(async () => {
-    calls += 1;
-    return calls === 1 ? new Response("upstream down", { status: 503 }) : sseResponse(streamText);
+  mockBackend({
+    chat: async () => {
+      calls += 1;
+      return calls === 1 ? new Response("upstream down", { status: 503 }) : sseResponse(streamText);
+    },
   });
   render(<App />);
   await userEvent.type(screen.getByRole("textbox", { name: "Question" }), `${QUESTION}{Enter}`);
