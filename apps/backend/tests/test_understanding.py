@@ -103,6 +103,32 @@ def test_follow_up_references_are_detected(text):
     assert understand_with_rules(text).uses_context is True
 
 
+@pytest.mark.parametrize(
+    "text", ["hello", "Hi there!", "good morning", "thanks", "Thank you very much", "what can you do?", "help", "ok"]
+)
+def test_small_talk_is_conversation(text):
+    assert understand_with_rules(text).intent == "conversation"
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "hello, why is Boiler Feed Pump 101 alarming?",
+        "thanks, now show active alarms in EastRefinery",
+        "help with motor trip",
+    ],
+)
+def test_small_talk_words_do_not_hide_a_real_question(text):
+    assert understand_with_rules(text).intent != "conversation"
+
+
+async def test_small_talk_skips_the_llm():
+    llm = FakeLlm(error=AssertionError("the LLM must not be called for a greeting"))
+    u = await understand("hello", llm)
+    assert u.intent == "conversation"
+    assert llm.calls == 0
+
+
 def test_general_document_question_needs_no_tools():
     u = understand_with_rules("What does the safety instruction say about lockout?")
     assert u.intent == "knowledge_question"

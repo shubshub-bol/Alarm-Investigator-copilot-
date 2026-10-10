@@ -29,22 +29,11 @@ from copilot.conversations import Conversation, ConversationStore
 from copilot.llm import LlmProvider, build_provider
 from copilot.mcp_client import http_connector
 from copilot.service import ChatResponse, CopilotService, ToolsResponse
+from copilot.suggestions import STARTER_QUESTIONS
 from rag.config import RagSettings
 from rag.retrieval import Retriever
 
 log = logging.getLogger("copilot.api")
-
-EXAMPLES = [
-    "Investigate recurring high-severity alarms for Boiler Feed Pump 101 over the last 90 days, identify likely "
-    "contributing factors, retrieve the relevant operating procedure, and provide recommended actions with source "
-    "evidence.",
-    "Show active critical alarms for Boiler Feed Pump 102 and recommend immediate actions.",
-    "Why are compressor discharge pressure alarms repeatedly occurring?",
-    "Which alarm has the highest priority in EastRefinery, and why?",
-    "What related assets should be inspected for this motor trip alarm?",
-    "Which operating procedure applies to this alarm?",
-    "Are the API recommendations consistent with the maintenance manual?",
-]
 
 
 class ChatRequest(BaseModel):
@@ -187,7 +176,7 @@ def create_app(
 
     @app.get("/api/examples")
     async def examples() -> dict:
-        return {"examples": EXAMPLES}
+        return {"examples": STARTER_QUESTIONS}
 
     @app.get("/api/health")
     async def health(request: Request) -> dict:

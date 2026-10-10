@@ -93,7 +93,7 @@ def test_unknown_conversation_starts_a_new_one(api):
 
 
 def test_examples_endpoint(api):
-    assert len(api.get("/api/examples").json()["examples"]) == 7
+    assert len(api.get("/api/examples").json()["examples"]) >= 3
 
 
 def test_cors_allows_the_frontend(api):
@@ -146,3 +146,34 @@ def test_llm_outage_degrades_to_rules_and_template(retriever):
     assert body["answer"]["grounding"]["degraded"] is True
     assert "RESOURCE_EXHAUSTED" in body["answer"]["grounding"]["degraded_reason"]
     assert body["answer"]["recommended_actions"]  # still a useful answer
+
+
+# ------------------------------------------------------------------ conversation
+
+
+def test_greeting_is_answered_without_tools_or_documents(retriever):
+    transport = simulator_transport()
+    service = CopilotService(in_memory_connector(make_server(transport)), retriever, llm=BrokenLlm())
+    with TestClient(create_app(CopilotSettings(_env_file=None), service=service)) as api:
+        body = api.post("/api/chat", json={"message": "hello"}).json()
+    assert body["understanding"]["intent"] == "conversation"
+    assert body["trace"] == []
+    assert body["discovery"] is None  # no MCP session was opened
+    assert transport.requests == []  # nothing reached the Alarm API
+    assert body["status"] == "ok"  # no LLM was needed, so nothing is degraded
+    assert body["answer"]["citations"] == []
+    assert "alarm" in body["answer"]["summary"].lower()
+    assert len(body["answer"]["suggestions"]) >= 3
+
+
+def test_investigation_answers_offer_follow_up_questions(api):
+    body = api.post("/api/chat", json={"message": ACCEPTANCE}).json()
+    suggestions = body["answer"]["suggestions"]
+    assert "Which operating procedure applies to this alarm?" in suggestions
+    assert all("?" in s for s in suggestions)
+
+
+def test_examples_are_standalone_questions(api):
+    examples = api.get("/api/examples").json()["examples"]
+    assert examples
+    assert not any("this alarm" in e or "the API recommendations" in e for e in examples)

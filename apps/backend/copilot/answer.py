@@ -17,6 +17,7 @@ from copilot.consistency import ActionAssessment, assess_actions, sentences
 from copilot.facts import Fact, build_facts
 from copilot.investigation import InvestigationRun
 from copilot.llm import LlmError, LlmProvider
+from copilot.suggestions import STARTER_QUESTIONS, follow_ups
 from rag.retrieval import Citation, RetrievedPassage, render_context
 
 log = logging.getLogger("copilot.answer")
@@ -65,6 +66,7 @@ class CopilotAnswer(BaseModel):
     citations: list[Citation]
     grounding: Grounding
     markdown: str
+    suggestions: list[str] = []  # follow-up questions the GUI offers as buttons
 
 
 # ------------------------------------------------------------------ template answer
@@ -374,4 +376,39 @@ async def compose_answer(question: str, run: InvestigationRun, llm: LlmProvider 
         citations=citations,
         grounding=grounding,
         markdown=render_markdown(answer, gaps),
+        suggestions=follow_ups(ev),
+    )
+
+
+CAPABILITIES = (
+    "I investigate plant alarms. Ask about an asset (for example Boiler Feed Pump 101), the active alarms on an "
+    "asset or site, which alarm has the highest priority, or which procedure applies to an alarm. Every answer "
+    "shows the alarm data and the plant documents it is based on."
+)
+
+
+def conversation_answer(question: str) -> CopilotAnswer:
+    """Instant reply to small talk: no tools, no documents, no language model."""
+    lower = question.lower()
+    if re.search(r"\b(thanks|thank you|cheers)\b", lower):
+        summary = "You're welcome. Ask another question whenever you need to."
+    elif re.search(r"\b(bye|goodbye)\b", lower):
+        summary = "Goodbye."
+    elif re.search(r"\b(hi|hello|hey|hiya|morning|afternoon|evening)\b", lower):
+        summary = f"Hello. {CAPABILITIES}"
+    else:
+        summary = CAPABILITIES
+    return CopilotAnswer(
+        summary=summary,
+        findings=[],
+        likely_causes=[],
+        procedure=[],
+        recommended_actions=[],
+        action_assessments=[],
+        gaps=[],
+        facts=[],
+        citations=[],
+        grounding=Grounding(mode="template", retrieval_confidence="none"),
+        markdown=summary,
+        suggestions=STARTER_QUESTIONS,
     )

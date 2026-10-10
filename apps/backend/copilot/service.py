@@ -9,8 +9,8 @@ from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, Field
 
-from copilot.answer import CopilotAnswer, compose_answer
-from copilot.conversations import ConversationStore, Turn
+from copilot.answer import CopilotAnswer, compose_answer, conversation_answer
+from copilot.conversations import Conversation, ConversationStore, Turn
 from copilot.investigation import Evidence, investigate
 from copilot.llm import LlmProvider
 from copilot.mcp_client import Connector, McpToolClient
@@ -49,7 +49,7 @@ class ChatResponse(BaseModel):
     understanding: QueryUnderstanding
     answer: CopilotAnswer
     evidence: Evidence
-    discovery: DiscoveryRecord
+    discovery: DiscoveryRecord | None  # None when no MCP session was needed (small talk)
     trace: list[TraceStep]
     timings: Timings
 
@@ -105,6 +105,8 @@ class CopilotService:
         u = await understand(question, self.llm)
         understanding_ms = _ms(t0)
         await emit("understanding", u.model_dump(mode="json"))
+        if u.intent == "conversation":
+            return self._reply_without_tools(question, u, conv, trace_id, started, understanding_ms)
 
         t0 = time.perf_counter()
         async with McpToolClient(self.connector, server_name=self.server_name) as mcp:
@@ -177,6 +179,40 @@ class CopilotService:
             },
         )
         return response
+
+    def _reply_without_tools(
+        self,
+        question: str,
+        u: QueryUnderstanding,
+        conv: Conversation,
+        trace_id: str,
+        started: float,
+        understanding_ms: float,
+    ) -> ChatResponse:
+        answer = conversation_answer(question)
+        conv.turns.append(
+            Turn(
+                question=question,
+                intent=u.intent,
+                summary=answer.summary,
+                trace_id=trace_id,
+                status="ok",
+                at=datetime.now(UTC),
+            )
+        )
+        log.info("chat", extra={"fields": {"trace_id": trace_id, "intent": u.intent, "tool_calls": 0}})
+        return ChatResponse(
+            conversation_id=conv.conversation_id,
+            trace_id=trace_id,
+            question=question,
+            status="ok",
+            understanding=u,
+            answer=answer,
+            evidence=Evidence(intent=u.intent),
+            discovery=None,
+            trace=[],
+            timings=Timings(understanding_ms=understanding_ms, investigation_ms=0, answer_ms=0, total_ms=_ms(started)),
+        )
 
     async def list_tools(self) -> ToolsResponse:
         async with McpToolClient(self.connector, server_name=self.server_name) as mcp:

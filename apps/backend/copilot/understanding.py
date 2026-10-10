@@ -22,6 +22,7 @@ Intent = Literal[
     "procedure_lookup",  # which procedure applies to an alarm
     "recommendation_check",  # do the API recommendations agree with the documents
     "knowledge_question",  # general documentation question, no plant data needed
+    "conversation",  # greetings, thanks, "what can you do": no tools, no documents
 ]
 Severity = Literal["low", "medium", "high", "critical"]
 
@@ -34,6 +35,7 @@ INTENT_HELP = {
     "procedure_lookup": "Which operating procedure or manual section applies to an alarm.",
     "recommendation_check": "Whether the Alarm API's recommended actions are consistent with the documents.",
     "knowledge_question": "A general question about the documents that needs no live plant data.",
+    "conversation": "Greetings, thanks, or questions about what the assistant can do. No plant data or documents.",
 }
 
 
@@ -104,6 +106,11 @@ _INTENT_RULES: list[tuple[Intent, re.Pattern]] = [
         r"\bkeeps?\s+(happening|occurring|coming)|\bwhat('s| is) wrong\b", re.I)),
 ]  # fmt: skip
 _PROCEDURE = re.compile(r"\b(procedure|sop|manual|guide|instructions?|steps)\b", re.I)
+_SMALL_TALK = re.compile(
+    r"^(hi|hello|hey|hiya|good (morning|afternoon|evening)|thanks|thank you|cheers|ok|okay|great|cool|bye|"
+    r"goodbye|help|what can you do|who are you|what are you|how does this work)\b",
+    re.I,
+)
 
 
 def _asset_query(text: str) -> str | None:
@@ -146,6 +153,9 @@ def understand_with_rules(question: str) -> QueryUnderstanding:
 
     intent: Intent | None = next((name for name, rx in _INTENT_RULES if rx.search(question)), None)
     has_subject = bool(asset_query or asset_type or site_match or unit_match)
+    plain = " ".join(re.sub(r"[^\w\s']", " ", question).split())
+    if _SMALL_TALK.match(plain) and len(plain.split()) <= 6 and not (has_subject or topic or intent):
+        intent = "conversation"  # e.g. "hello", "thanks", "what can you do?"
     if intent is None:
         if status and has_subject:
             intent = "active_alarms"
@@ -191,8 +201,8 @@ SYSTEM_PROMPT = (
 
 async def understand(question: str, llm: LlmProvider | None) -> QueryUnderstanding:
     rules = understand_with_rules(question)
-    if llm is None:
-        return rules
+    if llm is None or rules.intent == "conversation":
+        return rules  # small talk is recognised exactly; no need to spend an LLM call on "hello"
     try:
         parsed = await llm.generate_json(SYSTEM_PROMPT, f"Question: {question}", LlmUnderstanding)
     except (LlmError, ValidationError) as exc:
