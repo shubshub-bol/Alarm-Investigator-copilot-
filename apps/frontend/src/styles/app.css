@@ -83,8 +83,8 @@ button {
   min-height: 0;
 }
 
-.topbar-menu {
-  display: none; /* small screens only */
+.topbar .topbar-menu {
+  display: none; /* small screens only; two classes so it outranks .icon-button's display */
 }
 
 /* The bar and the composer stay in place (only .log scrolls) but sit on the page colour, so they don't read as frames. */
@@ -193,6 +193,7 @@ button {
 
 .sidebar-rail {
   width: 3.25rem;
+  padding-inline: 0; /* the centred icons need the full width, or the border pushes them into a scrollbar */
   align-items: center;
 }
 
@@ -1356,7 +1357,7 @@ button {
     background: rgb(20 23 26 / 0.35);
   }
 
-  .topbar-menu {
+  .topbar .topbar-menu {
     display: inline-grid;
   }
 }

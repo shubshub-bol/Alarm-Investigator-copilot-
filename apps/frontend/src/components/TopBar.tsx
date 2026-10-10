@@ -18,7 +18,7 @@ function status(state: HealthState): Status {
   const problems = [
     !mcp.connected && "alarm data unavailable",
     !rag.index_loaded && "documents not indexed",
-    !storage.ok && "chats not saved",
+    storage?.ok === false && "chats not saved",
   ].filter(Boolean) as string[];
   if (problems.length) {
     const text = problems.join(", ");

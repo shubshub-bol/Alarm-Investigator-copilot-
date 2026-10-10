@@ -11,6 +11,12 @@ test("shows the app name and Ready when everything works", () => {
   expect(screen.getByText("Ready")).toBeInTheDocument();
 });
 
+test("a backend that does not report storage yet still shows Ready", () => {
+  const { storage: _storage, ...older } = ok; // an older backend's health has no storage field
+  render(<TopBar health={{ kind: "ok", health: older }} onMenu={vi.fn()} />);
+  expect(screen.getByText("Ready")).toBeInTheDocument();
+});
+
 test("says when chats are not being saved", () => {
   const broken: Health = { ...ok, status: "degraded", storage: { ok: false, error: "disk full" } };
   render(<TopBar health={{ kind: "ok", health: broken }} onMenu={vi.fn()} />);

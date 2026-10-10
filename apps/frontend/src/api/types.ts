@@ -276,7 +276,7 @@ export interface Health {
   mcp: { server: string; connected: boolean; tools: number; error: string | null };
   rag: { index_loaded: boolean; chunks: number; embedder: string | null };
   llm: { provider: string };
-  storage: { ok: boolean; conversations?: number; error?: string };
+  storage?: { ok: boolean; conversations?: number; error?: string }; // absent from backends older than saved chats
 }
 
 export interface ToolSpec {
