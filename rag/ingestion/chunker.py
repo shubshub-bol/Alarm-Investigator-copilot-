@@ -1,8 +1,15 @@
-"""Section-aware chunking: pack whole paragraphs up to max_words; split only paragraphs that are too long."""
+"""Section-aware chunking.
+
+Units, from largest to smallest: whole paragraphs (and tables) when they fit; otherwise list items and
+sentences; only a single sentence longer than the limit is cut into word windows. Chunks are packed from
+these units, and each chunk starts with the last whole sentence(s) of the previous chunk as overlap.
+"""
 
 import re
 
 _PARAGRAPH_BREAK = re.compile(r"\n\s*\n")
+_LIST_ITEM = re.compile(r"\n(?=\s*(?:\d+\.|[-*])\s)")
+_SENTENCE_END = re.compile(r"(?<=[^\d\s][.!?])\s+(?=[A-Z0-9(])")  # not after "4." list numbers
 
 
 def _windows(words: list[str], max_words: int, overlap: int) -> list[str]:
@@ -15,36 +22,61 @@ def _windows(words: list[str], max_words: int, overlap: int) -> list[str]:
     return out
 
 
+def _units(paragraph: str) -> list[str]:
+    """List items, then sentences inside them."""
+    units = []
+    for item in _LIST_ITEM.split(paragraph):
+        units.extend(" ".join(s.split()) for s in _SENTENCE_END.split(item) if s.strip())
+    return units
+
+
+def _tail(text: str, overlap_words: int) -> str:
+    """The trailing whole sentences of `text` that fit in overlap_words (possibly none)."""
+    tail: list[str] = []
+    for unit in reversed(_units(text)):
+        if sum(len(u.split()) for u in tail) + len(unit.split()) > overlap_words:
+            break
+        tail.insert(0, unit)
+    return " ".join(tail)
+
+
 def chunk_section(text: str, max_words: int, overlap_words: int) -> list[str]:
-    """Chunks never cross a section boundary (the caller passes one section at a time).
-
-    Paragraphs (and tables, which have no blank lines inside) stay whole when they fit. The next
-    chunk starts with the last `overlap_words` words of the previous one to keep context.
-    """
-    chunks: list[str] = []
-    current: list[str] = []  # paragraphs in the chunk being built
-    current_words = 0
-
-    def flush() -> None:
-        nonlocal current, current_words
-        if current:
-            chunks.append("\n\n".join(current))
-        current, current_words = [], 0
-
+    """Split one section (chunks never cross a section boundary) into chunks of at most max_words."""
+    pieces: list[tuple[str, bool]] = []  # (text, starts a new paragraph)
     for paragraph in (p.strip() for p in _PARAGRAPH_BREAK.split(text)):
         if not paragraph:
             continue
-        words = paragraph.split()
-        if len(words) > max_words:  # too long on its own: overlapping word windows
-            flush()
-            chunks.extend(_windows(words, max_words, overlap_words))
+        if len(paragraph.split()) <= max_words:
+            pieces.append((paragraph, True))
             continue
-        if current_words + len(words) > max_words:
-            previous_tail = " ".join(chunks[-1].split()[-overlap_words:]) if chunks and overlap_words else ""
+        for i, unit in enumerate(_units(paragraph)):
+            if len(unit.split()) <= max_words:
+                pieces.append((unit, i == 0))
+            else:
+                pieces.extend(
+                    (w, i == 0 and j == 0) for j, w in enumerate(_windows(unit.split(), max_words, overlap_words))
+                )
+
+    chunks: list[str] = []
+    current: list[tuple[str, bool]] = []
+    current_words = 0
+
+    def flush() -> None:
+        if current:
+            text_out = current[0][0]
+            for piece, new_paragraph in current[1:]:
+                text_out += ("\n\n" if new_paragraph else "\n") + piece
+            chunks.append(text_out)
+
+    for piece, new_paragraph in pieces:
+        n = len(piece.split())
+        if current and current_words + n > max_words:
             flush()
-            if previous_tail and len(previous_tail.split()) + len(words) <= max_words:
-                current, current_words = [previous_tail], len(previous_tail.split())
-        current.append(paragraph)
-        current_words += len(words)
+            tail = _tail(chunks[-1], overlap_words) if overlap_words else ""
+            current, current_words = [], 0
+            if tail and len(tail.split()) + n <= max_words:
+                current, current_words = [(tail, True)], len(tail.split())
+        current.append((piece, new_paragraph))
+        current_words += n
     flush()
     return chunks

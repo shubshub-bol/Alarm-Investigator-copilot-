@@ -14,6 +14,7 @@ from typing import Any
 import anyio
 from pydantic import BaseModel
 
+from copilot.consistency import assess_actions
 from copilot.mcp_client import McpToolClient
 from copilot.trace import RetrievalRecord, RetrievedRef, ToolCallRecord
 from copilot.understanding import QueryUnderstanding
@@ -22,7 +23,7 @@ from rag.retrieval import RetrievalFilters, RetrievedPassage, Retriever
 log = logging.getLogger("copilot.investigation")
 
 DEFAULT_LOOKBACK_DAYS = 90
-MAX_PASSAGES = 6
+MAX_PASSAGES = 8
 MAX_PRIORITY_SCORING = 8
 CORRELATION_LAG_MINUTES = 30
 _CONFIDENCE_ORDER = ["none", "low", "medium", "high"]
@@ -56,6 +57,7 @@ class Evidence(BaseModel):
     recommendations: dict | None = None
     action_checks: list[dict] = []  # per API action: the passages retrieved to check it
     passages: list[RetrievedPassage] = []
+    passage_purposes: dict[str, str] = {}  # citation key -> why it was retrieved
     retrieval_confidence: str = "none"
     notes: list[str] = []  # assumptions, selections and partial failures, shown to the user
     missing: list[str] = []  # what could not be established
@@ -170,6 +172,7 @@ class Investigation:
             key = f"S{len(self.evidence.passages) + 1}"  # renumber across searches
             renumbered = passage.model_copy(update={"citation": passage.citation.model_copy(update={"key": key})})
             self.evidence.passages.append(renumbered)
+            self.evidence.passage_purposes[key] = purpose
             kept.append(renumbered)
         return kept
 
@@ -402,7 +405,7 @@ class Investigation:
     async def rag_for_alarm(self, alarm_name: str, code: str, k: int = 3) -> None:
         asset_type = (self.evidence.asset or {}).get("asset_type", "")
         await self.retrieve(
-            f"{asset_type} {alarm_name} alarm response procedure and operator actions".strip(),
+            f"{asset_type} {alarm_name} ({code})".strip(),  # plain wording ranked best across alarm types
             f"Procedure for {alarm_name} ({code})",
             self._asset_filters([code]),
             k=k,
@@ -416,7 +419,10 @@ class Investigation:
             await self.retrieve(
                 f"{lead['alarm_name']} before {asset_type} {top.get('alarm_name', '')}: cause and maintenance checks",
                 f"Guidance on contributing factor: {lead['asset_name']} {lead['alarm_name']}",
-                RetrievalFilters(alarm_codes=[lead["alarm_code"], top.get("alarm_code", "")]),
+                RetrievalFilters(  # the "why" lives in maintenance and troubleshooting knowledge, not procedures
+                    alarm_codes=[lead["alarm_code"], top.get("alarm_code", "")],
+                    doc_types=["maintenance_manual", "troubleshooting_guide", "knowledge_article"],
+                ),
                 k=2,
             )
 
@@ -613,10 +619,24 @@ class Investigation:
     async def knowledge_question(self) -> None:
         await self.rag_question()
 
+    async def governance_if_conflict(self) -> None:
+        """If the API's advice contradicts a retrieved document, also fetch the rule on which one governs."""
+        recs = self.evidence.recommendations
+        if not recs or not self.evidence.passages:
+            return
+        if any(a.verdict == "conflict" for a in assess_actions(recs["recommended_actions"], self.evidence.passages)):
+            await self.retrieve(
+                "recommendation conflicts with an approved operating procedure, which one governs",
+                "Which guidance governs when advice conflicts",
+                RetrievalFilters(doc_types=["alarm_philosophy"]),
+                k=1,
+            )
+
     # ====================================================================== run
     async def run(self) -> InvestigationRun:
         playbook = getattr(self, self.u.intent)
         await playbook()
+        await self.governance_if_conflict()
         ev = self.evidence
         if ev.asset:
             self.state.last_asset = ev.asset

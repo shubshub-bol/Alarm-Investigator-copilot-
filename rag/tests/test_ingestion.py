@@ -113,6 +113,27 @@ def test_chunks_respect_size_limit_and_overlap():
     assert chunks[1].split()[:30] == chunks[0].split()[-30:]  # overlap carries context forward
 
 
+def test_overlap_comes_from_the_immediately_previous_chunk():
+    paras = [" ".join(f"{name} check {i} done." for i in range(25)) for name in ("Alpha", "Bravo", "Charlie")]
+    chunks = chunk_section("\n\n".join(paras), max_words=160, overlap_words=30)
+    assert len(chunks) == 3
+    assert chunks[1].startswith("Alpha")  # starts with the tail of chunk 0
+    assert chunks[2].startswith("Bravo")  # starts with the tail of chunk 1, not chunk 0
+    assert "Bravo check 24 done." in chunks[2]
+
+
+def test_long_list_is_split_on_items_and_overlap_is_whole_sentences():
+    # varying item lengths, so word windows cannot line up with item boundaries by accident
+    items = "\n".join(
+        f"{i}. Step {i} says check part {i} {'very ' * (i % 4)}carefully before restart." for i in range(1, 31)
+    )
+    chunks = chunk_section(items, max_words=100, overlap_words=20)
+    assert len(chunks) > 1
+    for chunk in chunks:
+        assert chunk.split()[0].endswith(".") and chunk.split()[0][:-1].isdigit()  # starts at an item
+        assert chunk.rstrip().endswith("restart.")  # ends at a sentence end
+
+
 def test_short_section_is_one_chunk():
     assert chunk_section("one two three", max_words=200, overlap_words=30) == ["one two three"]
 
