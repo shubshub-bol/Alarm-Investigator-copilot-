@@ -14,5 +14,9 @@
  },
  "llm": {
   "provider": "offline"
+ },
+ "storage": {
+  "ok": true,
+  "conversations": 2
  }
 }

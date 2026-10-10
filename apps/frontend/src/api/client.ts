@@ -1,5 +1,14 @@
 import { createSseParser } from "./sse";
-import type { ChatResponse, Discovery, Health, ToolsResponse, TraceStep, Understanding } from "./types";
+import type {
+  ChatResponse,
+  ConversationDetail,
+  ConversationSummary,
+  Discovery,
+  Health,
+  ToolsResponse,
+  TraceStep,
+  Understanding,
+} from "./types";
 
 // Empty = same origin (the Vite dev proxy or nginx forwards /api to the backend).
 const BASE = (import.meta.env.VITE_API_BASE_URL ?? "").replace(/\/$/, "");
@@ -47,6 +56,27 @@ async function getJson<T>(path: string): Promise<T> {
 export const getHealth = () => getJson<Health>("/api/health");
 export const getTools = () => getJson<ToolsResponse>("/api/tools");
 export const getExamples = () => getJson<{ examples: string[] }>("/api/examples");
+
+const conversationPath = (id: string) => `/api/conversations/${encodeURIComponent(id)}`;
+
+export const listConversations = () => getJson<{ conversations: ConversationSummary[] }>("/api/conversations");
+
+export async function getConversation(id: string, signal?: AbortSignal): Promise<ConversationDetail> {
+  return (await request(conversationPath(id), { signal })).json() as Promise<ConversationDetail>;
+}
+
+export async function renameConversation(id: string, title: string): Promise<ConversationSummary> {
+  const res = await request(conversationPath(id), {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ title }),
+  });
+  return res.json() as Promise<ConversationSummary>;
+}
+
+export async function deleteConversation(id: string): Promise<void> {
+  await request(conversationPath(id), { method: "DELETE" });
+}
 
 export interface StreamHandlers {
   started?: (data: { trace_id: string; conversation_id: string }) => void;

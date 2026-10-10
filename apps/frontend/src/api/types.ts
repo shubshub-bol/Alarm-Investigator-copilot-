@@ -276,6 +276,7 @@ export interface Health {
   mcp: { server: string; connected: boolean; tools: number; error: string | null };
   rag: { index_loaded: boolean; chunks: number; embedder: string | null };
   llm: { provider: string };
+  storage: { ok: boolean; conversations?: number; error?: string };
 }
 
 export interface ToolSpec {
@@ -313,4 +314,23 @@ export interface JsonSchema {
   default?: unknown;
   format?: string;
   $ref?: string;
+}
+
+// Saved chats (GET/PATCH/DELETE /api/conversations)
+
+export interface ConversationSummary {
+  conversation_id: string;
+  title: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface StoredTurn {
+  question: string;
+  created_at: string;
+  response: ChatResponse;
+}
+
+export interface ConversationDetail extends ConversationSummary {
+  turns: StoredTurn[];
 }
