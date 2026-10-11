@@ -46,6 +46,16 @@ test("warns when the API advice contradicts the procedure", () => {
   expect(warning).toHaveTextContent("Continue operation and monitor vibration trend for 24 hours");
 });
 
+test("a conflict without document text does not end the warning with 'say:'", () => {
+  const bare = structuredClone(response);
+  const conflict = bare.answer.action_assessments.find((a) => a.verdict === "conflict")!;
+  conflict.document_guidance = null;
+  renderAnswer({ response: bare });
+  const warning = screen.getByRole("note");
+  expect(warning).not.toHaveTextContent("the documents say:");
+  expect(warning).toHaveTextContent("but the documents disagree.");
+});
+
 test("clicking a chip asks for that evidence", async () => {
   const { onCite } = renderAnswer();
   await userEvent.click(screen.getAllByRole("button", { name: /Document source 1: show evidence/ })[0]);

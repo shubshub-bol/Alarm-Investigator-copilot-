@@ -291,13 +291,24 @@ def _validate(draft: LlmAnswer, valid: set[str], grounding: Grounding) -> LlmAns
 
 
 def _merge_assessments(llm: list[ActionAssessment], rules: list[ActionAssessment]) -> list[ActionAssessment]:
-    """Every API action gets a verdict. A conflict found by either check is kept (safety first)."""
+    """Every API action gets a verdict. A conflict found by either check is kept (safety first).
+
+    When both checks agree, a model verdict without the document text or citations borrows them from the
+    rule-based check, so a warning never says "the documents say:" and then shows nothing.
+    """
     by_step = {a.step: a for a in llm}
     merged = []
     for rule in rules:
         chosen = by_step.get(rule.step)
         if chosen is None or (rule.verdict == "conflict" and chosen.verdict != "conflict"):
             chosen = rule
+        elif chosen.verdict == rule.verdict:
+            chosen = chosen.model_copy(
+                update={
+                    "document_guidance": chosen.document_guidance or rule.document_guidance,
+                    "citation_keys": chosen.citation_keys or rule.citation_keys,
+                }
+            )
         merged.append(chosen)
     return merged
 

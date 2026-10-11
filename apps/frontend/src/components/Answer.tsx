@@ -72,8 +72,9 @@ export function Answer({ response, selectedKey, onCite, onOpen }: Props) {
 
       {conflicts.map((c) => (
         <div key={c.step} className="warning" role="note">
-          <strong>Check before acting.</strong> The Alarm API suggests “{c.action}”, but the documents say:{" "}
-          {c.document_guidance} <span className="chips">{c.citation_keys.map(chip)}</span>
+          <strong>Check before acting.</strong> The Alarm API suggests “{c.action}”,{" "}
+          {c.document_guidance ? `but the documents say: ${c.document_guidance}` : "but the documents disagree."}{" "}
+          <span className="chips">{c.citation_keys.map(chip)}</span>
         </div>
       ))}
 

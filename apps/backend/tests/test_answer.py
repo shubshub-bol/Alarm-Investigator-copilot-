@@ -171,6 +171,34 @@ async def test_missing_llm_assessments_are_filled_and_conflicts_kept(acceptance_
     assert set(verdicts) == {1, 2, 3}  # actions the LLM skipped are filled in
 
 
+async def test_llm_conflict_without_document_text_keeps_the_rule_checks_quote(acceptance_run):
+    """Seen with an OpenRouter model: verdict 'conflict' but no document text, so the warning ended in 'say:'."""
+    reply = {
+        "summary": "s",
+        "findings": [],
+        "likely_causes": [],
+        "procedure": [],
+        "recommended_actions": [],
+        "action_assessments": [
+            {
+                "step": 1,
+                "action": "Continue operation and monitor vibration trend for 24 hours",
+                "verdict": "conflict",
+                "document_guidance": None,
+                "citation_keys": [],
+                "explanation": "the procedure says to change over",
+            }
+        ],
+        "gaps": [],
+    }
+    answer = await compose_answer(ACCEPTANCE, acceptance_run, llm=FakeLlm(reply=reply))
+    conflict = next(a for a in answer.action_assessments if a.step == 1)
+    assert conflict.verdict == "conflict"
+    assert conflict.explanation == "the procedure says to change over"  # the model's own reasoning is kept
+    assert "7.1 mm/s" in conflict.document_guidance or "standby" in conflict.document_guidance
+    assert conflict.citation_keys
+
+
 async def test_llm_failure_degrades_to_template(acceptance_run):
     answer = await compose_answer(ACCEPTANCE, acceptance_run, llm=FakeLlm(error=LlmError("timeout")))
     assert answer.grounding.mode == "template"
