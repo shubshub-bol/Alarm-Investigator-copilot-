@@ -117,8 +117,8 @@ the Alarm API, and reads tokens and `LLM_*` values from `.env` when it exists.
 | Smoke test a running stack | `make smoke` | `uv run python scripts/smoke_stack.py` |
 | Install dependencies | `make install` | `uv sync --locked` and `npm --prefix apps/frontend ci` |
 | Build the document index | `make ingest` | `uv run python -m rag.ingestion` |
-| Python tests (383) | `make test-python` | `uv run pytest` |
-| GUI tests (66) | `make test-gui` | `npm --prefix apps/frontend run test` |
+| Python tests (387) | `make test-python` | `uv run pytest` |
+| GUI tests (67) | `make test-gui` | `npm --prefix apps/frontend run test` |
 | Coverage report | `make coverage` | see [docs/coverage.md](docs/coverage.md) |
 | Formatting, lint, types | `make lint` | `uv run ruff format --check .`, `uv run ruff check .`, `uv run mypy`, `npm --prefix apps/frontend run typecheck` |
 | Retrieval quality | | `uv run python -m rag.evaluate` |

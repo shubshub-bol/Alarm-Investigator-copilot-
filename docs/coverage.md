@@ -11,7 +11,7 @@ Measured on 11 October 2026 with `pytest-cov` over the Python packages (statemen
 | Copilot backend | 1616 | 1492 | 92% |
 | **Total** | **4378** | **4122** | **94%** |
 
-383 Python tests and 66 GUI tests pass. The GUI tests (vitest and Testing Library) cover the screens, saved chats,
+387 Python tests and 67 GUI tests pass. The GUI tests (vitest and Testing Library) cover the screens, saved chats,
 address handling and the live-stream parser; GUI line coverage is not measured.
 
 ## Reproduce
