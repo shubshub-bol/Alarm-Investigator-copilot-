@@ -8,15 +8,10 @@ import { Answer } from "./Answer";
 const response = chat as unknown as ChatResponse;
 const greeting = hello as unknown as ChatResponse;
 
-function renderAnswer(overrides: { response?: ChatResponse; selectedKey?: string | null; canAsk?: boolean } = {}) {
-  const handlers = { onCite: vi.fn(), onAsk: vi.fn(), onShowEvidence: vi.fn() };
+function renderAnswer(overrides: { response?: ChatResponse; selectedKey?: string | null } = {}) {
+  const handlers = { onCite: vi.fn(), onShowEvidence: vi.fn() };
   render(
-    <Answer
-      response={overrides.response ?? response}
-      selectedKey={overrides.selectedKey ?? null}
-      canAsk={overrides.canAsk ?? true}
-      {...handlers}
-    />,
+    <Answer response={overrides.response ?? response} selectedKey={overrides.selectedKey ?? null} {...handlers} />,
   );
   return handlers;
 }
@@ -70,28 +65,22 @@ test("'Show evidence' opens the drawer", async () => {
   expect(onShowEvidence).toHaveBeenCalled();
 });
 
-test("offers follow-up questions on the latest answer only", async () => {
-  const { onAsk } = renderAnswer();
-  await userEvent.click(screen.getByRole("button", { name: "Which operating procedure applies to this alarm?" }));
-  expect(onAsk).toHaveBeenCalledWith("Which operating procedure applies to this alarm?");
-});
-
-test("older answers do not offer follow-ups", () => {
-  renderAnswer({ canAsk: false });
+test("no 'Ask next' questions under an answer", () => {
+  renderAnswer();
+  expect(screen.queryByText("Ask next")).not.toBeInTheDocument();
   expect(screen.queryByRole("navigation", { name: "Suggested next questions" })).not.toBeInTheDocument();
 });
 
-test("a greeting is a short reply with starter questions", () => {
+test("a greeting is just the reply", () => {
   renderAnswer({ response: greeting });
   expect(screen.getByText(/I investigate plant alarms/)).toBeInTheDocument();
-  expect(screen.queryByRole("button", { name: "Show evidence" })).not.toBeInTheDocument();
-  expect(screen.getAllByRole("button")).toHaveLength(greeting.answer.suggestions.length);
+  expect(screen.queryAllByRole("button")).toHaveLength(0);
 });
 
 test("text from documents is shown as text, never as HTML", () => {
   const hostile = structuredClone(response);
   hostile.answer.summary = '<img src=x onerror="alert(1)"> pump is fine';
-  renderAnswer({ response: hostile, canAsk: false });
+  renderAnswer({ response: hostile });
   expect(screen.getByText(/<img src=x onerror="alert\(1\)"> pump is fine/)).toBeInTheDocument();
   expect(document.querySelector("img")).toBeNull();
 });

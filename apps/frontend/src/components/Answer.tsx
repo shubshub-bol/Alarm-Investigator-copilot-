@@ -8,37 +8,19 @@ interface Props {
   response: ChatResponse;
   selectedKey: string | null;
   onCite: (key: string) => void;
-  onAsk: (question: string) => void;
   onShowEvidence: () => void;
-  canAsk: boolean; // follow-ups are offered on the latest answer only
 }
 
 /** The answer, kept short: summary, what to do, any conflict to check. Everything else is in the drawer. */
-export function Answer({ response, selectedKey, onCite, onAsk, onShowEvidence, canAsk }: Props) {
+export function Answer({ response, selectedKey, onCite, onShowEvidence }: Props) {
   const { answer, evidence, discovery, status } = response;
   const chip = chipRenderer(response, selectedKey, onCite);
   const conflicts = answer.action_assessments.filter((a) => a.verdict === "conflict");
-
-  const suggestions = canAsk && answer.suggestions.length > 0 && (
-    <nav className="suggestions" aria-label="Suggested next questions">
-      <span className="muted">Ask next</span>
-      <ul>
-        {answer.suggestions.map((q) => (
-          <li key={q}>
-            <button type="button" onClick={() => onAsk(q)}>
-              {q}
-            </button>
-          </li>
-        ))}
-      </ul>
-    </nav>
-  );
 
   if (response.understanding.intent === "conversation") {
     return (
       <article className="answer" aria-label="Reply">
         <p className="summary">{answer.summary}</p>
-        {suggestions}
       </article>
     );
   }
@@ -100,7 +82,6 @@ export function Answer({ response, selectedKey, onCite, onAsk, onShowEvidence, c
         <button type="button" className="button" onClick={onShowEvidence}>
           Show evidence
         </button>
-        {suggestions}
       </footer>
     </article>
   );

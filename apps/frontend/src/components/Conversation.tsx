@@ -91,9 +91,7 @@ export function Conversation(props: Props) {
                     response={turn.response}
                     selectedKey={selection?.turnId === turn.id ? selection.key : null}
                     onCite={(key) => onCite(turn.id, key)}
-                    onAsk={onAsk}
                     onShowEvidence={() => onShowEvidence(turn.id)}
-                    canAsk={!running && turn === lastTurn}
                   />
                 </>
               )}

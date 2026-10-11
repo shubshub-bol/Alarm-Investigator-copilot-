@@ -735,47 +735,6 @@ button {
   border-top: 1px solid var(--rule);
 }
 
-/* suggested next questions */
-
-.suggestions {
-  display: flex;
-  flex: 1;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: 0.4rem 0.6rem;
-  font-size: var(--fs-sm);
-}
-
-.answer > .suggestions {
-  margin-top: 1rem;
-}
-
-.suggestions ul {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.4rem;
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-
-.suggestions li {
-  margin: 0;
-}
-
-.suggestions button {
-  padding: 0.3rem 0.6rem;
-  border: 1px solid var(--rule-strong);
-  border-radius: var(--radius);
-  background: var(--panel);
-  text-align: left;
-  cursor: pointer;
-}
-
-.suggestions button:hover {
-  border-color: var(--ink);
-}
-
 /* citation chips: filled = tool data, outlined = document */
 
 .chips {
