@@ -114,8 +114,11 @@ function EvidenceLinks({ response, onOpen }: { response: ChatResponse; onOpen: (
       {steps > 0 && (
         <button type="button" onClick={() => onOpen("steps")}>
           <StepsIcon />
-          {plural(steps, "step")} in {seconds(response.timings.total_ms)}
-          {failed > 0 && <strong className="link-failed">, {failed} failed</strong>}
+          {/* one span, so the button's flex gap does not open a space before ", 1 failed" */}
+          <span>
+            {plural(steps, "step")} in {seconds(response.timings.total_ms)}
+            {failed > 0 && <strong className="link-failed">, {failed} failed</strong>}
+          </span>
         </button>
       )}
     </nav>

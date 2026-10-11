@@ -230,6 +230,14 @@ documents, the status is `degraded`, the GUI shows "Alarm data unavailable", and
 
 **Small talk.** *"hello"* gets a short reply and no tool calls: *"Hi! Ask me about an alarm, an asset or a site."*
 
+## Screenshots
+
+| | |
+|---|---|
+| ![Answer](docs/screenshots/answer.png) **Successful investigation:** cited answer, what to do, and the conflict with the procedure | ![MCP execution trace](docs/screenshots/trace.png) **MCP execution trace:** each tool call with its arguments, the Alarm API calls (status, attempts, time) and the raw response |
+| ![RAG citations](docs/screenshots/sources.png) **RAG citations:** the passages behind `[S#]` and why each was searched for | ![MCP tool discovery](docs/screenshots/tools.png) **MCP tool discovery:** the 13 tools found on the server |
+| ![Alarm summary](docs/screenshots/evidence.png) **Alarm summary panel:** asset, alarms, trend, contributing factors, procedure, API check | ![Degraded scenario](docs/screenshots/degraded.png) **Degraded scenario:** MCP server down, answer from documents only, failed step shown |
+
 ## Architecture summary
 
 ![Architecture diagram](docs/architecture-diagram.png)
