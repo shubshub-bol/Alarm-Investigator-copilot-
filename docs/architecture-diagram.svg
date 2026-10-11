@@ -1,0 +1,286 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1800" height="1100" viewBox="0 0 1800 1100" font-family="Segoe UI, Helvetica, Arial, sans-serif">
+  <title>Alarm Investigation Copilot architecture</title>
+  <defs>
+    <marker id="a-grey" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#475569"/></marker>
+    <marker id="a-blue" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#1d4ed8"/></marker>
+    <marker id="a-green" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#15803d"/></marker>
+    <marker id="a-orange" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#b45309"/></marker>
+  </defs>
+  <style>
+    .zone { fill: #f1f5f9; stroke: #94a3b8; stroke-width: 1.5; }
+    .auth { stroke: #b91c1c; stroke-width: 2; stroke-dasharray: 9 6; }
+    .optional { fill: #ffffff; stroke: #94a3b8; stroke-width: 1.5; stroke-dasharray: 6 5; }
+    .box { fill: #ffffff; stroke: #64748b; stroke-width: 1.2; }
+    .external { fill: #fef3c7; }
+    .zt { font-size: 18px; font-weight: 700; fill: #0f172a; }
+    .bt { font-size: 15px; font-weight: 700; fill: #0f172a; }
+    .file { font-size: 11.5px; fill: #475569; font-family: Consolas, Menlo, monospace; }
+    .tx { font-size: 12.5px; fill: #1e293b; }
+    .sm { font-size: 11.5px; fill: #1e293b; }
+    .mono { font-size: 11.5px; fill: #1e3a8a; font-family: Consolas, Menlo, monospace; }
+    .badge { font-size: 12px; font-weight: 700; fill: #b91c1c; }
+    .n { font-size: 15px; font-weight: 700; }
+    .grey { stroke: #475569; stroke-width: 2; fill: none; }
+    .blue { stroke: #1d4ed8; stroke-width: 2.5; fill: none; }
+    .green { stroke: #15803d; stroke-width: 2.5; fill: none; }
+    .orange { stroke: #b45309; stroke-width: 2.5; fill: none; }
+    .dashgrey { stroke: #94a3b8; stroke-width: 2; stroke-dasharray: 6 5; fill: none; }
+  </style>
+
+  <rect width="1800" height="1100" fill="#ffffff"/>
+  <text x="30" y="50" font-size="26" font-weight="700" fill="#0f172a">Alarm Investigation Copilot: architecture</text>
+  <text x="30" y="82" font-size="15" fill="#334155">One question flows through the numbered steps. The MCP path (blue) and the RAG path (green) meet in the copilot orchestration; every answer cites both.</text>
+
+  <!-- ===================================================== left column -->
+  <rect class="zone" x="30" y="120" width="280" height="330" rx="10"/>
+  <text class="zt" x="46" y="146">User's browser</text>
+  <rect class="box" x="46" y="160" width="248" height="274" rx="8"/>
+  <text class="bt" x="58" y="184">React GUI</text>
+  <text class="file" x="58" y="203">Docker :3000, dev :5173</text>
+  <text class="tx" x="58" y="230">Chat with saved chats</text>
+  <text class="tx" x="58" y="249">Live progress while it works</text>
+  <text class="tx" x="58" y="268">Answer with [T#] and [S#] citations</text>
+  <text class="tx" x="58" y="296" font-weight="700">Evidence drawer tabs</text>
+  <text class="tx" x="58" y="315">Evidence: alarm summary panel</text>
+  <text class="tx" x="58" y="334">Steps: MCP trace, raw JSON</text>
+  <text class="tx" x="58" y="353">Sources: cited passages</text>
+  <text class="tx" x="58" y="372">Tools: MCP tool discovery</text>
+  <text class="sm" x="58" y="404" fill="#475569">nginx forwards /api to the backend,</text>
+  <text class="sm" x="58" y="421" fill="#475569">so the browser holds no secrets</text>
+
+  <rect class="zone" x="30" y="480" width="280" height="300" rx="10"/>
+  <text class="zt" x="46" y="506">Observability</text>
+  <text class="tx" x="46" y="534">JSON logs from every service</text>
+  <text class="tx" x="46" y="555">One trace_id per question:</text>
+  <text class="tx" x="46" y="576">backend, MCP server, Alarm API</text>
+  <text class="tx" x="46" y="597">request_id, conversation_id</text>
+  <text class="tx" x="46" y="618">tool, outcome, duration, retries</text>
+  <text class="tx" x="46" y="639">API status code and attempts</text>
+  <text class="tx" x="46" y="660">retrieval query, chunk ids, scores</text>
+  <text class="tx" x="46" y="681">language model latency</text>
+  <text class="tx" x="46" y="709" font-weight="700">GUI Steps tab: the full trace,</text>
+  <text class="tx" x="46" y="730" font-weight="700">raw request and response</text>
+  <text class="sm" x="46" y="758" fill="#475569">Secrets are never logged (SecretStr)</text>
+
+  <rect class="box external auth" x="30" y="810" width="280" height="100" rx="10"/>
+  <text class="bt" x="46" y="836">Language model (external)</text>
+  <text class="tx" x="46" y="858">Gemini or OpenRouter over HTTPS</text>
+  <text class="badge" x="46" y="879">API key: LLM_API_KEY</text>
+  <text class="sm" x="46" y="899">Optional: offline = rules + templates</text>
+
+  <rect class="zone" x="30" y="935" width="280" height="150" rx="10"/>
+  <text class="zt" x="46" y="958">Key</text>
+  <line class="blue" x1="46" y1="976" x2="86" y2="976"/><text class="sm" x="96" y="980">MCP path: tools and alarm data</text>
+  <line class="green" x1="46" y1="995" x2="86" y2="995"/><text class="sm" x="96" y="999">RAG path: document evidence</text>
+  <line class="orange" x1="46" y1="1014" x2="86" y2="1014"/><text class="sm" x="96" y="1018">Language model calls</text>
+  <line class="grey" x1="46" y1="1033" x2="86" y2="1033"/><text class="sm" x="96" y="1037">Requests and storage</text>
+  <rect class="auth" x="46" y="1045" width="40" height="14" fill="none"/><text class="sm" x="96" y="1057">Authentication boundary</text>
+  <rect class="optional" x="46" y="1065" width="40" height="14"/><text class="sm" x="96" y="1077">Optional, not in this build</text>
+
+  <!-- ===================================================== backend -->
+  <rect class="zone" x="350" y="120" width="760" height="580" rx="10"/>
+  <text class="zt" x="366" y="146">Copilot backend (FastAPI :8080)</text>
+
+  <rect class="box" x="370" y="160" width="720" height="64" rx="8"/>
+  <text class="bt" x="386" y="184">HTTP API and live stream</text>
+  <text class="file" x="600" y="184">api.py</text>
+  <text class="tx" x="386" y="208">/api/chat/stream (Server-Sent Events), /api/chat, /api/conversations, /api/tools, /api/health</text>
+
+  <line class="grey" x1="730" y1="224" x2="730" y2="242" marker-end="url(#a-grey)"/>
+
+  <rect class="box" x="370" y="244" width="720" height="216" rx="8" fill="#f8fafc"/>
+  <text class="bt" x="386" y="268">Copilot orchestration</text>
+  <text class="file" x="550" y="268">service.py: one trace_id and one saved chat turn per question</text>
+
+  <rect class="box" x="386" y="282" width="222" height="166" rx="6"/>
+  <text class="bt" x="398" y="304">② Understand</text>
+  <text class="file" x="398" y="322">understanding.py</text>
+  <text class="tx" x="398" y="344">Intent + asset, site, unit,</text>
+  <text class="tx" x="398" y="362">time window, severity</text>
+  <text class="tx" x="398" y="380">LLM returns JSON; keyword</text>
+  <text class="tx" x="398" y="398">rules fill gaps or take over</text>
+  <text class="tx" x="398" y="422">Small talk: a guarded reply,</text>
+  <text class="tx" x="398" y="440">no tools, no documents</text>
+
+  <rect class="box" x="624" y="282" width="222" height="166" rx="6"/>
+  <text class="bt" x="636" y="304">③ ④ Playbook</text>
+  <text class="file" x="636" y="322">investigation.py</text>
+  <text class="tx" x="636" y="344">8 playbooks, one per intent</text>
+  <text class="tx" x="636" y="362">Chains MCP tool calls: each</text>
+  <text class="tx" x="636" y="380">uses what the last one found</text>
+  <text class="tx" x="636" y="398">Builds document searches</text>
+  <text class="tx" x="636" y="416">from the MCP results</text>
+  <text class="tx" x="636" y="440">A failed step is recorded</text>
+
+  <rect class="box" x="862" y="282" width="212" height="166" rx="6"/>
+  <text class="bt" x="874" y="304">⑤ Grounded answer</text>
+  <text class="file" x="874" y="322">facts, consistency, answer</text>
+  <text class="tx" x="874" y="344">Tool facts [T#], passages [S#]</text>
+  <text class="tx" x="874" y="362">API advice vs documents:</text>
+  <text class="tx" x="874" y="380">consistent or conflict</text>
+  <text class="tx" x="874" y="398">LLM writes JSON; invented</text>
+  <text class="tx" x="874" y="416">citations are removed</text>
+  <text class="tx" x="874" y="440">Template if the LLM is down</text>
+
+  <line class="grey" x1="454" y1="460" x2="454" y2="488" marker-end="url(#a-grey)"/>
+  <text class="n" x="462" y="480" fill="#475569">⑥</text>
+  <line class="orange" x1="638" y1="460" x2="638" y2="488" marker-end="url(#a-orange)"/>
+  <text class="n" x="646" y="480" fill="#b45309">② ⑤</text>
+  <line class="green" x1="822" y1="460" x2="822" y2="488" marker-end="url(#a-green)"/>
+  <text class="n" x="830" y="480" fill="#15803d">④</text>
+  <line class="blue" x1="1006" y1="460" x2="1006" y2="488" marker-end="url(#a-blue)"/>
+  <text class="n" x="1014" y="480" fill="#1d4ed8">③</text>
+
+  <rect class="box" x="370" y="490" width="168" height="120" rx="6"/>
+  <text class="bt" x="382" y="512">Chat store</text>
+  <text class="file" x="382" y="530">conversations.py</text>
+  <text class="sm" x="382" y="551">SQLite file in a volume</text>
+  <text class="sm" x="382" y="569">Chats, answers, follow-up</text>
+  <text class="sm" x="382" y="587">context; one transaction</text>
+
+  <rect class="box" x="554" y="490" width="168" height="120" rx="6"/>
+  <text class="bt" x="566" y="512">LLM adapter</text>
+  <text class="file" x="566" y="530">llm.py</text>
+  <text class="sm" x="566" y="551">Gemini, OpenRouter</text>
+  <text class="sm" x="566" y="569">or offline (no model)</text>
+  <text class="sm" x="566" y="587">Retries when busy</text>
+
+  <rect class="box" x="738" y="490" width="168" height="120" rx="6"/>
+  <text class="bt" x="750" y="512">Retriever (RAG)</text>
+  <text class="file" x="750" y="530">rag/retrieval</text>
+  <text class="sm" x="750" y="551">BM25 + vectors, RRF</text>
+  <text class="sm" x="750" y="569">Filters, confidence</text>
+  <text class="sm" x="750" y="587">Citations [S#]</text>
+
+  <rect class="box" x="922" y="490" width="168" height="120" rx="6"/>
+  <text class="bt" x="934" y="512">MCP client</text>
+  <text class="file" x="934" y="530">mcp_client.py</text>
+  <text class="sm" x="934" y="551">Discovers the 13 tools</text>
+  <text class="sm" x="934" y="569">Schema-checked calls</text>
+  <text class="sm" x="934" y="587">Failures isolated</text>
+
+  <!-- browser <-> backend -->
+  <line class="grey" x1="294" y1="180" x2="366" y2="180" marker-end="url(#a-grey)"/>
+  <text class="n" x="300" y="172" fill="#475569">① ask</text>
+  <line class="grey" x1="368" y1="206" x2="298" y2="206" marker-end="url(#a-grey)"/>
+  <text class="n" x="300" y="228" fill="#475569">⑦ SSE</text>
+
+  <!-- MCP route: client -> MCP server, optional second server -->
+  <path class="blue" d="M1090 550 H1145 V260 H1176" marker-end="url(#a-blue)"/>
+  <path class="dashgrey" d="M1145 550 V660 H1176"/>
+
+  <!-- language model route -->
+  <path class="orange" d="M638 610 V718 H330 V860 H314" marker-end="url(#a-orange)"/>
+
+  <!-- ===================================================== MCP server and Alarm API -->
+  <rect class="zone auth" x="1180" y="120" width="590" height="280" rx="10"/>
+  <text class="zt" x="1196" y="146">MCP server: alarm-management</text>
+  <text class="badge" x="1754" y="146" text-anchor="end">bearer MCP_AUTH_TOKEN</text>
+  <text class="file" x="1500" y="146">:9000, path /mcp</text>
+
+  <rect class="box" x="1196" y="160" width="280" height="226" rx="6"/>
+  <text class="bt" x="1208" y="182">13 typed tools (read-only)</text>
+  <text class="mono" x="1208" y="202">search_assets</text>
+  <text class="mono" x="1208" y="216.5">get_asset_metadata</text>
+  <text class="mono" x="1208" y="231">get_alarms</text>
+  <text class="mono" x="1208" y="245.5">get_alarm_details</text>
+  <text class="mono" x="1208" y="260">summarize_alarms</text>
+  <text class="mono" x="1208" y="274.5">get_alarm_trends</text>
+  <text class="mono" x="1208" y="289">correlate_alarms</text>
+  <text class="mono" x="1208" y="303.5">analyze_alarm_floods</text>
+  <text class="mono" x="1208" y="318">find_rationalization_candidates</text>
+  <text class="mono" x="1208" y="332.5">score_alarm_priority</text>
+  <text class="mono" x="1208" y="347">get_operator_recommendations</text>
+  <text class="mono" x="1208" y="361.5">calculate_kpi</text>
+  <text class="mono" x="1208" y="376">list_kpi_definitions</text>
+
+  <rect class="box" x="1490" y="160" width="264" height="226" rx="6"/>
+  <text class="bt" x="1502" y="182">Runtime and connector</text>
+  <text class="tx" x="1502" y="206">Input and output schemas checked</text>
+  <text class="tx" x="1502" y="225">trace_id sent as x-trace-id</text>
+  <text class="tx" x="1502" y="244">Timeout 10 s per API call</text>
+  <text class="tx" x="1502" y="263">Retries: 429, 5xx, timeouts</text>
+  <text class="tx" x="1502" y="282">Backoff, honours Retry-After</text>
+  <text class="tx" x="1502" y="301">Errors become [CODE] messages</text>
+  <text class="tx" x="1502" y="320">Paging for long alarm lists</text>
+  <text class="tx" x="1502" y="339">DNS-rebinding protection</text>
+  <text class="file" x="1502" y="370">tools.py, runtime.py, alarm_api_client</text>
+
+  <line class="blue" x1="1475" y1="400" x2="1475" y2="436" marker-end="url(#a-blue)"/>
+  <text class="n" x="1450" y="424" fill="#1d4ed8" text-anchor="end">③</text>
+  <text class="sm" x="1487" y="424" fill="#1d4ed8">HTTP + trace headers</text>
+
+  <rect class="zone auth" x="1180" y="440" width="590" height="150" rx="10"/>
+  <text class="zt" x="1196" y="466">Alarm Management API simulator</text>
+  <text class="badge" x="1754" y="466" text-anchor="end">bearer ALARM_API_TOKEN</text>
+  <text class="file" x="1500" y="466">:8000</text>
+  <text class="tx" x="1196" y="492">15 endpoints built from the assignment's Postman collections (all 47 requests pass)</text>
+  <text class="tx" x="1196" y="513">Bearer token, trace headers, one error format, pagination</text>
+  <text class="tx" x="1196" y="534">Seed data: 3 sites, 19 assets, 24 alarm types, 423 alarms</text>
+  <text class="tx" x="1196" y="555">Planted patterns: recurring vibration, a flood, a deliberate conflict with SOP-BFP-001</text>
+  <text class="file" x="1196" y="578">services/alarm-simulator</text>
+
+  <rect class="optional" x="1180" y="620" width="590" height="80" rx="10"/>
+  <text class="bt" x="1196" y="648" fill="#475569">Optional secondary source: none in this build</text>
+  <text class="tx" x="1196" y="672" fill="#475569">Another MCP server (for example ticketing) would plug into the same MCP client.</text>
+
+  <!-- ===================================================== RAG ingestion -->
+  <rect class="zone" x="350" y="740" width="760" height="345" rx="10"/>
+  <text class="zt" x="366" y="766">RAG ingestion pipeline</text>
+  <text class="file" x="366" y="788">python -m rag.ingestion; also run when the Docker image is built</text>
+
+  <rect class="box" x="370" y="800" width="152" height="265" rx="6"/>
+  <text class="bt" x="382" y="824">Document store</text>
+  <text class="file" x="382" y="842">rag/documents</text>
+  <text class="sm" x="382" y="866">9 documents:</text>
+  <text class="sm" x="382" y="884">2 operating procedures</text>
+  <text class="sm" x="382" y="902">maintenance manual</text>
+  <text class="sm" x="382" y="920">2 troubleshooting guides</text>
+  <text class="sm" x="382" y="938">safety instruction</text>
+  <text class="sm" x="382" y="956">alarm philosophy</text>
+  <text class="sm" x="382" y="974">knowledge article</text>
+  <text class="sm" x="382" y="998">vendor note with a</text>
+  <text class="sm" x="382" y="1016">planted injection</text>
+  <text class="sm" x="382" y="1034">(quarantined)</text>
+
+  <rect class="box" x="538" y="800" width="184" height="265" rx="6"/>
+  <text class="bt" x="550" y="824">Ingestion</text>
+  <text class="file" x="550" y="842">rag/ingestion</text>
+  <text class="sm" x="550" y="866">1. load md, txt, pdf</text>
+  <text class="sm" x="550" y="886">2. screen for prompt injection</text>
+  <text class="sm" x="550" y="906">3. remove hidden text</text>
+  <text class="sm" x="550" y="926">4. tables to sentences</text>
+  <text class="sm" x="550" y="946">5. chunk: 160 words,</text>
+  <text class="sm" x="564" y="963">section-aware, overlap</text>
+  <text class="sm" x="550" y="983">6. label alarm codes</text>
+  <text class="sm" x="550" y="1003">7. embed: bge-small</text>
+  <text class="sm" x="564" y="1020">(ONNX, runs locally)</text>
+  <text class="sm" x="550" y="1040">8. save the index</text>
+
+  <rect class="box" x="738" y="800" width="168" height="265" rx="6"/>
+  <text class="bt" x="750" y="824">Retrieval index</text>
+  <text class="file" x="750" y="842">rag/index</text>
+  <text class="sm" x="750" y="866">chunks.jsonl</text>
+  <text class="sm" x="750" y="884">vectors.npy</text>
+  <text class="sm" x="750" y="902">manifest.json</text>
+  <text class="sm" x="750" y="926">54 passages,</text>
+  <text class="sm" x="750" y="944">1 quarantined</text>
+  <text class="sm" x="750" y="968">No vector database:</text>
+  <text class="sm" x="750" y="986">exact search in memory</text>
+
+  <rect class="box" x="922" y="800" width="168" height="265" rx="6"/>
+  <text class="bt" x="934" y="824">Quality checks</text>
+  <text class="file" x="934" y="842">rag/evaluate.py</text>
+  <text class="sm" x="934" y="866">12 golden questions</text>
+  <text class="sm" x="934" y="884">recall@3 = 1.00</text>
+  <text class="sm" x="934" y="902">MRR = 0.82</text>
+  <text class="sm" x="934" y="926">Injection fixture is</text>
+  <text class="sm" x="934" y="944">flagged and withheld</text>
+  <text class="sm" x="934" y="968">--check finds a</text>
+  <text class="sm" x="934" y="986">stale index</text>
+
+  <line class="green" x1="522" y1="930" x2="536" y2="930" marker-end="url(#a-green)"/>
+  <line class="green" x1="722" y1="930" x2="736" y2="930" marker-end="url(#a-green)"/>
+  <line class="green" x1="822" y1="800" x2="822" y2="613" marker-end="url(#a-green)"/>
+  <text class="sm" x="830" y="728" fill="#15803d">loaded at start</text>
+</svg>
