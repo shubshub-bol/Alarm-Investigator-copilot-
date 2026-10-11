@@ -2,6 +2,7 @@
 replies as the fallback."""
 
 import json
+import re
 
 import pytest
 from fastapi.testclient import TestClient
@@ -109,6 +110,21 @@ async def test_the_fixed_text_is_the_fallback(llm):
 )
 async def test_offline_replies_fit_the_kind_of_message(message, start):
     assert (await conversation_reply(message, None)).summary.startswith(start)
+
+
+PARTICULAR_PLACE = re.compile(r"Boiler Feed Pump|Pump \d|EastRefinery|NorthPlant|SouthPlant|Unit \d")
+
+
+async def test_the_models_instructions_do_not_suggest_a_particular_asset_or_site():
+    llm = ChattyLlm()
+    await conversation_reply("tell me a joke", llm)
+    system, prompt, _ = llm.calls[0]
+    assert not PARTICULAR_PLACE.search(system + prompt.replace("tell me a joke", ""))
+
+
+@pytest.mark.parametrize("message", ["hello", "thanks", "bye", "ok", "what can you do?", "tell me a joke"])
+async def test_fixed_replies_do_not_suggest_a_particular_asset_or_site(message):
+    assert not PARTICULAR_PLACE.search((await conversation_reply(message, None)).summary)
 
 
 def test_a_greeting_gets_the_models_reply_and_never_touches_the_alarm_api(retriever):
