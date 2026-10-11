@@ -33,13 +33,15 @@ def build_facts(run: InvestigationRun) -> list[Fact]:
 
     asset = ev.asset
     if asset:
-        related = ", ".join(a["name"] for a in ev.related_assets) or "none recorded"
-        add(
-            find("get_asset_metadata", lambda s: s.arguments.get("asset_id") == asset["asset_id"])
-            or find("get_alarm_details"),
+        metadata = find("get_asset_metadata", lambda s: s.arguments.get("asset_id") == asset["asset_id"])
+        statement = (
             f"{asset['name']} ({asset['asset_id']}) is a {asset.get('criticality', '?')}-criticality "
-            f"{asset['asset_type']} at {asset['site']} {asset['unit']}. Related assets: {related}.",
+            f"{asset['asset_type']} at {asset['site']} {asset['unit']}."
         )
+        if metadata:  # only get_asset_metadata returns related assets; without it they are unknown, not "none"
+            related = ", ".join(a["name"] for a in ev.related_assets) or "none recorded"
+            statement += f" Related assets: {related}."
+        add(metadata or find("get_alarm_details"), statement)
     if ev.top_alarm and asset:
         t = ev.top_alarm
         totals = (ev.alarm_summary or {}).get("totals", {})

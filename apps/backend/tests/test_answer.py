@@ -91,6 +91,26 @@ async def test_facts_point_at_successful_trace_steps(acceptance_run):
         assert steps[fact.step].tool == fact.tool
 
 
+async def test_asset_fact_lists_the_related_assets_that_were_looked_up(acceptance_run):
+    answer = await compose_answer(ACCEPTANCE, acceptance_run, llm=None)
+    asset_fact = next(f for f in answer.facts if f.tool == "get_asset_metadata")
+    assert "Related assets: Motor M-101 (BFP 101 Drive)" in asset_fact.statement
+
+
+async def test_follow_up_does_not_claim_related_assets_it_never_looked_up(mcp, retriever):
+    """The follow-up reloads only the alarm (get_alarm_details), so the related assets are unknown, not 'none'."""
+    state = ConversationState()
+    await investigate(understand_with_rules(ACCEPTANCE), mcp, retriever, state, trace_id="t1")
+    question = "Which operating procedure applies to this alarm?"
+    run = await investigate(understand_with_rules(question), mcp, retriever, state, trace_id="t2")
+    assert "get_asset_metadata" not in {s.tool for s in run.steps if s.kind == "mcp_tool"}  # never looked up
+
+    answer = await compose_answer(question, run, llm=None)
+    asset_fact = next((f for f in answer.facts if f.statement.startswith("Boiler Feed Pump 101 (AST-BFP-101)")), None)
+    assert asset_fact is not None  # the asset is still described
+    assert "none recorded" not in asset_fact.statement
+
+
 # ------------------------------------------------------------------- LLM answers
 
 
