@@ -89,9 +89,10 @@ guidance governs and finds `ALM-PHIL-006 §7` ("the approved procedure governs")
 to its trace step. The language model receives the facts, the API's actions to assess, the known gaps and the
 passages (wrapped as untrusted text), and returns JSON: summary, findings, likely causes, procedure, recommended
 actions, an assessment of each API action, and gaps. The answer is then validated: unknown citation keys are
-removed, findings or actions left without a valid citation are dropped, and a conflict found by the rule-based
-check is kept even if the model missed it. If the model is unavailable, a template builds the same structure
-from the same evidence.
+removed, findings or actions left without a valid citation are dropped, a conflict found by the rule-based
+check is kept even if the model missed it, and an Alarm API action that conflicts with a procedure is removed from
+the recommended actions even if the model listed it. If the model is unavailable, a template builds the same
+structure from the same evidence.
 
 **⑥ Name and save.** For a new chat, a short title is generated while the tools run (rules make one if the
 model cannot). The question, the full response and the updated context are saved in one SQLite transaction.

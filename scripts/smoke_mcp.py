@@ -1,7 +1,9 @@
 """Smoke-test a running Alarm MCP server over streamable HTTP.
 
-    MCP_SERVER_URL=http://localhost:9000/mcp MCP_AUTH_TOKEN=... uv run python scripts/smoke_mcp.py
+    uv run python scripts/smoke_mcp.py
 
+The token comes from MCP_AUTH_TOKEN (environment or .env, the same setting the server uses; Docker without a
+.env uses local-mcp-token) and the address from MCP_SERVER_URL (default http://localhost:9000/mcp).
 Lists the tools, then runs a short chain: search -> metadata -> correlation, printing the trace.
 """
 
@@ -14,12 +16,15 @@ import httpx2
 from mcp import Client
 from mcp.client.streamable_http import streamable_http_client
 
+from alarm_mcp.config import McpSettings
+
 
 async def main() -> int:
     url = os.environ.get("MCP_SERVER_URL", "http://localhost:9000/mcp")
-    token = os.environ.get("MCP_AUTH_TOKEN")
+    secret = McpSettings().auth_token
+    token = secret.get_secret_value() if secret else None
     if not token:
-        print("Set MCP_AUTH_TOKEN", file=sys.stderr)
+        print("Set MCP_AUTH_TOKEN (environment or .env)", file=sys.stderr)
         return 2
 
     http = httpx2.AsyncClient(headers={"Authorization": f"Bearer {token}"}, timeout=httpx2.Timeout(30, read=300))

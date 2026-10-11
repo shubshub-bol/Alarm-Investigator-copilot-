@@ -66,8 +66,9 @@ the response. Prompting alone cannot guarantee grounding; validation can.
 
 Every API recommendation is compared with the retrieved passages by a rule-based check and by the model. If
 either finds a conflict, the conflict is shown ("Check before acting"), with the procedure quoted and the
-governing rule (`ALM-PHIL-006 §7`: the approved procedure governs) retrieved and cited. Missing a conflict is
-worse than flagging one too many.
+governing rule (`ALM-PHIL-006 §7`: the approved procedure governs) retrieved and cited. A conflicting API action
+is also removed from the recommended actions if the model lists it anyway (seen with a free model). Missing a
+conflict is worse than flagging one too many.
 
 ## 9. Hybrid retrieval with a small local model and no vector database
 

@@ -146,7 +146,8 @@ uv run python -m alarm_mcp --stdio    # stdio, for MCP Inspector or a desktop MC
 ```
 
 `uv run python scripts/smoke_mcp.py` connects to a running server as an MCP client, lists the tools and runs a
-short chain. Every tool, schema, error and example is in the [MCP tool catalog](docs/mcp-tool-catalog.md).
+short chain (token from `MCP_AUTH_TOKEN` in the environment or `.env`; Docker without a `.env` uses
+`local-mcp-token`). Every tool, schema, error and example is in the [MCP tool catalog](docs/mcp-tool-catalog.md).
 
 | Tool | Alarm API endpoint | Purpose |
 |---|---|---|
