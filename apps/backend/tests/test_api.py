@@ -141,7 +141,7 @@ class BrokenLlm:
     async def generate_json(self, system, prompt, schema):
         raise LlmError("429 RESOURCE_EXHAUSTED")
 
-    async def generate_text(self, system, prompt):
+    async def generate_text(self, system, prompt, temperature=None):
         raise LlmError("429 RESOURCE_EXHAUSTED")
 
 

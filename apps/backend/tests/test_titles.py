@@ -124,7 +124,7 @@ class TitleLlm:
     async def generate_json(self, system, prompt, schema):
         raise LlmError("structured output is not used in these tests")
 
-    async def generate_text(self, system, prompt):
+    async def generate_text(self, system, prompt, temperature=None):
         if system != TITLE_SYSTEM:
             raise LlmError("only titles are written in these tests")
         self.title_calls += 1
