@@ -1,0 +1,103 @@
+# One command starts the whole copilot:  docker compose up --build   then open http://localhost:3000
+#
+# Works without a .env file: the language model is off (template answers) and demo tokens are used.
+# To use a language model or your own tokens, copy .env.example to .env; Compose reads it for the ${...} values below.
+# Host ports are bound to 127.0.0.1, so the services are reachable from this machine only.
+
+name: alarm-copilot
+
+x-python-service: &python-service
+  build:
+    context: .
+    target: python-app
+  image: alarm-copilot-python:local
+  restart: unless-stopped
+
+services:
+  alarm-api:
+    <<: *python-service
+    command: ["python", "-m", "alarm_simulator"]
+    environment:
+      SIM_API_TOKEN: ${ALARM_API_TOKEN:-demo-token}
+      SIM_HOST: 0.0.0.0
+      SIM_PORT: "8000"
+      SIM_LOG_LEVEL: ${LOG_LEVEL:-INFO}
+    ports:
+      - "127.0.0.1:8000:8000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=3)"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  alarm-mcp:
+    <<: *python-service
+    command: ["python", "-m", "alarm_mcp"]
+    environment:
+      MCP_HOST: 0.0.0.0
+      MCP_PORT: "9000"
+      MCP_AUTH_TOKEN: ${MCP_AUTH_TOKEN:-local-mcp-token}
+      MCP_LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      ALARM_API_BASE_URL: http://alarm-api:8000
+      ALARM_API_TOKEN: ${ALARM_API_TOKEN:-demo-token}
+    ports:
+      - "127.0.0.1:9000:9000"
+    depends_on:
+      alarm-api:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:9000/health', timeout=3)"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  copilot-backend:
+    <<: *python-service
+    command: ["python", "-m", "copilot"]
+    environment:
+      COPILOT_HOST: 0.0.0.0
+      COPILOT_PORT: "8080"
+      COPILOT_DB_PATH: /app/.data/copilot.sqlite3
+      MCP_SERVER_URL: http://alarm-mcp:9000/mcp
+      MCP_AUTH_TOKEN: ${MCP_AUTH_TOKEN:-local-mcp-token}
+      LLM_PROVIDER: ${LLM_PROVIDER:-offline}
+      LLM_MODEL: ${LLM_MODEL:-gemini-flash-latest}
+      LLM_API_KEY: ${LLM_API_KEY:-}
+      LLM_THINKING_LEVEL: ${LLM_THINKING_LEVEL:-LOW}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+    ports:
+      - "127.0.0.1:8080:8080"
+    volumes:
+      - chats:/app/.data
+    depends_on:
+      alarm-mcp:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/api/health', timeout=3)"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 60s  # loads the embedding model and the document index
+
+  frontend:
+    build:
+      context: .
+      target: gui
+    image: alarm-copilot-gui:local
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:3000:80"
+    depends_on:
+      copilot-backend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1/"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+volumes:
+  chats:

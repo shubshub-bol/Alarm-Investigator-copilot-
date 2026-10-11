@@ -1,0 +1,36 @@
+# Keep the build context small and free of secrets and local state.
+.git
+.github
+.env
+.env.*
+!.env.example
+
+# Local environments and caches (the image builds its own)
+.venv
+**/__pycache__
+**/*.py[cod]
+.pytest_cache
+.mypy_cache
+.ruff_cache
+.coverage
+coverage.xml
+htmlcov
+.cache
+.superpowers
+.claude
+
+# Generated at build time inside the image
+rag/index
+
+# Saved chats belong to a volume, not the image
+.data
+
+# Frontend dependencies and builds (installed and built inside the image)
+**/node_modules
+apps/frontend/dist
+
+# Editors / OS
+.vscode
+.idea
+.DS_Store
+Thumbs.db
