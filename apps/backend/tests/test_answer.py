@@ -199,6 +199,30 @@ async def test_llm_conflict_without_document_text_keeps_the_rule_checks_quote(ac
     assert conflict.citation_keys
 
 
+async def test_an_action_the_documents_conflict_with_is_never_recommended(acceptance_run):
+    """Seen with a free OpenRouter model: it listed the API's 'keep running' advice under what to do."""
+    keep_running = "Continue operation and monitor vibration trend for 24 hours"
+    reply = {
+        "summary": "s",
+        "findings": [],
+        "likely_causes": [],
+        "procedure": [],
+        "recommended_actions": [
+            {"text": f"API action 1 - {keep_running}", "citations": ["T7"]},
+            {"text": f"Follow SOP-BFP-001 instead of the API's '{keep_running}'.", "citations": ["S1"]},
+            {"text": "Change over to the standby pump.", "citations": ["S2"]},
+        ],
+        "action_assessments": [],
+        "gaps": [],
+    }
+    answer = await compose_answer(ACCEPTANCE, acceptance_run, llm=FakeLlm(reply=reply))
+    texts = [s.text for s in answer.recommended_actions]
+    assert f"API action 1 - {keep_running}" not in texts  # the conflicting advice itself is removed
+    assert f"Follow SOP-BFP-001 instead of the API's '{keep_running}'." in texts  # mentioning it to reject it is fine
+    assert "Change over to the standby pump." in texts
+    assert answer.grounding.removed_statements == 1
+
+
 async def test_llm_failure_degrades_to_template(acceptance_run):
     answer = await compose_answer(ACCEPTANCE, acceptance_run, llm=FakeLlm(error=LlmError("timeout")))
     assert answer.grounding.mode == "template"

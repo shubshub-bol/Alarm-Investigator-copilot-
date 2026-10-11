@@ -214,6 +214,8 @@ Rules:
    get_operator_recommendations) clearly separate.
 4. Assess every API recommended action against the documents: consistent, conflict or not_covered. If an action
    conflicts with an approved operating procedure, say so and follow the procedure (cite the governing rule if given).
+   Verdicts belong in action_assessments; recommended_actions lists only what the operator should do, and never an
+   API action that conflicts with a document.
 5. When field inspection is recommended, include the isolation / safety requirement if a document covers it.
 6. If evidence is missing or weak, say what is missing in 'gaps' instead of guessing.
 7. Be concise: summary at most 3 sentences; at most 6 items per list.
@@ -313,6 +315,23 @@ def _merge_assessments(llm: list[ActionAssessment], rules: list[ActionAssessment
     return merged
 
 
+_REJECTS = re.compile(r"\b(instead of|rather than|do not|don't|never|not to|conflicts?)\b", re.I)
+
+
+def _drop_conflicting_actions(
+    actions: list[Statement], assessments: list[ActionAssessment], grounding: Grounding
+) -> list[Statement]:
+    """Never recommend an Alarm API action the documents conflict with; naming it in order to reject it is fine."""
+    conflicting = [a.action.lower() for a in assessments if a.verdict == "conflict"]
+    kept = []
+    for s in actions:
+        if any(c in s.text.lower() for c in conflicting) and not _REJECTS.search(s.text):
+            grounding.removed_statements += 1
+            continue
+        kept.append(s)
+    return kept
+
+
 # ---------------------------------------------------------------------------- render
 def _cite(s: Statement) -> str:
     return f"{s.text} " + " ".join(f"[{k}]" for k in s.citations)
@@ -372,6 +391,9 @@ async def compose_answer(question: str, run: InvestigationRun, llm: LlmProvider 
 
     answer = _validate(draft, valid, grounding)
     answer.action_assessments = _merge_assessments(answer.action_assessments, rules)
+    answer.recommended_actions = _drop_conflicting_actions(
+        answer.recommended_actions, answer.action_assessments, grounding
+    )
 
     gaps = list(dict.fromkeys([*answer.gaps, *ev.missing, *ev.notes]))
     if ev.retrieval_confidence in ("low", "none"):
