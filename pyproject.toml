@@ -66,6 +66,14 @@ ignore = ["S101"]  # assert is fine in tests
 [tool.mypy]
 python_version = "3.12"
 ignore_missing_imports = true
+files = [
+    "services/alarm-simulator/alarm_simulator",
+    "connectors/alarm_api_client",
+    "mcp-servers/alarm-management/alarm_mcp",
+    "rag",
+    "apps/backend/copilot",
+]
+exclude = ["rag/tests/"]
 
 [tool.ruff.lint.isort]
 known-first-party = ["alarm_simulator", "alarm_api_client", "alarm_mcp", "mcp_test_helpers", "copilot_test_helpers", "rag", "copilot"]

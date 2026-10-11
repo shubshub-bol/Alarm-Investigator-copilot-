@@ -1,0 +1,135 @@
+name: CI
+
+on:
+  push:
+    branches: [main, "feature/**"]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  UV_VERSION: "0.12.13"
+  PY_COVERAGE: >-
+    --cov=alarm_simulator --cov=alarm_api_client --cov=alarm_mcp --cov=rag --cov=copilot
+
+jobs:
+  python:
+    name: Python - format, lint, types, tests, coverage
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install uv and Python 3.12
+        uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4 # v10.1.0
+        with:
+          version: ${{ env.UV_VERSION }}
+          python-version: "3.12"
+          enable-cache: true
+
+      - name: Install dependencies from the lockfile
+        run: uv sync --locked
+
+      - name: Formatting
+        run: uv run ruff format --check .
+
+      - name: Lint (ruff, including its security rules)
+        run: uv run ruff check --output-format=github .
+
+      - name: Static types (mypy)
+        run: uv run mypy
+
+      - name: Cache the embedding model
+        uses: actions/cache@v4
+        with:
+          path: .cache/models
+          key: bge-small-en-v1.5-onnx
+
+      - name: Tests - unit, MCP, RAG, orchestration, integration, end-to-end
+        run: uv run pytest ${{ env.PY_COVERAGE }} --cov-report=term --cov-report=xml --cov-report=html --junitxml=pytest-report.xml
+
+      - name: Upload coverage and test reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: python-coverage-and-tests
+          path: |
+            htmlcov/
+            coverage.xml
+            pytest-report.xml
+
+  frontend:
+    name: GUI - types, tests, build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/frontend
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: apps/frontend/package-lock.json
+
+      - name: Install dependencies from the lockfile
+        run: npm ci
+
+      - name: Static types (TypeScript)
+        run: npm run typecheck
+
+      - name: Tests
+        run: npm run test
+
+      - name: Production build
+        run: npm run build
+
+  security:
+    name: Dependency audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4 # v10.1.0
+        with:
+          version: ${{ env.UV_VERSION }}
+
+      - name: Python runtime dependencies (pip-audit)
+        run: |
+          uv export --locked --no-dev --no-emit-project --no-hashes --format requirements-txt > requirements-audit.txt
+          uvx pip-audit --disable-pip --no-deps -r requirements-audit.txt
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "24"
+
+      - name: GUI runtime dependencies (npm audit)
+        working-directory: apps/frontend
+        run: npm audit --omit=dev --audit-level=high
+
+  docker:
+    name: Docker - build, start all services, smoke test
+    needs: [python, frontend]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Build and start the four services (waits until every health check passes)
+        run: docker compose up --build --detach --wait --wait-timeout 300
+
+      - name: Smoke test - the acceptance question through the GUI's /api route
+        run: python3 scripts/smoke_stack.py --base-url http://localhost:3000
+
+      - name: Service logs
+        if: always()
+        run: docker compose logs --no-color
+
+      - name: Stop and remove
+        if: always()
+        run: docker compose down --volumes
