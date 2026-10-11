@@ -138,8 +138,7 @@ export function App() {
           onAsk={(q) => void chat.ask(q)}
           onRetry={chat.retry}
           onCite={(turnId, key) => open(turnId, key.startsWith("T") ? "steps" : "sources", key)}
-          onShowEvidence={(turnId) => open(turnId, "evidence")}
-          onShowSteps={(turnId) => open(turnId, "steps")}
+          onOpenEvidence={(turnId, tab) => open(turnId, tab)}
           onNewChat={() => newChat()}
           onReload={() => {
             if (route.conversationId) void chat.load(route.conversationId);

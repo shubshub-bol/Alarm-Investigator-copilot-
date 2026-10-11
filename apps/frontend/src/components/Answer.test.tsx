@@ -9,7 +9,7 @@ const response = chat as unknown as ChatResponse;
 const greeting = hello as unknown as ChatResponse;
 
 function renderAnswer(overrides: { response?: ChatResponse; selectedKey?: string | null } = {}) {
-  const handlers = { onCite: vi.fn(), onShowEvidence: vi.fn() };
+  const handlers = { onCite: vi.fn(), onOpen: vi.fn() };
   render(
     <Answer response={overrides.response ?? response} selectedKey={overrides.selectedKey ?? null} {...handlers} />,
   );
@@ -59,10 +59,35 @@ test("the selected chip is marked as pressed", () => {
   }
 });
 
-test("'Show evidence' opens the drawer", async () => {
-  const { onShowEvidence } = renderAnswer();
-  await userEvent.click(screen.getByRole("button", { name: "Show evidence" }));
-  expect(onShowEvidence).toHaveBeenCalled();
+const evidenceLinks = () => screen.getByRole("navigation", { name: "Where this answer comes from" });
+
+test("each link says what is behind it and opens that view", async () => {
+  const { onOpen } = renderAnswer();
+  const links = within(evidenceLinks());
+  await userEvent.click(links.getByRole("button", { name: "Alarm details" }));
+  await userEvent.click(links.getByRole("button", { name: "7 sources" }));
+  await userEvent.click(links.getByRole("button", { name: "12 steps in 898 ms" }));
+  expect(onOpen.mock.calls).toEqual([["evidence"], ["sources"], ["steps"]]);
+  expect(screen.queryByRole("button", { name: "Show evidence" })).not.toBeInTheDocument();
+});
+
+test("only links with something behind them are shown", () => {
+  const documentsOnly = structuredClone(response);
+  Object.assign(documentsOnly.evidence, { asset: null, focus_alarm: null, top_alarm: null, ranked_alarms: [] });
+  documentsOnly.evidence.active_alarms = [];
+  documentsOnly.answer.citations = [];
+  renderAnswer({ response: documentsOnly });
+  const links = within(evidenceLinks());
+  expect(links.queryByRole("button", { name: "Alarm details" })).not.toBeInTheDocument();
+  expect(links.queryByRole("button", { name: /sources?$/ })).not.toBeInTheDocument();
+  expect(links.getByRole("button", { name: /^12 steps in/ })).toBeInTheDocument();
+});
+
+test("failed steps are called out on the steps link", () => {
+  const partial = structuredClone(response);
+  partial.trace[1].status = "error";
+  renderAnswer({ response: partial });
+  expect(within(evidenceLinks()).getByRole("button", { name: "12 steps in 898 ms, 1 failed" })).toBeInTheDocument();
 });
 
 test("no 'Ask next' questions under an answer", () => {

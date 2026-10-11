@@ -456,19 +456,6 @@ button {
   overflow-wrap: anywhere;
 }
 
-.run-line {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.25rem 0.75rem;
-  margin: 0 0 0.5rem;
-  color: var(--ink-3);
-  font-size: var(--fs-sm);
-}
-
-.run-failed {
-  color: var(--ink);
-}
-
 /* empty chat and chat messages: centred, a little above the middle */
 
 .conversation.conversation-centred {
@@ -726,13 +713,43 @@ button {
 }
 
 .answer-foot {
+  margin-top: 1.2rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--rule);
+}
+
+/* where the answer comes from: one small, labelled link per evidence view */
+.answer-links {
   display: flex;
   flex-wrap: wrap;
-  align-items: flex-start;
-  gap: 0.75rem 1rem;
-  margin-top: 1.2rem;
-  padding-top: 0.9rem;
-  border-top: 1px solid var(--rule);
+  gap: 0.4rem;
+}
+
+.answer-links button {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.3rem 0.75rem 0.3rem 0.6rem;
+  border: 1px solid var(--rule-strong);
+  border-radius: 999px;
+  background: none;
+  color: var(--ink-2);
+  font-size: var(--fs-sm);
+  cursor: pointer;
+}
+
+.answer-links button:hover {
+  background: var(--wash);
+  color: var(--ink);
+}
+
+.answer-links svg {
+  width: 15px;
+  height: 15px;
+}
+
+.answer-links .link-failed {
+  color: var(--ink);
 }
 
 /* citation chips: filled = tool data, outlined = document */

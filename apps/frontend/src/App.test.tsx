@@ -95,11 +95,12 @@ test("starts simple: a greeting, the input, starter questions, no evidence panel
   expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
 });
 
-test("answers with a one-line summary of the work done", async () => {
+test("an answer links to its steps: 8 alarm tool calls and 4 document searches", async () => {
   mockBackend();
   render(<App />);
-  await askAndWait();
-  expect(screen.getByText(/Checked 8 alarm tools and 4 document searches in/)).toBeInTheDocument();
+  const answer = await askAndWait();
+  expect(within(answer).getByRole("button", { name: /^12 steps in / })).toBeInTheDocument();
+  expect(screen.queryByText(/^Checked /)).not.toBeInTheDocument();
   expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
 });
 
@@ -204,12 +205,12 @@ test("deleting the open chat goes back to a new chat", async () => {
   expect(screen.getByRole("heading", { name: "What would you like to investigate?" })).toBeInTheDocument();
 });
 
-test("'Show evidence' opens the alarm summary in a drawer that closes with Escape", async () => {
+test("'Alarm details' opens the alarm summary in a drawer that closes with Escape", async () => {
   mockBackend();
   render(<App />);
   const answer = await askAndWait();
 
-  await userEvent.click(within(answer).getByRole("button", { name: "Show evidence" }));
+  await userEvent.click(within(answer).getByRole("button", { name: "Alarm details" }));
   const drawer = screen.getByRole("dialog", { name: "Evidence for this answer" });
   expect(within(drawer).getByRole("tab", { name: "Evidence" })).toHaveAttribute("aria-selected", "true");
   expect(within(drawer).getByRole("heading", { name: "Boiler Feed Pump 101" })).toBeInTheDocument();

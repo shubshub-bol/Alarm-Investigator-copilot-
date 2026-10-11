@@ -1,8 +1,7 @@
 import { type FormEvent, type KeyboardEvent, useEffect, useRef, useState } from "react";
-import type { ChatResponse } from "../api/types";
-import { plural, seconds } from "../lib/format";
 import type { ChatStatus, Turn } from "../state/useChat";
 import { Answer } from "./Answer";
+import type { DrawerTab } from "./EvidenceDrawer";
 import { ArrowUpIcon } from "./icons";
 import { Progress } from "./Progress";
 
@@ -16,15 +15,14 @@ interface Props {
   onAsk: (question: string) => void;
   onRetry: (turnId: string) => void;
   onCite: (turnId: string, key: string) => void;
-  onShowEvidence: (turnId: string) => void;
-  onShowSteps: (turnId: string) => void;
+  onOpenEvidence: (turnId: string, tab: DrawerTab) => void;
   onNewChat: () => void;
   onReload: () => void;
 }
 
 export function Conversation(props: Props) {
   const { turns, status, loadError, running, examples, selection } = props;
-  const { onAsk, onRetry, onCite, onShowEvidence, onShowSteps, onNewChat, onReload } = props;
+  const { onAsk, onRetry, onCite, onOpenEvidence, onNewChat, onReload } = props;
   const log = useRef<HTMLDivElement>(null);
   const end = useRef<HTMLDivElement>(null);
   const lastTurn = turns[turns.length - 1];
@@ -75,7 +73,9 @@ export function Conversation(props: Props) {
           {turns.map((turn) => (
             <section key={turn.id} className="turn" aria-label={`Question: ${turn.question}`}>
               <p className="question">{turn.question}</p>
-              {turn.phase === "running" && <Progress turn={turn} onShowSteps={() => onShowSteps(turn.id)} />}
+              {turn.phase === "running" && (
+                <Progress turn={turn} onShowSteps={() => onOpenEvidence(turn.id, "steps")} />
+              )}
               {turn.phase === "failed" && (
                 <div className="failure" role="alert">
                   <p>The investigation did not finish. {turn.error}</p>
@@ -85,15 +85,12 @@ export function Conversation(props: Props) {
                 </div>
               )}
               {turn.phase === "done" && turn.response && (
-                <>
-                  <RunLine response={turn.response} onShowSteps={() => onShowSteps(turn.id)} />
-                  <Answer
-                    response={turn.response}
-                    selectedKey={selection?.turnId === turn.id ? selection.key : null}
-                    onCite={(key) => onCite(turn.id, key)}
-                    onShowEvidence={() => onShowEvidence(turn.id)}
-                  />
-                </>
+                <Answer
+                  response={turn.response}
+                  selectedKey={selection?.turnId === turn.id ? selection.key : null}
+                  onCite={(key) => onCite(turn.id, key)}
+                  onOpen={(tab) => onOpenEvidence(turn.id, tab)}
+                />
               )}
             </section>
           ))}
@@ -134,26 +131,6 @@ function ChatMessage(props: { status: ChatStatus; error: string | null; onNewCha
         Try again
       </button>
     </div>
-  );
-}
-
-/** What the copilot did, in one line: "Checked 8 alarm tools and 4 document searches in 12.3 s". */
-function RunLine({ response, onShowSteps }: { response: ChatResponse; onShowSteps: () => void }) {
-  if (response.trace.length === 0) return null;
-  const tools = response.trace.filter((s) => s.kind === "mcp_tool").length;
-  const searches = response.trace.length - tools;
-  const failed = response.trace.filter((s) => s.status !== "ok").length;
-  return (
-    <p className="run-line">
-      <span>
-        Checked {plural(tools, "alarm tool")} and {plural(searches, "document search", "document searches")} in{" "}
-        {seconds(response.timings.total_ms)}
-        {failed > 0 && <strong className="run-failed">, {plural(failed, "step")} failed</strong>}
-      </span>
-      <button type="button" className="link" onClick={onShowSteps}>
-        Show steps
-      </button>
-    </p>
   );
 }
 

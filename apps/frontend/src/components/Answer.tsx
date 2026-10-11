@@ -1,18 +1,21 @@
 import type { ReactElement } from "react";
-import type { ChatResponse, Statement } from "../api/types";
+import type { ChatResponse, Evidence, Statement } from "../api/types";
 import { splitCitations } from "../lib/citations";
+import { plural, seconds } from "../lib/format";
 import { CitationChip } from "./CitationChip";
+import type { DrawerTab } from "./EvidenceDrawer";
+import { AlarmIcon, SourcesIcon, StepsIcon } from "./icons";
 import { PriorityBadge } from "./PriorityBadge";
 
 interface Props {
   response: ChatResponse;
   selectedKey: string | null;
   onCite: (key: string) => void;
-  onShowEvidence: () => void;
+  onOpen: (tab: DrawerTab) => void; // opens the evidence panel on that tab
 }
 
 /** The answer, kept short: summary, what to do, any conflict to check. Everything else is in the drawer. */
-export function Answer({ response, selectedKey, onCite, onShowEvidence }: Props) {
+export function Answer({ response, selectedKey, onCite, onOpen }: Props) {
   const { answer, evidence, discovery, status } = response;
   const chip = chipRenderer(response, selectedKey, onCite);
   const conflicts = answer.action_assessments.filter((a) => a.verdict === "conflict");
@@ -79,11 +82,42 @@ export function Answer({ response, selectedKey, onCite, onShowEvidence }: Props)
       )}
 
       <footer className="answer-foot">
-        <button type="button" className="button" onClick={onShowEvidence}>
-          Show evidence
-        </button>
+        <EvidenceLinks response={response} onOpen={onOpen} />
       </footer>
     </article>
+  );
+}
+
+const hasAlarmData = (e: Evidence) =>
+  Boolean(e.asset || e.focus_alarm || e.top_alarm || e.ranked_alarms.length || e.active_alarms.length);
+
+/** Where the answer comes from, one click each: the alarm summary, the documents it quotes, the steps it took. */
+function EvidenceLinks({ response, onOpen }: { response: ChatResponse; onOpen: (tab: DrawerTab) => void }) {
+  const sources = response.answer.citations.length;
+  const steps = response.trace.length;
+  const failed = response.trace.filter((s) => s.status !== "ok").length;
+  return (
+    <nav className="answer-links" aria-label="Where this answer comes from">
+      {hasAlarmData(response.evidence) && (
+        <button type="button" onClick={() => onOpen("evidence")}>
+          <AlarmIcon />
+          Alarm details
+        </button>
+      )}
+      {sources > 0 && (
+        <button type="button" onClick={() => onOpen("sources")}>
+          <SourcesIcon />
+          {plural(sources, "source")}
+        </button>
+      )}
+      {steps > 0 && (
+        <button type="button" onClick={() => onOpen("steps")}>
+          <StepsIcon />
+          {plural(steps, "step")} in {seconds(response.timings.total_ms)}
+          {failed > 0 && <strong className="link-failed">, {failed} failed</strong>}
+        </button>
+      )}
+    </nav>
   );
 }
 
