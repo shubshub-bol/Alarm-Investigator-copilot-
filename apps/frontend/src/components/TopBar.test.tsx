@@ -17,6 +17,15 @@ test("a backend that does not report storage yet still shows Ready", () => {
   expect(screen.getByText("Ready")).toBeInTheDocument();
 });
 
+test("names the model without its provider prefix", () => {
+  const viaOpenRouter: Health = { ...ok, llm: { provider: "openrouter:nvidia/nemotron-3-super-120b-a12b:free" } };
+  render(<TopBar health={{ kind: "ok", health: viaOpenRouter }} onMenu={vi.fn()} />);
+  expect(screen.getByText("Ready").closest("p")).toHaveAttribute(
+    "title",
+    "13 alarm tools, 54 document passages, nvidia/nemotron-3-super-120b-a12b:free",
+  );
+});
+
 test("says when chats are not being saved", () => {
   const broken: Health = { ...ok, status: "degraded", storage: { ok: false, error: "disk full" } };
   render(<TopBar health={{ kind: "ok", health: broken }} onMenu={vi.fn()} />);

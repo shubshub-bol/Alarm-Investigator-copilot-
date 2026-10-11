@@ -13,7 +13,8 @@ function status(state: HealthState): Status {
     return { text: "Copilot service unreachable", detail: "Start the backend and this page reconnects", abnormal: true };
   }
   const { mcp, rag, llm, storage } = state.health;
-  const model = llm.provider === "offline" ? "template answers (no language model)" : llm.provider.replace(/^gemini:/, "");
+  // "gemini:gemini-flash-latest" or "openrouter:vendor/model": show the model only
+  const model = llm.provider === "offline" ? "template answers (no language model)" : llm.provider.replace(/^\w+:/, "");
   const detail = `${mcp.tools} alarm tools, ${rag.chunks} document passages, ${model}`;
   const problems = [
     !mcp.connected && "alarm data unavailable",

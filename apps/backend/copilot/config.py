@@ -20,7 +20,7 @@ class CopilotSettings(BaseSettings):
         "http://localhost:9000/mcp", validation_alias=AliasChoices("MCP_SERVER_URL", "mcp_server_url")
     )
     mcp_auth_token: SecretStr | None = Field(None, validation_alias=AliasChoices("MCP_AUTH_TOKEN", "mcp_auth_token"))
-    llm_provider: Literal["gemini", "offline"] = Field(
+    llm_provider: Literal["gemini", "openrouter", "offline"] = Field(
         "offline", validation_alias=AliasChoices("LLM_PROVIDER", "llm_provider")
     )
     llm_model: str = Field("gemini-flash-latest", validation_alias=AliasChoices("LLM_MODEL", "llm_model"))
