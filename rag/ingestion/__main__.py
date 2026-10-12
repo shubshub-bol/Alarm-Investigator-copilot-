@@ -9,7 +9,7 @@ import argparse
 import sys
 
 from rag.config import RagSettings
-from rag.embeddings import HashingEmbedder, default_embedder
+from rag.embeddings import Embedder, HashingEmbedder, default_embedder
 from rag.ingestion.pipeline import check_index, ingest
 
 
@@ -28,6 +28,7 @@ def main() -> int:
                 print(f"  {label}: {', '.join(ids)}")
         return 0 if status.up_to_date else 1
 
+    embedder: Embedder
     if args.embedder == "hashing":
         embedder = HashingEmbedder()
     else:

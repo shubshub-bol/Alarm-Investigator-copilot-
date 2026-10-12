@@ -85,7 +85,7 @@ def template_answer(run: InvestigationRun, facts: list[Fact], assessments: list[
     by_tool: dict[str, list[Fact]] = {}
     for f in facts:
         by_tool.setdefault(f.tool, []).append(f)
-    rec_fact = (by_tool.get("get_operator_recommendations") or [None])[0]
+    rec_fact = next(iter(by_tool.get("get_operator_recommendations", [])), None)
     rec_keys = [rec_fact.key] if rec_fact else []
 
     # summary
@@ -100,7 +100,7 @@ def template_answer(run: InvestigationRun, facts: list[Fact], assessments: list[
         )
     elif ev.top_alarm and ev.asset:
         t = ev.top_alarm
-        summary_fact = (by_tool.get("summarize_alarms") or [None])[0]
+        summary_fact = next(iter(by_tool.get("summarize_alarms", [])), None)
         trend = f", and the trend is {ev.trend['direction']}" if ev.trend else ""
         parts.append(
             f"{ev.asset['name']} had {t['alarm_count']} {t['alarm_name']} alarms in the last {ev.lookback_days} "

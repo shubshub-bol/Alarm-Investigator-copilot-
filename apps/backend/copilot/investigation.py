@@ -138,7 +138,8 @@ class Investigation:
                 self.evidence.missing.append("The document index is not available.")
             return []
         try:
-            result = await anyio.to_thread.run_sync(lambda: self.retriever.search(query, k=k, filters=filters))
+            retriever = self.retriever  # checked above; a local name keeps that check inside the lambda
+            result = await anyio.to_thread.run_sync(lambda: retriever.search(query, k=k, filters=filters))
         except Exception as exc:  # noqa: BLE001 - a retrieval failure must not end the investigation
             await self._record(
                 RetrievalRecord(

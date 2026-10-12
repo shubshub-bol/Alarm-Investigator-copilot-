@@ -1,6 +1,7 @@
 """Tool facts: short, citable statements ([T#]) built from MCP results, each tied to its trace step."""
 
 from collections.abc import Callable
+from functools import partial
 
 from pydantic import BaseModel
 
@@ -17,6 +18,10 @@ class Fact(BaseModel):
 
 def _pct(value: float | None) -> str:
     return "n/a" if value is None else f"{value * 100:.0f}%"
+
+
+def _is_alarm(step: ToolCallRecord, alarm_id: str) -> bool:
+    return step.arguments.get("alarm_id") == alarm_id
 
 
 def build_facts(run: InvestigationRun) -> list[Fact]:
@@ -70,7 +75,7 @@ def build_facts(run: InvestigationRun) -> list[Fact]:
         )
     for rank, scored in enumerate(ev.ranked_alarms, 1):
         add(
-            find("score_alarm_priority", lambda s, a=scored["alarm_id"]: s.arguments.get("alarm_id") == a),
+            find("score_alarm_priority", partial(_is_alarm, alarm_id=scored["alarm_id"])),
             f"Rank {rank}: {scored['asset_name']} {scored['alarm_name']} ({scored['alarm_id']}) scores "
             f"{scored['score']}/100, {scored['priority']} ({scored['priority_label']}).",
         )
