@@ -10,7 +10,7 @@ import time
 from collections.abc import AsyncIterator, Callable
 from contextlib import AbstractAsyncContextManager, AsyncExitStack, asynccontextmanager
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, cast
 
 import anyio
 import httpx2
@@ -18,6 +18,7 @@ from jsonschema import Draft202012Validator
 from mcp import Client
 from mcp.client.streamable_http import streamable_http_client
 from mcp.server import MCPServer
+from mcp.types import RequestParamsMeta
 
 from copilot.trace import ToolCallRecord, ToolSpec, ToolStatus
 
@@ -157,7 +158,9 @@ class McpToolClient:
 
         try:
             with anyio.fail_after(self.call_timeout_seconds):
-                result = await self._client.call_tool(tool, arguments, meta={"trace_id": trace_id})
+                result = await self._client.call_tool(
+                    tool, arguments, meta=cast(RequestParamsMeta, {"trace_id": trace_id})
+                )  # an open map in the SDK
         except TimeoutError:
             return record(
                 "error", error_code="MCP_TIMEOUT", error_message=f"No reply within {self.call_timeout_seconds}s."

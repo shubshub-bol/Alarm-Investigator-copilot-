@@ -3,7 +3,7 @@
 import logging
 import re
 import time
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Any, TypeVar
@@ -72,7 +72,7 @@ def to_tool_error(err: AlarmApiError, trace_id: str) -> ToolError:
 class ToolRun:
     """One tool invocation. Records every API call so the result can show a full trace."""
 
-    def __init__(self, app: AppContext, tool: str, meta: dict[str, Any] | None):
+    def __init__(self, app: AppContext, tool: str, meta: Mapping[str, Any] | None):
         self.app = app
         self.client = app.client
         self.tool = tool

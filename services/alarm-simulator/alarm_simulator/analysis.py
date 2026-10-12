@@ -8,6 +8,7 @@ from bisect import bisect_left
 from collections import Counter, defaultdict
 from datetime import datetime, timedelta
 from statistics import mean, median
+from typing import Literal
 
 from alarm_simulator.analysis_schemas import (
     AlarmRef,
@@ -113,7 +114,7 @@ def trends(alarms: list[Alarm], start: datetime, end: datetime, bucket: str, met
     first, second = mean(counts[:half]), mean(counts[half:] or [0])
     change = round((second - first) / first * 100, 1) if first else None
     if first == 0:
-        direction = "increasing" if second > 0 else "stable"
+        direction: Literal["increasing", "decreasing", "stable"] = "increasing" if second > 0 else "stable"
     elif change is not None and change > 20:
         direction = "increasing"
     elif change is not None and change < -20:
@@ -174,7 +175,7 @@ def correlate(store: DataStore, alarms: list[Alarm], lag_minutes: int, min_suppo
             med = median(x_to_y)
             leader, follower, follower_hits = (y, x, len(x_to_y)) if med < 0 else (x, y, len(y_to_x))
             lead_min = round(abs(med), 1)
-            relation = "simultaneous" if lead_min < 1 else "precedes"
+            relation: Literal["precedes", "simultaneous"] = "simultaneous" if lead_min < 1 else "precedes"
             confidence = round(follower_hits / len(by_type[follower]), 2)
             lr, fr = ref(leader), ref(follower)
             verb = "fired together with" if relation == "simultaneous" else f"fired a median {lead_min} min before"

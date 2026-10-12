@@ -24,7 +24,7 @@ def _windows(words: list[str], max_words: int, overlap: int) -> list[str]:
 
 def _units(paragraph: str) -> list[str]:
     """List items, then sentences inside them."""
-    units = []
+    units: list[str] = []
     for item in _LIST_ITEM.split(paragraph):
         units.extend(" ".join(s.split()) for s in _SENTENCE_END.split(item) if s.strip())
     return units

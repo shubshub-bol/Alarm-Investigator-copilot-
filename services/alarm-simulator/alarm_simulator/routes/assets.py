@@ -5,7 +5,13 @@ from fastapi import APIRouter, Depends, Path, Query
 from alarm_simulator.data import DataStore
 from alarm_simulator.queries import alarm_statistics, filter_alarms, search_assets
 from alarm_simulator.routes.deps import get_store, require_asset
-from alarm_simulator.schemas import AssetMetadata, AssetSearchHit, AssetSearchResponse, AssetSummary
+from alarm_simulator.schemas import (
+    AlarmStatistics,
+    AssetMetadata,
+    AssetSearchHit,
+    AssetSearchResponse,
+    AssetSummary,
+)
 
 router = APIRouter(tags=["assets"])
 Store = Annotated[DataStore, Depends(get_store)]
@@ -37,5 +43,5 @@ def metadata(store: Store, asset_id: Annotated[str, Path(max_length=64)]) -> Ass
         **asset.model_dump(exclude={"related_assets"}),
         related_assets=related,
         alarm_codes=codes,
-        alarm_statistics=alarm_statistics(filter_alarms(store, asset_ids=[asset_id])),
+        alarm_statistics=AlarmStatistics.model_validate(alarm_statistics(filter_alarms(store, asset_ids=[asset_id]))),
     )

@@ -81,7 +81,8 @@ def _is_text_heading(line: str) -> bool:
 def text_sections(body: str, doc_title: str) -> list[Section]:
     """Plain text: a line written fully in capitals starts a new section."""
     sections: list[Section] = []
-    title, current = doc_title, []
+    title = doc_title
+    current: list[str] = []
     for line in body.splitlines():
         if _is_text_heading(line):
             if "\n".join(current).strip():
@@ -102,7 +103,8 @@ def load_document(path: Path, root: Path) -> Document:
     raw = path.read_bytes()
     suffix = path.suffix.lower()
     if suffix == ".pdf":
-        meta, body = {}, read_pdf_text(path)
+        meta: dict = {}
+        body = read_pdf_text(path)
     else:
         meta, body = parse_front_matter(raw.decode("utf-8"))
 

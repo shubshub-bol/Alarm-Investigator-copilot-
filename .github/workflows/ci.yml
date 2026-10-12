@@ -46,9 +46,12 @@ jobs:
           uv run mypy > mypy-report.txt 2>&1 || status=$?
           cat mypy-report.txt
           if [ "$status" -ne 0 ]; then
-            # the whole report as one annotation, so it shows in the run summary without opening the log
-            report=$(head -c 60000 mypy-report.txt | sed -e 's/%/%25/g' -e 's/\r/%0D/g' | awk 'BEGIN{ORS="%0A"} {print}')
-            echo "::error title=mypy found type errors::${report}"
+            # the report as annotations of 20 lines each, so it shows in the run summary without opening the log
+            split -l 20 -d mypy-report.txt mypy-part-
+            for part in $(ls mypy-part-* | head -10); do
+              report=$(sed -e 's/%/%25/g' -e 's/\r/%0D/g' "$part" | awk 'BEGIN{ORS="%0A"} {print}')
+              echo "::error title=mypy found type errors (${part#mypy-part-})::${report}"
+            done
           fi
           exit "$status"
 

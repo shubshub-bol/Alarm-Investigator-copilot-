@@ -102,6 +102,7 @@ def ingest(settings: RagSettings, embedder: Embedder) -> IngestReport:
             log.warning("quarantined chunks", extra={"fields": {"doc_id": doc.doc_id, "flagged": flagged}})
 
     vectors = embedder.embed_documents([c.embed_text for c in chunks])
+    flagged_total = sum(c.injection_flag for c in chunks)
     manifest = {
         "created_at": datetime.now(UTC).isoformat(),
         "embedder": embedder.name,
@@ -110,14 +111,14 @@ def ingest(settings: RagSettings, embedder: Embedder) -> IngestReport:
         "chunk_overlap_words": settings.chunk_overlap_words,
         "document_count": len(docs),
         "chunk_count": len(chunks),
-        "flagged_chunks": sum(c.injection_flag for c in chunks),
+        "flagged_chunks": flagged_total,
         "documents": per_doc,
     }
     save_index(settings.index_dir, chunks, vectors, manifest)
     return IngestReport(
         documents=len(docs),
         chunks=len(chunks),
-        flagged_chunks=manifest["flagged_chunks"],
+        flagged_chunks=flagged_total,
         embedder=embedder.name,
         index_dir=settings.index_dir,
         duration_s=round(time.perf_counter() - started, 2),

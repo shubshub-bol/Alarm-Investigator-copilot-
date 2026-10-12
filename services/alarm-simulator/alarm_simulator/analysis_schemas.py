@@ -41,18 +41,22 @@ class ScopedRequest(StrictModel):
     time_range: TimeRange | None = None
 
 
+def _alarm_count_only() -> list[KpiName]:
+    return ["alarm_count"]
+
+
 class SummaryRequest(ScopedRequest):
     severity: list[Severity] | None = None
     alarm_types: list[AlarmType] | None = None
     group_by: list[GroupField] = Field(default_factory=list, max_length=4)
-    kpis: list[KpiName] = Field(default_factory=lambda: ["alarm_count"], min_length=1)
+    kpis: list[KpiName] = Field(default_factory=_alarm_count_only, min_length=1)
 
 
 class TrendsRequest(ScopedRequest):
     severity: list[Severity] | None = None
     alarm_codes: list[str] | None = Field(None, max_length=20, description="e.g. only PMP-VIB-HI")
     bucket: Literal["hourly", "daily", "weekly"] = "daily"
-    metrics: list[KpiName] = Field(default_factory=lambda: ["alarm_count"], min_length=1)
+    metrics: list[KpiName] = Field(default_factory=_alarm_count_only, min_length=1)
 
 
 class CorrelationRequest(ScopedRequest):
@@ -312,7 +316,7 @@ class CalculationFilters(StrictModel):
 
 class GenerateRequest(StrictModel):
     calculation_type: CalculationType
-    filters: CalculationFilters = Field(default_factory=CalculationFilters)
+    filters: CalculationFilters = Field(default_factory=lambda: CalculationFilters())
 
 
 class GenerateResponse(BaseModel):

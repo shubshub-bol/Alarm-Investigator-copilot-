@@ -66,6 +66,7 @@ ignore = ["S101"]  # assert is fine in tests
 [tool.mypy]
 python_version = "3.12"
 ignore_missing_imports = true
+plugins = ["pydantic.mypy"]
 files = [
     "services/alarm-simulator/alarm_simulator",
     "connectors/alarm_api_client",
