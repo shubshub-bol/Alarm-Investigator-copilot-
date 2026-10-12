@@ -50,6 +50,7 @@ export interface Grounding {
 
 export interface CopilotAnswer {
   summary: string;
+  analysis?: Statement[]; // the model's reasoning; absent offline and in chats saved before it existed
   findings: Statement[];
   likely_causes: Statement[];
   procedure: Statement[];

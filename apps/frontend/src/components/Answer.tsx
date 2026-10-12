@@ -63,6 +63,13 @@ export function Answer({ response, selectedKey, onCite, onOpen }: Props) {
         )}
       </p>
 
+      {(answer.analysis ?? []).length > 0 && (
+        <section aria-labelledby={`${response.trace_id}-analysis`}>
+          <h3 id={`${response.trace_id}-analysis`}>Analysis (AI)</h3>
+          <StatementList items={answer.analysis ?? []} chip={chip} />
+        </section>
+      )}
+
       {answer.recommended_actions.length > 0 && (
         <section aria-labelledby={`${response.trace_id}-todo`}>
           <h3 id={`${response.trace_id}-todo`}>What to do</h3>

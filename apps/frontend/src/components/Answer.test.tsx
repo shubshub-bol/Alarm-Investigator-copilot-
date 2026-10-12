@@ -119,3 +119,20 @@ test("text from documents is shown as text, never as HTML", () => {
   expect(screen.getByText(/<img src=x onerror="alert\(1\)"> pump is fine/)).toBeInTheDocument();
   expect(document.querySelector("img")).toBeNull();
 });
+
+test("shows the model's analysis with its evidence chips", () => {
+  const withAnalysis = structuredClone(response);
+  withAnalysis.answer.analysis = [
+    { text: "The motor bearing heats up first, so misalignment is likely.", citations: ["T4"] },
+  ];
+  renderAnswer({ response: withAnalysis });
+  const analysis = screen.getByRole("heading", { name: "Analysis (AI)" }).closest("section")!;
+  const item = within(analysis).getByRole("listitem");
+  expect(item).toHaveTextContent("misalignment is likely");
+  expect(within(item).getAllByRole("button", { name: /show evidence/ })).toHaveLength(1);
+});
+
+test("no analysis section when the answer has none, as in chats saved before it existed", () => {
+  renderAnswer();
+  expect(screen.queryByRole("heading", { name: "Analysis (AI)" })).not.toBeInTheDocument();
+});
