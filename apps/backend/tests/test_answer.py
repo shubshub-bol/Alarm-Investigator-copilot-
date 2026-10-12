@@ -111,6 +111,64 @@ async def test_follow_up_does_not_claim_related_assets_it_never_looked_up(mcp, r
     assert "none recorded" not in asset_fact.statement
 
 
+async def answer_offline(mcp, retriever, *questions):
+    """Ask the questions in one chat and compose the last answer without a model."""
+    state = ConversationState()
+    for question in questions:
+        run = await investigate(understand_with_rules(question), mcp, retriever, state, trace_id="t")
+    return await compose_answer(questions[-1], run, llm=None)
+
+
+COMPRESSOR_PROCEDURE = "Which procedure applies to Gas Compressor C-301 discharge pressure alarms?"
+
+
+async def test_procedure_items_quote_the_step_to_take(acceptance_run):
+    answer = await compose_answer(ACCEPTANCE, acceptance_run, llm=None)
+    steps = [s.text for s in answer.procedure if s.text.startswith("SOP-BFP-001 §4.1")]
+    assert any("start the standby feed pump, transfer the load to it, and stop the affected pump" in s for s in steps)
+
+
+async def test_the_first_action_is_the_procedures_step(mcp, retriever):
+    answer = await answer_offline(mcp, retriever, COMPRESSOR_PROCEDURE)
+    first = answer.recommended_actions[0]
+    assert first.text == "Follow SOP-CMP-004 §3.1: Open the recycle valve to bring discharge pressure below 42 bar."
+    assert first.citations == [key_for(answer, "SOP-CMP-004 §3.1")]
+
+
+async def test_plain_summary_for_a_procedure_question_names_the_section_and_its_step(mcp, retriever):
+    answer = await answer_offline(mcp, retriever, COMPRESSOR_PROCEDURE)
+    key = key_for(answer, "SOP-CMP-004 §3.1")
+    assert answer.summary == (
+        "SOP-CMP-004 §3.1 (Gas Compressor Operation and Alarm Response) applies: Open the recycle valve to bring "
+        f"discharge pressure below 42 bar [{key}]."
+    )
+
+
+async def test_plain_summary_for_an_advice_check_counts_the_verdicts(mcp, retriever):
+    answer = await answer_offline(
+        mcp, retriever, ACCEPTANCE, "Are the API recommendations consistent with the maintenance manual?"
+    )
+    assert (
+        "Of the Alarm API's 3 recommended actions, 2 match the documents, 1 conflict with them, 0 not covered"
+        in answer.summary
+    )
+
+
+async def test_plain_summary_for_related_assets_names_those_with_recent_alarms(mcp, retriever):
+    answer = await answer_offline(mcp, retriever, "What related assets should be inspected for this motor trip alarm?")
+    assert (
+        "Related assets with recent alarms: Recycle Compressor C-502 (1 in the 7 days before), "
+        "Motor M-502 (Cooling Water Pump) (3 in the 7 days before)" in answer.summary
+    )
+    assert f"[{key_for(answer, 'TG-MTR-003 §6')}]" in answer.summary
+
+
+async def test_plain_summary_for_a_document_question_quotes_the_best_passage(mcp, retriever):
+    answer = await answer_offline(mcp, retriever, "How quickly must a P1 alarm be responded to?")
+    assert answer.summary.startswith("ALM-PHIL-006")
+    assert answer.summary.endswith("[S1].")
+
+
 # ------------------------------------------------------------------- LLM answers
 
 

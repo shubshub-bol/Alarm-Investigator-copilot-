@@ -9,6 +9,7 @@ and uncited findings or actions are dropped.
 import json
 import logging
 import re
+from collections import Counter
 from typing import Literal
 
 from pydantic import BaseModel, Field, ValidationError
@@ -80,17 +81,95 @@ def _key_sentence(passage: RetrievedPassage, words: tuple[str, ...]) -> str:
     return found[0] if found else passage.citation.snippet
 
 
-def template_answer(run: InvestigationRun, facts: list[Fact], assessments: list[ActionAssessment]) -> LlmAnswer:
-    ev = run.evidence
-    by_tool: dict[str, list[Fact]] = {}
-    for f in facts:
-        by_tool.setdefault(f.tool, []).append(f)
-    rec_fact = next(iter(by_tool.get("get_operator_recommendations", [])), None)
-    rec_keys = [rec_fact.key] if rec_fact else []
+_CHANGES_PLANT = re.compile(
+    r"\b(stop|start|change ?over|transfer|shut ?down|reduce|open|close|isolate|replace)\b", re.I
+)  # an action that changes the plant
+_CHECKS = re.compile(r"\b(check|confirm|inspect|verify|compare|report|raise|inform)\b", re.I)
+_WORD = re.compile(r"[a-z0-9]+")
 
-    # summary
-    parts = []
-    if ev.ranked_alarms:
+
+def _ranked_step(passage: RetrievedPassage, alarm_name: str) -> tuple[tuple[int, int], str]:
+    """A procedure passage's key step, with its rank. An action that changes the plant (start, stop, change over,
+    reduce, ...) ranks above a check; then the sentence sharing more words with the alarm name; the first wins a
+    tie. Without any action sentence: the snippet, ranked lowest."""
+    wanted = set(_WORD.findall(alarm_name.lower()))
+    best: tuple[tuple[int, int], str] = ((0, 0), passage.citation.snippet)
+    for s in sentences(passage.text):
+        kind = 2 if _CHANGES_PLANT.search(s) else 1 if _CHECKS.search(s) else 0
+        rank = (kind, len(wanted & set(_WORD.findall(s.lower()))))
+        if kind and rank > best[0]:
+            best = (rank, s)
+    return best
+
+
+def _alarm_name(run: InvestigationRun) -> str:
+    ev = run.evidence
+    return (ev.focus_alarm or ev.top_alarm or {}).get("alarm_name", "")
+
+
+def _main_procedure(run: InvestigationRun) -> tuple[RetrievedPassage, str] | None:
+    """The procedure passage whose key step ranks highest (operating procedures first), with that step."""
+    name = _alarm_name(run)
+    ranked = [
+        (p.citation.doc_type == "operating_procedure", _ranked_step(p, name), p)
+        for p in _passages_for(run, "Approved operating procedure", "Procedure for")
+    ]
+    if not ranked:
+        return None
+    _, (_, step), passage = max(ranked, key=lambda r: (r[0], r[1][0]))  # max keeps the first on a tie
+    return passage, step
+
+
+def _first_sentence(passage: RetrievedPassage) -> str:
+    return (sentences(passage.text) or [passage.citation.snippet])[0]
+
+
+def _cited(sentence: str, *keys: str) -> str:
+    """A sentence with its citation keys before the full stop: 'It is rising [T2].'"""
+    return f"{sentence.rstrip().rstrip('.')} " + " ".join(f"[{k}]" for k in keys) + "."
+
+
+def _related_with_alarms(recommendations: dict | None) -> list[str]:
+    """Related assets with an active alarm or alarms in the 7 days before, from the Alarm API's context."""
+    out = []
+    for r in (recommendations or {}).get("related_assets") or []:
+        active = [a["alarm_name"] for a in r["active_alarms"]]
+        if active:
+            out.append(f"{r['name']} (active: {', '.join(active)})")
+        elif r["alarms_prior_7_days"]:
+            out.append(f"{r['name']} ({r['alarms_prior_7_days']} in the 7 days before)")
+    return out
+
+
+def _plain_summary(run: InvestigationRun, by_tool: dict[str, list[Fact]], assessments: list[ActionAssessment]) -> str:
+    """The summary built from the evidence alone: one form per intent, every statement cited."""
+    ev = run.evidence
+    rec_facts = by_tool.get("get_operator_recommendations", [])
+    parts: list[str] = []
+    main = _main_procedure(run)
+    related = _related_with_alarms(ev.recommendations)
+    if ev.intent == "procedure_lookup" and main:
+        passage, step = main
+        c = passage.citation
+        parts.append(_cited(f"{c.label} ({c.title}) applies: {step}", c.key))
+    elif ev.intent == "recommendation_check" and assessments and rec_facts:
+        n = Counter(a.verdict for a in assessments)
+        parts.append(
+            _cited(
+                f"Of the Alarm API's {len(assessments)} recommended actions, {n['consistent']} match the documents, "
+                f"{n['conflict']} conflict with them, {n['not_covered']} not covered",
+                rec_facts[0].key,
+            )
+        )
+    elif ev.intent == "related_assets" and related:
+        keys = [f.key for f in rec_facts if f.statement.startswith("Related asset ")]
+        parts.append(_cited(f"Related assets with recent alarms: {', '.join(related)}", *keys))
+        for p in _passages_for(run, "Which related equipment")[:1]:
+            parts.append(_cited(f"{p.citation.label} lists what to inspect: {_first_sentence(p)}", p.citation.key))
+    elif ev.intent == "knowledge_question" and ev.passages:
+        p = ev.passages[0]
+        parts.append(_cited(f"{p.citation.label} ({p.citation.title}): {_first_sentence(p)}", p.citation.key))
+    elif ev.ranked_alarms:
         best = ev.ranked_alarms[0]
         rank_fact = next((f for f in by_tool.get("score_alarm_priority", []) if best["alarm_id"] in f.statement), None)
         parts.append(
@@ -130,6 +209,18 @@ def template_answer(run: InvestigationRun, facts: list[Fact], assessments: list[
             if ev.passages
             else "I could not find reliable evidence for this question."
         )
+    return " ".join(parts)
+
+
+def template_answer(run: InvestigationRun, facts: list[Fact], assessments: list[ActionAssessment]) -> LlmAnswer:
+    ev = run.evidence
+    by_tool: dict[str, list[Fact]] = {}
+    for f in facts:
+        by_tool.setdefault(f.tool, []).append(f)
+    rec_fact = next(iter(by_tool.get("get_operator_recommendations", [])), None)
+    rec_keys = [rec_fact.key] if rec_fact else []
+
+    summary = _plain_summary(run, by_tool, assessments)
 
     # findings: every tool fact except the API's recommendation list (shown under actions instead)
     findings = [Statement(text=f.statement, citations=[f.key]) for f in facts if f is not rec_fact]
@@ -147,9 +238,10 @@ def template_answer(run: InvestigationRun, facts: list[Fact], assessments: list[
         )
 
     # procedure
+    name = _alarm_name(run)
     procedure = [
         Statement(
-            text=f"{p.citation.label} - {p.citation.title} (rev {p.citation.revision}): {p.citation.snippet}",
+            text=f"{p.citation.label} - {p.citation.title} (rev {p.citation.revision}): {_ranked_step(p, name)[1]}",
             citations=[p.citation.key],
         )
         for p in _passages_for(run, "Procedure for", "Approved operating procedure", "Which related equipment",
@@ -166,6 +258,10 @@ def template_answer(run: InvestigationRun, facts: list[Fact], assessments: list[
                     citations=a.citation_keys + rec_keys,
                 )
             )
+    main = _main_procedure(run)
+    if main and not any(a.verdict == "conflict" for a in assessments):
+        passage, step = main
+        actions.append(Statement(text=f"Follow {passage.citation.label}: {step}", citations=[passage.citation.key]))
     for a in assessments:
         if a.verdict == "consistent":
             actions.append(
@@ -191,7 +287,7 @@ def template_answer(run: InvestigationRun, facts: list[Fact], assessments: list[
             )
         )
     return LlmAnswer(
-        summary=" ".join(parts),
+        summary=summary,
         findings=findings,
         likely_causes=causes,
         procedure=procedure,
