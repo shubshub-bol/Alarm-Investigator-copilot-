@@ -122,6 +122,21 @@ Alarm API's recommendations, each with a verdict of consistent, conflict or not 
 Secrets come from `.env` (never committed) into `SecretStr` settings, so they print as `**********` and never
 appear in logs, tool results or error messages. In Docker, host ports are bound to `127.0.0.1` only.
 
+## Security
+
+| Expectation | How it is handled |
+|---|---|
+| Secret management | Tokens and keys only in `.env` (git-ignored; `.env.example` has placeholders), loaded as `SecretStr` so they never appear in logs, results or errors; the git history was scanned for keys |
+| MCP tool authorization | `/mcp` requires a bearer token (constant-time check); every tool is read-only and idempotent; the copilot calls only tools it discovered, with arguments checked against their schemas |
+| Input validation | pydantic models on every API and tool input (types, ranges, lengths, enums, id patterns); ids URL-escaped in paths; question length limited to 2000 characters |
+| Output encoding | The GUI renders all text as text (React escaping; raw JSON shown in `<pre>`, never as HTML); nginx sends a content security policy, `nosniff` and `DENY` framing headers; errors never echo submitted input |
+| Prompt injection | Documents are screened at ingestion and flagged passages are quarantined; small-talk messages reach the model as quoted data and its replies are checked for links, code, alarm codes and readings; every prompt says that documents and facts are data, not instructions |
+| Retrieved-document trust boundaries | Passages are wrapped as untrusted, delimited blocks; the system prompt says they are data, not instructions; every statement must cite given evidence |
+| SQL injection prevention | Only parameterised SQLite queries; no SQL is ever built from input |
+| Write-operation approval | There are no write operations; any future one (such as creating a ticket) must ask for explicit confirmation |
+| Tool misuse | Fixed playbooks decide which tools run, not the model; tools are read-only; limits on page sizes, list lengths and alarms scored per question; a conflicting API action is never recommended |
+| Dependency risk | Locked dependencies (`uv.lock`, `package-lock.json`); CI runs `pip-audit` and `npm audit`; containers run as a non-root user with read-only code |
+
 ## Observability
 
 Every service writes one JSON log line per event. One trace id follows a question from the backend through the

@@ -110,6 +110,10 @@ Secrets live only in `.env`, which git ignores.
 In Docker, `docker-compose.yml` sets the addresses between containers, uses `ALARM_API_TOKEN` on both sides of
 the Alarm API, and reads tokens and `LLM_*` values from `.env` when it exists.
 
+The guidelines' sample `.env` also lists `VECTOR_STORE_URL` and `TICKETING_API_URL`. Neither is needed here: the
+document index is a set of local files (no vector database, see [RAG design](docs/rag-design.md)), and this use
+case has no ticketing system.
+
 ## Build, run and test
 
 | Task | make | Plain command |

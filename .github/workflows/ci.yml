@@ -22,7 +22,7 @@ jobs:
     name: Python - format, lint, types, tests, coverage
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
       - name: Install uv and Python 3.12
         uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4 # v10.1.0
@@ -56,7 +56,7 @@ jobs:
           exit "$status"
 
       - name: Cache the embedding model
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: .cache/models
           key: bge-small-en-v1.5-onnx
@@ -66,7 +66,7 @@ jobs:
 
       - name: Upload coverage and test reports
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: python-coverage-and-tests
           path: |
@@ -81,9 +81,9 @@ jobs:
       run:
         working-directory: apps/frontend
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-node@v5
+      - uses: actions/setup-node@v7
         with:
           node-version: "24"
           cache: npm
@@ -105,7 +105,7 @@ jobs:
     name: Dependency audit
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
       - name: Install uv
         uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4 # v10.1.0
@@ -117,7 +117,7 @@ jobs:
           uv export --locked --no-dev --no-emit-project --no-hashes --format requirements-txt > requirements-audit.txt
           uvx pip-audit --disable-pip --no-deps -r requirements-audit.txt
 
-      - uses: actions/setup-node@v5
+      - uses: actions/setup-node@v7
         with:
           node-version: "24"
 
@@ -130,7 +130,7 @@ jobs:
     needs: [python, frontend]
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
       - name: Build and start the four services (waits until every health check passes)
         run: docker compose up --build --detach --wait --wait-timeout 300

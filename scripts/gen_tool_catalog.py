@@ -228,7 +228,11 @@ async def main() -> None:
             )
             purpose = " ".join((tool.description or "").split())
             invocation = json.dumps({"name": tool.name, "arguments": args}, indent=2, ensure_ascii=False)
-            index_rows.append(f"| [`{tool.name}`](#{tool.name.replace('_', '-')}) | {endpoint} | {tool.title} |")
+            index_rows.append(f"| [`{tool.name}`](#{tool.name}) | {endpoint} | {tool.title} |")  # GitHub keeps "_"
+            schemas = (
+                f"```json\n{json.dumps(tool.input_schema, indent=2, ensure_ascii=False)}\n```\n\n"
+                f"```json\n{json.dumps(tool.output_schema or {}, indent=2, ensure_ascii=False)}\n```\n"
+            )
             sections.append(
                 f"### {tool.name}\n\n"
                 f"**{tool.title}** ({hints}). {purpose}\n\n"
@@ -236,6 +240,8 @@ async def main() -> None:
                 f"**Input schema**\n\n{fields_table(tool.input_schema, with_required=True)}\n"
                 f"**Output schema** (every result also has `meta`: the trace id and the API calls made)\n\n"
                 f"{fields_table(tool.output_schema or {}, with_required=False)}\n"
+                f"<details><summary>Full JSON Schemas (input, then output), as the server publishes them</summary>"
+                f"\n\n{schemas}\n</details>\n\n"
                 f"**Example invocation**\n\n```json\n{invocation}\n```\n\n"
                 f"**Example response** (lists shortened to {MAX_ITEMS} items)\n\n"
                 f"```json\n{json.dumps(trim(response), indent=2, ensure_ascii=False)}\n```\n"
