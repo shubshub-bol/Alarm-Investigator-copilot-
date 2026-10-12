@@ -20,11 +20,12 @@
   uses about three model calls and takes 10 to 25 seconds with a model, under a second without one.
 - The Alarm API's recommendations are checked against the documents with a rule-based check and the model. A
   conflict phrased very differently from the procedure could be missed by the rule-based part.
-- Citations are checked for existence, not meaning. A model sentence can cite a real fact and still misstate it:
-  seen once, "1 alarm in the prior 7 days" citing a fact that says 5. Every statement shows its sources so the
-  operator can check it.
-- The answer-quality set (`python -m copilot.evaluate`, 30 questions) checks the intent, the asset, the use of
-  live data, the sources and the citations, not the facts in the wording. In CI it runs offline; with the model
+- The model's text is checked for valid citations and for numbers and codes found in the evidence, not for
+  meaning: a real number put in the wrong place, or a weak argument, can pass. The risk is small because code
+  writes every factual section, the model writes only the summary and the analysis, and every statement shows
+  its sources so the operator can check it.
+- The answer-quality set (`python -m copilot.evaluate`, 31 questions) checks the intent, the asset, the use of
+  live data, the sources, key facts, the first step, the procedure and the citations, not the model's wording. In CI it runs offline; with the model
   it is run by hand, a few questions at a time, because of the free plan's daily limit.
 
 **Security and operations**
@@ -56,9 +57,6 @@
 - During a language model outage, a new chat still tries one title call before falling back to a rule-based
   title.
 - The backend still generates follow-up question suggestions, which the GUI no longer shows.
-- An asset type with no documents, such as the boiler, still lists the closest passages as sources (feed pump
-  documents for Boiler B-201), and the search confidence can still read "high".
-- When an asset has no active alarms, no document search runs, yet the gaps say "No relevant passages were found".
 
 ## Future improvements
 

@@ -126,3 +126,20 @@ Most tests connect the real components in memory (ASGI transports, an in-memory 
 model) instead of mocks, so they test behaviour rather than wiring. Mocks are used only where a failure has to be
 forced (timeouts, 429s, a broken model). The end-to-end test starts real servers over HTTP, and CI starts the
 Docker stack and asks the acceptance question.
+
+## 17. The code guarantees the facts, the model does the thinking
+
+Code builds every factual section of an answer from the evidence: what the data shows, the likely causes, the
+procedure with its key step, and the actions, with the procedure's step first. The model writes what needs
+reasoning: a 2 to 3 sentence summary that answers the question, an analysis (the most likely cause and the
+first action, and why), its view of the Alarm API's advice, and caveats. Its text is checked: every citation key
+must exist, and every number and code it mentions must appear in the evidence.
+
+Real answers showed why. When the model wrote every section, one answer lost its procedure section (the model
+cited "S1 step 6", which the validator rejected), one misstated a number ("1 alarm" where the fact said 5), one
+called alarms "failures", and one skipped most of the data. Copying numbers into sentences and deciding whether
+to show the procedure are not reasoning; weighing the evidence is.
+
+*Cost:* the facts part reads plainer than a model would write it, and the analysis exists only with a model.
+*Instead of:* more guards around a model-written answer, which is reactive (each new mistake needs a new guard),
+or letting the model plan its own tool calls, which is the least predictable and uses more requests.

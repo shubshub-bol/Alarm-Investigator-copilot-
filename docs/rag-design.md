@@ -177,13 +177,18 @@ How the playbooks use them:
 
 | Search | Query built from MCP results | Filters |
 |---|---|---|
-| Procedure for the alarm | asset type + alarm name + code | alarm code boost, asset's site |
-| Approved procedure (procedure_lookup) | asset type + alarm + "operating procedure" | `operating_procedure`, alarm code, site |
-| Contributing factor | leading alarm before the main alarm | `maintenance_manual`, `troubleshooting_guide`, `knowledge_article` |
-| Safety before inspection | "lockout and isolation before ... a {asset type}" | `safety_instruction` |
+| Procedure for the alarm | asset type + alarm name + code | procedures, manuals, troubleshooting guides, knowledge articles; the asset's type; alarm code boost; site |
+| Approved procedure (procedure_lookup) | asset type + alarm + "operating procedure" | `operating_procedure`, the asset's type, alarm code, site |
+| Contributing factor | leading alarm before the main alarm | `maintenance_manual`, `troubleshooting_guide`, `knowledge_article`; the asset's and the leading asset's types |
+| Related equipment to inspect | asset type + alarm + "related assets to inspect" | the asset's type, alarm code boost |
+| Safety before inspection | "lockout and isolation before ... a {asset type}" | `safety_instruction`, the asset's type |
 | What a priority means | "alarm priority definitions and response times" | `alarm_philosophy` |
 | Which guidance governs (after a conflict) | "recommendation conflicts with an approved procedure" | `alarm_philosophy` |
-| Each API action (recommendation_check) | asset type + alarm + the action text | alarm code boost, site |
+| Each API action (recommendation_check) | asset type + alarm + the action text | the asset's type, alarm code boost, site |
+
+Every search about an asset is limited to documents for its type, so a fan's vibration never gets the boiler feed
+pump procedure. When no document covers the type, the answer says so: "The documents have no procedure for boiler
+alarms."
 
 ## 11. Citation construction
 
@@ -199,9 +204,10 @@ Every returned passage becomes a citation with a key, a readable label and where
 - Keys are numbered once across all searches for a question, so `[S1]` means the same passage in the
   answer, the Sources tab and the trace.
 - Tool results get keys too (`[T1]`, `[T2]`, built in `copilot/facts.py`), each tied to its trace step.
-- The answer is validated after it is written: citation keys that were not given are removed, and any
-  finding, cause, procedure item or action left without a valid citation is dropped (`copilot/answer.py`).
-  A key written with extra words, such as `S1 step 6`, is read as `S1`.
+- Code builds every cited section from the evidence. The model writes only the summary and the analysis, and
+  its text is checked (`copilot/answer.py`, `copilot/text_check.py`): every key must exist, every number and
+  code must appear in the evidence, and a key written with extra words, such as `S1 step 6` or `(T2)`, is read
+  as `S1` or `[T2]`. A summary that fails is replaced by the plain summary; an analysis statement is dropped.
 - In the GUI, `[S#]` chips open the passage; the Sources tab lists every passage and why it was searched for.
 
 ## 12. Low-confidence handling
@@ -214,9 +220,12 @@ Every returned passage becomes a citation with a key, a readable label and where
 | none | nothing above the 0.55 floor | No document evidence; the answer says so |
 
 The thresholds were measured on this corpus: relevant passages score about 0.70 and above, unrelated
-questions stay below 0.55 ("What is the capital of France?" scores 0.40). When the best confidence of a
-question is low or none, the answer adds the gap "No relevant passages were found in the document corpus for
-this question." The language model is told to list missing evidence under gaps instead of guessing, and the
+questions stay below 0.55 ("What is the capital of France?" scores 0.40). Each playbook names its main search
+(for an investigation, the procedure for the top alarm), and the answer's confidence is that search's, so a
+well-matched safety passage cannot make a missing procedure look "high". When a main search is low or none, the
+answer adds the gap "No relevant passages were found in the document corpus for this question", or the more
+precise "The documents have no procedure for ... alarms" when nothing exists for the asset type. When no main
+search ran (an unknown asset, no active alarms), neither gap appears: the answer's own gap says why. The language model is told to list missing evidence under gaps instead of guessing, and the
 answer never contains an uncited statement. If the document index cannot be loaded at all, the copilot still
 answers from live alarm data and says that documents were unavailable.
 

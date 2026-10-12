@@ -123,12 +123,12 @@ case has no ticketing system.
 | Smoke test a running stack | `make smoke` | `uv run python scripts/smoke_stack.py` |
 | Install dependencies | `make install` | `uv sync --locked` and `npm --prefix apps/frontend ci` |
 | Build the document index | `make ingest` | `uv run python -m rag.ingestion` |
-| Python tests (408) | `make test-python` | `uv run pytest` |
-| GUI tests (70) | `make test-gui` | `npm --prefix apps/frontend run test` |
+| Python tests (444) | `make test-python` | `uv run pytest` |
+| GUI tests (72) | `make test-gui` | `npm --prefix apps/frontend run test` |
 | Coverage report | `make coverage` | see [docs/coverage.md](docs/coverage.md) |
 | Formatting, lint, types | `make lint` | `uv run ruff format --check .`, `uv run ruff check .`, `uv run mypy`, `npm --prefix apps/frontend run typecheck` |
 | Retrieval quality | | `uv run python -m rag.evaluate` |
-| Answer quality (30 questions) | | `uv run python -m copilot.evaluate` (add `--llm --limit 5` to use the model) |
+| Answer quality (31 questions) | | `uv run python -m copilot.evaluate` (add `--llm --limit 10 --report FILE` to use the model) |
 | Dependency audit | `make audit` | see the `Makefile` |
 
 The Python tests include unit, MCP server, MCP client, RAG, orchestration, API, error-path and end-to-end tests;
@@ -195,7 +195,8 @@ Details: [RAG design](docs/rag-design.md) and [real retrieval examples](docs/rag
 ## Sample interactions
 
 These are real answers in offline mode (no language model), as an evaluator without an API key sees them. With
-a model, the wording is more natural and the structure and citations are the same.
+a model, the summary and an analysis section are the model's (checked against the evidence); every other
+section is the same.
 
 **The acceptance question.** *"Investigate recurring high-severity alarms for Boiler Feed Pump 101 over the last
 90 days, identify likely contributing factors, retrieve the relevant operating procedure, and provide
@@ -256,7 +257,7 @@ documents, the status is `degraded`, the GUI shows "Alarm data unavailable", and
    API through a typed connector with auth, retries and trace headers.
 4. The playbook searches the documents with queries built from the MCP results.
 5. Tool facts and passages become cited evidence; the Alarm API's advice is checked against the procedures; the
-   answer is written (by the model, or a template) and its citations validated.
+   facts part is built from the evidence, and the model's summary and analysis are checked against it.
 6. The chat is saved (SQLite); the answer is shown with its evidence and trace.
 
 The copilot reaches alarm data only through MCP. Full request flow, trust boundaries, observability, failure

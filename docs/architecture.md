@@ -24,8 +24,8 @@ below.
 | Source system | `services/alarm-simulator` | The Alarm Management API, built from the assignment's Postman collections, with synthetic data |
 | RAG ingestion | `rag/ingestion` | Load, screen, sanitise, chunk, embed, save the index |
 | Retrieval service | `rag/retrieval` | Hybrid search, filters, confidence, citations, untrusted-context rendering |
-| Evidence and answer | `facts.py`, `consistency.py`, `answer.py` | Citable tool facts, API advice vs documents, LLM or template answer, citation validation |
-| Answer quality | `evaluate.py` | 30 golden operator questions through the whole copilot: intent, asset, live data, sources, valid citations |
+| Evidence and answer | `facts.py`, `consistency.py`, `answer.py`, `text_check.py` | Citable tool facts; the facts part built by code; the model's checked summary and analysis; API advice vs documents |
+| Answer quality | `evaluate.py` | 31 golden operator questions through the whole copilot: intent, asset, live data, sources, key facts, first step, procedure, valid citations |
 | Domain models | pydantic models in each package (`alarm_mcp/schemas.py`, `copilot/trace.py`, `rag/models.py`, ...) | Typed contracts at every boundary |
 | Language model | `llm.py` | One `LlmProvider` protocol; Gemini, OpenRouter or offline |
 | Persistence | `conversations.py` | Saved chats in SQLite |
@@ -86,14 +86,18 @@ passage gets a citation key `[S1]`, `[S2]`, ... numbered once for the whole ques
 pump in service above the vibration limit: a **conflict**. The playbook then searches for the rule on which
 guidance governs and finds `ALM-PHIL-006 §7` ("the approved procedure governs").
 
-**⑤ Grounded answer.** `facts.py` turns the tool results into short numbered facts `[T1]`, `[T2]`, ... each tied
-to its trace step. The language model receives the facts, the API's actions to assess, the known gaps and the
-passages (wrapped as untrusted text), and returns JSON: summary, findings, likely causes, procedure, recommended
-actions, an assessment of each API action, and gaps. The answer is then validated: unknown citation keys are
-removed, findings or actions left without a valid citation are dropped, a conflict found by the rule-based
-check is kept even if the model missed it, and an Alarm API action that conflicts with a procedure is removed from
-the recommended actions even if the model listed it. If the model is unavailable, a template builds the same
-structure from the same evidence.
+**⑤ Grounded answer.** The code guarantees the facts and the model does the thinking. `facts.py` turns the tool
+results into short numbered facts `[T1]`, `[T2]`, ... each tied to its trace step, and code builds every factual
+section from the evidence: what the data shows, the likely causes, the procedure (each item quoting its key
+step), and the actions (the procedure's step first, then the API actions that match the documents, then the
+safety step). The language model receives the facts, the API's actions to assess, the known gaps and the
+passages (wrapped as untrusted text), and returns JSON with only its own part: a 2 to 3 sentence summary that
+answers the question, an analysis (the most likely cause and the first action, and why), an assessment of each
+API action, and gaps. Its text is checked (`text_check.py`): every citation key must exist, and every number and
+code it mentions must appear in the evidence. A summary that fails is replaced by the plain summary built from
+the evidence; an analysis statement that fails is dropped. A conflict found by the rule-based check is kept even
+if the model missed it, and no action or analysis statement may recommend an API action the documents conflict
+with. Without a model, the answer has the same facts part and the plain summary.
 
 **⑥ Name and save.** For a new chat, a short title is generated while the tools run (rules make one if the
 model cannot). The question, the full response and the updated context are saved in one SQLite transaction.

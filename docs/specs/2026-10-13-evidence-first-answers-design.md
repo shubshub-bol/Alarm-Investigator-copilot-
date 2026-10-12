@@ -1,6 +1,6 @@
 # Evidence-first answers: design
 
-Date: 2026-10-13. Status: agreed in review, not yet built.
+Date: 2026-10-13. Status: built on 2026-10-13.
 
 ## Goal
 
@@ -90,7 +90,7 @@ Plain summary per intent:
 | `related_assets` | The related assets with active alarms or alarms in the 7 days before (from the Alarm API's recommendation context); the documents' key sentence on what to inspect |
 | `procedure_lookup` | Which section applies and its key step |
 | `recommendation_check` | How many API actions match the documents, how many conflict, and which |
-| `knowledge_question` | The key sentence of the best passage |
+| `knowledge_question` | The best passage's label and first sentence |
 | No evidence | "I could not find reliable evidence for this question." (as today) |
 
 Every statement in the plain summary carries its citation keys.
