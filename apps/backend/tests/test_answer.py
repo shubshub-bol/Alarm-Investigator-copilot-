@@ -166,6 +166,37 @@ async def test_grouped_inline_citations_are_parsed_and_validated(acceptance_run)
     assert {"T99", "S77"} <= set(answer.grounding.unknown_citations)
 
 
+async def test_citations_with_extra_words_keep_their_statement(acceptance_run):
+    """Seen with an OpenRouter model: citations like 'S1 step 6', so the whole procedure section was dropped."""
+    reply = {
+        "summary": "s",
+        "procedure": [
+            {"text": "Change over to the standby pump above 7.1 mm/s.", "citations": ["S1 step 6", "S1 step 7"]},
+            {"text": "An invented step.", "citations": ["S99 step 2"]},
+        ],
+    }
+    answer = await compose_answer(ACCEPTANCE, acceptance_run, llm=FakeLlm(reply=reply))
+    assert [(s.text, s.citations) for s in answer.procedure] == [
+        ("Change over to the standby pump above 7.1 mm/s.", ["S1"])
+    ]
+    assert answer.grounding.removed_statements == 1  # the invented step: S99 does not exist
+    assert answer.grounding.unknown_citations == ["S99"]
+
+
+async def test_assessment_citations_with_extra_words_are_read(acceptance_run):
+    assessment = {
+        "step": 2,
+        "action": "Check drive motor bearing temperature",
+        "verdict": "consistent",
+        "document_guidance": "Check the motor bearing temperature trend.",
+        "citation_keys": ["S5 §5"],
+        "explanation": "the troubleshooting guide says the same",
+    }
+    reply = {"summary": "s", "action_assessments": [assessment]}
+    answer = await compose_answer(ACCEPTANCE, acceptance_run, llm=FakeLlm(reply=reply))
+    assert next(a for a in answer.action_assessments if a.step == 2).citation_keys == ["S5"]
+
+
 async def test_missing_llm_assessments_are_filled_and_conflicts_kept(acceptance_run):
     reply = {
         "summary": "s",

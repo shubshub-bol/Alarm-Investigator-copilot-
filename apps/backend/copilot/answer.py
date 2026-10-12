@@ -22,7 +22,7 @@ from rag.retrieval import Citation, RetrievedPassage, render_context
 
 log = logging.getLogger("copilot.answer")
 
-_KEY_IN_GROUP = re.compile(r"[TS]\d+")
+_KEY_IN_GROUP = re.compile(r"\b[TS]\d+\b")
 _CITATION_GROUP = re.compile(r"\[\s*[TS]\d+(?:\s*[,;]\s*[TS]\d+)*\s*\]")  # [T2] or [T2, S3] or [S1; S4]
 
 
@@ -249,6 +249,12 @@ def _split_citations(text: str) -> tuple[str, list[str]]:
     return stripped, keys
 
 
+def _read_keys(citations: list[str]) -> list[str]:
+    """The keys in a citation list. Seen with an OpenRouter model: 'S1 step 6' for S1. An entry without a key stays
+    whole, so it is reported as unknown."""
+    return list(dict.fromkeys(k for c in citations for k in (_KEY_IN_GROUP.findall(c) or [c])))
+
+
 def _validate(draft: LlmAnswer, valid: set[str], grounding: Grounding) -> LlmAnswer:
     unknown: set[str] = set()
 
@@ -267,7 +273,7 @@ def _validate(draft: LlmAnswer, valid: set[str], grounding: Grounding) -> LlmAns
         kept = []
         for s in items:
             text, inline = _split_citations(s.text)
-            keys = list(dict.fromkeys(s.citations + inline))
+            keys = list(dict.fromkeys(_read_keys(s.citations) + inline))
             unknown.update(k for k in keys if k not in valid)
             good = [k for k in keys if k in valid]
             if good:
@@ -283,7 +289,7 @@ def _validate(draft: LlmAnswer, valid: set[str], grounding: Grounding) -> LlmAns
         procedure=clean_list(draft.procedure),
         recommended_actions=clean_list(draft.recommended_actions),
         action_assessments=[
-            a.model_copy(update={"citation_keys": [k for k in a.citation_keys if k in valid]})
+            a.model_copy(update={"citation_keys": [k for k in _read_keys(a.citation_keys) if k in valid]})
             for a in draft.action_assessments
         ],
         gaps=draft.gaps,
