@@ -29,6 +29,9 @@ MAX_PRIORITY_SCORING = 8
 CORRELATION_LAG_MINUTES = 30
 _CONFIDENCE_ORDER = ["none", "low", "medium", "high"]
 _SEVERITY_ORDER = {"low": 1, "medium": 2, "high": 3, "critical": 4}
+PROCEDURE_DOC_TYPES = ["operating_procedure", "maintenance_manual", "troubleshooting_guide", "knowledge_article"]
+GUIDANCE_DOC_TYPES = ["maintenance_manual", "troubleshooting_guide", "knowledge_article"]
+NO_PASSAGES = "No relevant passages were found in the document corpus for this question."
 
 
 class ConversationState(BaseModel):
@@ -89,6 +92,7 @@ class Investigation:
         self.steps: list[StepRecord] = []
         self.mcp_down = False
         self.lookback = u.lookback_days or DEFAULT_LOOKBACK_DAYS
+        self._main_searched = False
 
     # =============================================================== primitives
     async def _record(self, record: StepRecord) -> None:
@@ -119,8 +123,16 @@ class Investigation:
         return None
 
     async def retrieve(
-        self, query: str, purpose: str, filters: RetrievalFilters | None = None, k: int = 3
+        self,
+        query: str,
+        purpose: str,
+        filters: RetrievalFilters | None = None,
+        k: int = 3,
+        main: bool = False,
+        no_documents: str | None = None,
     ) -> list[RetrievedPassage]:
+        """Search the documents. `main` marks a search that answers the question: the answer's confidence is the
+        weakest main search's. `no_documents` is the gap to report when the search finds nothing at all."""
         filters = filters or RetrievalFilters()
         started, started_at = time.perf_counter(), datetime.now(UTC)
         common = {
@@ -152,8 +164,12 @@ class Investigation:
             self.evidence.notes.append(f"Document search failed: {type(exc).__name__}")
             return []
 
-        if _CONFIDENCE_ORDER.index(result.confidence) > _CONFIDENCE_ORDER.index(self.evidence.retrieval_confidence):
-            self.evidence.retrieval_confidence = result.confidence
+        if main:
+            self._set_main_confidence(result.confidence)
+        if not result.passages and no_documents:
+            self._gap(no_documents)
+        elif main and result.confidence in ("low", "none"):
+            self._gap(NO_PASSAGES)
         kept, key_of = [], {}
         for passage in result.passages:
             existing = next((p for p in self.evidence.passages if p.chunk_id == passage.chunk_id), None)
@@ -191,6 +207,26 @@ class Investigation:
             )
         )
         return kept
+
+    def _set_main_confidence(self, confidence: str) -> None:
+        ev = self.evidence
+        weaker = _CONFIDENCE_ORDER.index(confidence) < _CONFIDENCE_ORDER.index(ev.retrieval_confidence)
+        if not self._main_searched or weaker:
+            ev.retrieval_confidence = confidence
+        self._main_searched = True
+
+    def _gap(self, text: str) -> None:
+        if text not in self.evidence.missing:
+            self.evidence.missing.append(text)
+
+    def _types(self, *extra: str | None) -> list[str] | None:
+        """The asset's type and any extra types, as an equipment filter; None (no filter) when no asset is known."""
+        types = [t for t in ((self.evidence.asset or {}).get("asset_type"), *extra) if t]
+        return list(dict.fromkeys(types)) or None
+
+    def _no_procedure(self) -> str | None:
+        asset_type = (self.evidence.asset or {}).get("asset_type")
+        return f"The documents have no procedure for {asset_type.replace('_', ' ')} alarms." if asset_type else None
 
     # ============================================================ building blocks
     async def resolve_asset(self) -> dict | None:
@@ -414,45 +450,58 @@ class Investigation:
         return recs
 
     # ------------------------------------------------------------- RAG helpers
-    def _asset_filters(self, codes: list[str]) -> RetrievalFilters:
+    def _asset_filters(self, codes: list[str], doc_types: list[str] | None = None) -> RetrievalFilters:
         asset = self.evidence.asset or {}
-        return RetrievalFilters(alarm_codes=codes or None, site=asset.get("site"))
+        return RetrievalFilters(
+            alarm_codes=codes or None, site=asset.get("site"), equipment_types=self._types(), doc_types=doc_types
+        )
 
-    async def rag_for_alarm(self, alarm_name: str, code: str, k: int = 3) -> None:
+    async def rag_for_alarm(self, alarm_name: str, code: str, k: int = 3, main: bool = False) -> None:
         asset_type = (self.evidence.asset or {}).get("asset_type", "")
         await self.retrieve(
             f"{asset_type} {alarm_name} ({code})".strip(),  # plain wording ranked best across alarm types
             f"Procedure for {alarm_name} ({code})",
-            self._asset_filters([code]),
+            self._asset_filters([code], PROCEDURE_DOC_TYPES),
             k=k,
+            main=main,
+            no_documents=self._no_procedure(),
         )
 
     async def rag_for_factors(self) -> None:
         top = self.evidence.top_alarm or {}
         asset_type = (self.evidence.asset or {}).get("asset_type", "")
+        known = [self.evidence.asset or {}, *self.evidence.related_assets]
         for factor in self.evidence.contributing_factors[:1]:
             lead = factor["leading"]
+            lead_type = next((a.get("asset_type") for a in known if a.get("asset_id") == lead["asset_id"]), None)
             await self.retrieve(
                 f"{lead['alarm_name']} before {asset_type} {top.get('alarm_name', '')}: cause and maintenance checks",
                 f"Guidance on contributing factor: {lead['asset_name']} {lead['alarm_name']}",
                 RetrievalFilters(  # the "why" lives in maintenance and troubleshooting knowledge, not procedures
                     alarm_codes=[lead["alarm_code"], top.get("alarm_code", "")],
-                    doc_types=["maintenance_manual", "troubleshooting_guide", "knowledge_article"],
+                    doc_types=GUIDANCE_DOC_TYPES,
+                    equipment_types=self._types(lead_type),
                 ),
                 k=2,
             )
 
     async def rag_for_safety(self) -> None:
-        asset_type = (self.evidence.asset or {}).get("asset_type", "equipment")
+        asset_type = (self.evidence.asset or {}).get("asset_type")
         await self.retrieve(
-            f"lockout and isolation before opening or inspecting a {asset_type}",
+            f"lockout and isolation before opening or inspecting a {asset_type or 'equipment'}",
             "Safety requirements before field inspection",
-            RetrievalFilters(doc_types=["safety_instruction"]),
+            RetrievalFilters(doc_types=["safety_instruction"], equipment_types=self._types()),
             k=1,
+            no_documents=(
+                f"The documents have no safety instruction for {asset_type.replace('_', ' ')} work."
+                if asset_type
+                else None
+            ),
         )
 
-    async def rag_question(self) -> None:
-        await self.retrieve(self.u.question or self.u.rationale, "Search the documents for the question", k=4)
+    async def rag_question(self, main: bool = False) -> None:
+        question = self.u.question or self.u.rationale
+        await self.retrieve(question, "Search the documents for the question", k=4, main=main)
 
     # ================================================================ playbooks
     async def investigate_asset(self) -> None:
@@ -472,7 +521,7 @@ class Investigation:
             if alarm:
                 self.evidence.priority = await self.score(alarm)
                 await self.recommend(alarm["alarm_id"])
-            await self.rag_for_alarm(top["alarm_name"], top["alarm_code"])
+            await self.rag_for_alarm(top["alarm_name"], top["alarm_code"], main=True)
             await self.rag_for_factors()
         else:
             await self.rag_question()
@@ -512,7 +561,7 @@ class Investigation:
             await self.recommend(focus["alarm_id"])
             if self.evidence.asset is None:
                 await self.load_asset(focus["asset_id"])
-            await self.rag_for_alarm(focus["alarm_name"], focus["alarm_code"])
+            await self.rag_for_alarm(focus["alarm_name"], focus["alarm_code"], main=True)
             others = {(a["alarm_code"], a["alarm_name"]) for a in found["alarms"]} - {
                 (focus["alarm_code"], focus["alarm_name"])
             }
@@ -551,6 +600,7 @@ class Investigation:
                 "What the priority means under the alarm philosophy",
                 RetrievalFilters(doc_types=["alarm_philosophy"]),
                 k=2,
+                main=True,
             )
             await self.rag_for_alarm(focus["alarm_name"], focus["alarm_code"])
 
@@ -570,8 +620,11 @@ class Investigation:
             await self.retrieve(
                 f"related assets to inspect after a {asset['asset_type']} {top['alarm_name']}",
                 f"Which related equipment the documents say to check after {top['alarm_name']}",
-                RetrievalFilters(alarm_codes=[top["alarm_code"]]),
+                RetrievalFilters(alarm_codes=[top["alarm_code"]], equipment_types=self._types()),
                 k=3,
+                main=True,
+                no_documents=f"The documents have no inspection guidance for {asset['asset_type'].replace('_', ' ')}"
+                " alarms.",
             )
             await self.rag_for_factors()
         await self.rag_for_safety()
@@ -608,8 +661,11 @@ class Investigation:
                 doc_types=["operating_procedure"],
                 alarm_codes=[alarm["alarm_code"]],
                 site=(self.evidence.asset or {}).get("site"),
+                equipment_types=self._types(),
             ),
             k=2,
+            main=True,
+            no_documents=self._no_procedure(),
         )
         await self.rag_for_alarm(alarm["alarm_name"], alarm["alarm_code"], k=3)
 
@@ -619,7 +675,7 @@ class Investigation:
             return await self.rag_question()
         recs = await self.recommend(alarm["alarm_id"])
         if recs is None:
-            return await self.rag_for_alarm(alarm["alarm_name"], alarm["alarm_code"])
+            return await self.rag_for_alarm(alarm["alarm_name"], alarm["alarm_code"], main=True)
         if self.evidence.asset is None and recs.get("asset_context"):
             self.evidence.asset = recs["asset_context"]
         asset_type = (self.evidence.asset or {}).get("asset_type", "")
@@ -629,11 +685,12 @@ class Investigation:
                 f"Check API action {step['step']} against the documents",
                 self._asset_filters([alarm["alarm_code"]]),
                 k=2,
+                main=True,
             )
             self.evidence.action_checks.append({**step, "passage_keys": [p.citation.key for p in passages]})
 
     async def knowledge_question(self) -> None:
-        await self.rag_question()
+        await self.rag_question(main=True)
 
     async def governance_if_conflict(self) -> None:
         """If the API's advice contradicts a retrieved document, also fetch the rule on which one governs."""

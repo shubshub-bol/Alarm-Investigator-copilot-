@@ -1,8 +1,9 @@
 """Playbooks: multi-step MCP chains + RAG in one workflow, with partial-failure handling."""
 
 import httpx
+import pytest
 
-from copilot.investigation import ConversationState, investigate
+from copilot.investigation import ConversationState, Investigation, investigate
 from copilot.mcp_client import McpToolClient, http_connector, in_memory_connector
 from copilot.understanding import understand_with_rules
 from copilot_test_helpers import simulator_transport
@@ -202,3 +203,35 @@ async def test_mcp_server_down_still_returns_document_evidence(retriever):
     assert run.steps[0].error_code == "MCP_UNAVAILABLE"
     assert any("MCP" in n for n in run.evidence.notes)
     assert labels(run)  # RAG still answers from the documents
+
+
+# ------------------------------------------------------------- documents by asset type
+
+
+@pytest.mark.parametrize(
+    ("question", "kind"),
+    [("Boiler B-201 how many times it failed in past?", "boiler"), ("Investigate Fired Heater H-401", "fired heater")],
+)
+async def test_an_asset_type_without_documents_gets_none_and_says_so(question, kind, mcp, retriever):
+    run = await investigate(understand_with_rules(question), mcp, retriever, ConversationState(), trace_id="t")
+    assert labels(run) == set()  # before: feed pump and safety passages for a boiler
+    assert f"The documents have no procedure for {kind} alarms." in run.evidence.missing
+    assert run.evidence.retrieval_confidence == "none"
+
+
+async def test_confidence_comes_from_the_main_search(mcp, retriever):
+    run = await investigate(
+        understand_with_rules("Investigate Forced Draft Fan F-201"), mcp, retriever, ConversationState(), trace_id="t"
+    )
+    assert labels(run) == {"SAF-005 §2"}  # the safety instruction covers fans; no pump procedure for a fan any more
+    assert "The documents have no procedure for fan alarms." in run.evidence.missing
+    assert run.evidence.retrieval_confidence == "none"  # the procedure search found nothing; the safety one did
+
+
+def test_the_weakest_main_search_sets_the_confidence():
+    inv = Investigation(understand_with_rules("x"), None, None, ConversationState(), "t")  # type: ignore[arg-type]
+    inv._set_main_confidence("high")
+    assert inv.evidence.retrieval_confidence == "high"  # the first main search sets it, above the default "none"
+    inv._set_main_confidence("low")
+    inv._set_main_confidence("medium")
+    assert inv.evidence.retrieval_confidence == "low"

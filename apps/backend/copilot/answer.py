@@ -410,8 +410,6 @@ async def compose_answer(question: str, run: InvestigationRun, llm: LlmProvider 
     )
 
     gaps = list(dict.fromkeys([*answer.gaps, *ev.missing, *ev.notes]))
-    if ev.retrieval_confidence in ("low", "none"):
-        gaps.append("No relevant passages were found in the document corpus for this question.")
     if grounding.degraded:
         gaps.append(f"The language model was unavailable ({grounding.degraded_reason}); this answer uses a template.")
     gaps = list(dict.fromkeys(gaps))

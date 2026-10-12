@@ -326,6 +326,16 @@ async def test_unrelated_question_admits_there_is_no_evidence(mcp, retriever):
     assert any("no relevant" in g.lower() for g in answer.gaps)
 
 
+async def test_no_document_gap_when_no_document_search_ran(mcp, retriever):
+    state = ConversationState()
+    await investigate(understand_with_rules(ACCEPTANCE), mcp, retriever, state, trace_id="t1")
+    question = "Are there active alarms on Boiler Feed Pump 101 right now?"
+    run = await investigate(understand_with_rules(question), mcp, retriever, state, trace_id="t2")
+    answer = await compose_answer(question, run, llm=None)
+    assert "There are no active alarms on Boiler Feed Pump 101." in answer.gaps
+    assert not any("no relevant passages" in g.lower() for g in answer.gaps)  # nothing was searched
+
+
 async def test_partial_failure_is_reported_in_gaps(retriever):
     healthy = simulator_transport()
 
