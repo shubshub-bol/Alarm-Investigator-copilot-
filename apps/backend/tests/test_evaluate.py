@@ -2,7 +2,7 @@
 
 import pytest
 
-from copilot.evaluate import GOLDEN, Case, evaluate
+from copilot.evaluate import GOLDEN, Case, evaluate, facts_part, write_report
 from copilot.mcp_client import in_memory_connector
 from copilot.service import CopilotService
 from copilot_test_helpers import simulator_transport
@@ -28,7 +28,33 @@ async def test_a_wrong_answer_is_reported_with_every_problem(service):
         uses_data=False,  # it calls MCP tools
         sources=("SAF-005",),  # this playbook does not search the safety instruction
         gap="no such gap",
+        facts=("999 alarms",),
+        first_step="SAF-005",  # the first step is the compressor procedure's
+        procedure=False,  # the answer has a procedure section
     )
     report = await evaluate(service, [wrong])
     assert report.passed == 0
-    assert [p.split(":")[0] for p in report.rows[0].problems] == ["intent", "asset", "live data", "sources", "gap"]
+    assert [p.split(":")[0] for p in report.rows[0].problems] == [
+        "intent", "asset", "live data", "sources", "gap", "facts", "first step", "procedure"
+    ]  # fmt: skip
+
+
+async def test_asking_twice_offline_gives_the_same_facts(service):
+    report = await evaluate(service, GOLDEN[:2], repeat=True)
+    assert report.failed == []
+
+
+async def test_facts_part_tells_two_answers_apart(service):
+    response = (await evaluate(service, GOLDEN[:1])).rows[0].response
+    changed = response.model_copy(deep=True)
+    changed.answer.findings[0].text += " (changed)"
+    assert facts_part(changed) != facts_part(response)
+
+
+async def test_the_report_has_the_score_and_every_question(service, tmp_path):
+    report = await evaluate(service, GOLDEN[:2])
+    write_report(report, tmp_path / "run.md", "offline")
+    text = (tmp_path / "run.md").read_text(encoding="utf-8")
+    assert "2/2 passed (offline)." in text
+    for case in GOLDEN[:2]:
+        assert case.question in text
