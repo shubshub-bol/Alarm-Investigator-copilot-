@@ -20,7 +20,7 @@ env:
 jobs:
   python:
     name: Python - format, lint, types, tests, coverage
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04  # pinned, so CI does not change when ubuntu-latest moves
     steps:
       - uses: actions/checkout@v7
 
@@ -76,7 +76,7 @@ jobs:
 
   frontend:
     name: GUI - types, tests, build
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04  # pinned, so CI does not change when ubuntu-latest moves
     defaults:
       run:
         working-directory: apps/frontend
@@ -103,7 +103,7 @@ jobs:
 
   security:
     name: Dependency audit
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04  # pinned, so CI does not change when ubuntu-latest moves
     steps:
       - uses: actions/checkout@v7
 
@@ -128,7 +128,7 @@ jobs:
   docker:
     name: Docker - build, start all services, smoke test
     needs: [python, frontend]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04  # pinned, so CI does not change when ubuntu-latest moves
     steps:
       - uses: actions/checkout@v7
 
