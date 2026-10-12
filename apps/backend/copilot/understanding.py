@@ -63,6 +63,7 @@ class QueryUnderstanding(LlmUnderstanding):
     question: str = ""  # the original text, kept for document search
     method: Literal["rules", "llm"] = "rules"
     fallback_reason: str | None = None
+    rules_intent: Intent | None = None  # the keyword rules' intent when the model decided
 
 
 # --------------------------------------------------------------------------- rules
@@ -222,7 +223,7 @@ async def understand(question: str, llm: LlmProvider | None) -> QueryUnderstandi
     asset_query = merged["asset_query"] or rules.asset_query
     if merged["intent"] in _NO_DATA_INTENTS and asset_query:
         merged.update(intent="investigate_asset", asset_query=asset_query)
-    return QueryUnderstanding(**merged, question=question, method="llm")
+    return QueryUnderstanding(**merged, question=question, method="llm", rules_intent=rules.intent)
 
 
 _GAP_FILL_FIELDS = ("asset_type", "site", "unit", "lookback_days", "severities", "alarm_topic", "status")

@@ -205,6 +205,17 @@ async def test_a_document_question_without_an_asset_stays_a_document_question():
     assert u.intent == "knowledge_question"
 
 
+async def test_the_rules_intent_is_recorded_when_the_model_decides():
+    llm = FakeLlm(reply={"intent": "related_assets"})
+    u = await understand("Boiler Feed Pump 101 vibration, what should I check?", llm)
+    assert u.intent == "related_assets"  # the model decides
+    assert u.rules_intent == "investigate_asset"  # and the disagreement stays visible
+
+
+async def test_rules_only_understanding_has_no_second_intent():
+    assert (await understand("Boiler Feed Pump 101", None)).rules_intent is None
+
+
 async def test_llm_failure_falls_back_to_rules():
     u = await understand(ACCEPTANCE, FakeLlm(error=LlmError("quota exceeded")))
     assert u.method == "rules"
