@@ -143,3 +143,15 @@ to show the procedure are not reasoning; weighing the evidence is.
 *Cost:* the facts part reads plainer than a model would write it, and the analysis exists only with a model.
 *Instead of:* more guards around a model-written answer, which is reactive (each new mistake needs a new guard),
 or letting the model plan its own tool calls, which is the least predictable and uses more requests.
+
+## 18. A healthy chat context
+
+The model sees the chat so far with each question, but not all of it: the last 10 turns in full (the question and
+the answer's summary and analysis) and, for older turns, only their important bits (question, asset, alarm, time
+window). Citation keys are removed, because `[T2]` in an old answer would point at the wrong fact in a new one.
+The context is information, not instructions, and the model is told to take every number from the new question's
+tools; the summary check enforces it by rejecting numbers that only the old chat holds.
+
+*Cost:* a few hundred to a few thousand extra tokens per question, and follow-ups depend on the model (the rules
+use only the last asset, alarm, site and unit). *Instead of:* sending the whole chat, which grows without limit
+and invites reusing stale alarm data, or sending nothing, which made "and over the last 30 days?" impossible.

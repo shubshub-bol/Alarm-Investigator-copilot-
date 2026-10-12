@@ -25,9 +25,10 @@ below.
 | RAG ingestion | `rag/ingestion` | Load, screen, sanitise, chunk, embed, save the index |
 | Retrieval service | `rag/retrieval` | Hybrid search, filters, confidence, citations, untrusted-context rendering |
 | Evidence and answer | `facts.py`, `consistency.py`, `answer.py`, `text_check.py` | Citable tool facts; the facts part built by code; the model's checked summary and analysis; API advice vs documents |
-| Answer quality | `evaluate.py` | 31 golden operator questions through the whole copilot: intent, asset, live data, sources, key facts, first step, procedure, valid citations |
+| Answer quality | `evaluate.py` | 34 golden operator questions through the whole copilot: intent, asset, live data, sources, key facts, first step, procedure, valid citations |
 | Domain models | pydantic models in each package (`alarm_mcp/schemas.py`, `copilot/trace.py`, `rag/models.py`, ...) | Typed contracts at every boundary |
 | Language model | `llm.py` | One `LlmProvider` protocol; Gemini, OpenRouter or offline |
+| Chat context | `context.py` | What a chat remembers for the model: the last 10 turns in full, older turns as their important bits |
 | Persistence | `conversations.py` | Saved chats in SQLite |
 | Configuration | `config.py` per package, `.env` | pydantic-settings, prefixed variables, secrets as `SecretStr` |
 | Observability | every service | Structured JSON logs and one trace id per question; the trace is also shown in the GUI |
@@ -100,7 +101,11 @@ if the model missed it, and no action or analysis statement may recommend an API
 with. Without a model, the answer has the same facts part and the plain summary.
 
 **⑥ Name and save.** For a new chat, a short title is generated while the tools run (rules make one if the
-model cannot). The question, the full response and the updated context are saved in one SQLite transaction.
+model cannot). The answer is added to the chat's context: the question and the answer's summary and analysis,
+without citation keys; beyond 10 turns, older ones keep only their important bits (question, asset, alarm, time
+window). The next question's model calls read this context as information, not instructions, so follow-ups such
+as "and over the last 30 days?" can be understood, while every number still comes from that question's tools. The
+question, the full response and the updated context are saved in one SQLite transaction.
 
 **⑦ Show.** The `answer` event reaches the GUI: priority badge, summary with citation chips, what to do, a "Check
 before acting" warning for the conflict, and links to the evidence. The chat appears in the sidebar and the

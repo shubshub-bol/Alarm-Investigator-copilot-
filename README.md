@@ -123,12 +123,12 @@ case has no ticketing system.
 | Smoke test a running stack | `make smoke` | `uv run python scripts/smoke_stack.py` |
 | Install dependencies | `make install` | `uv sync --locked` and `npm --prefix apps/frontend ci` |
 | Build the document index | `make ingest` | `uv run python -m rag.ingestion` |
-| Python tests (457) | `make test-python` | `uv run pytest` |
+| Python tests (476) | `make test-python` | `uv run pytest` |
 | GUI tests (72) | `make test-gui` | `npm --prefix apps/frontend run test` |
 | Coverage report | `make coverage` | see [docs/coverage.md](docs/coverage.md) |
 | Formatting, lint, types | `make lint` | `uv run ruff format --check .`, `uv run ruff check .`, `uv run mypy`, `npm --prefix apps/frontend run typecheck` |
 | Retrieval quality | | `uv run python -m rag.evaluate` |
-| Answer quality (31 questions) | | `uv run python -m copilot.evaluate` (add `--llm --limit 10 --report FILE` to use the model) |
+| Answer quality (34 questions) | | `uv run python -m copilot.evaluate` (add `--llm --limit 10 --report FILE` to use the model) |
 | Dependency audit | `make audit` | see the `Makefile` |
 
 The Python tests include unit, MCP server, MCP client, RAG, orchestration, API, error-path and end-to-end tests;

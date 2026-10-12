@@ -15,7 +15,11 @@
 - Eight question types (intents) have playbooks. Other questions fall back to a document search. Flood analysis,
   rationalization and KPI tools exist on the MCP server but no playbook uses them yet.
 - Without a language model, intent detection uses keyword rules and the answer uses templates. Unusual phrasing
-  can get the wrong intent, and the wording is plainer.
+  can get the wrong intent, and the wording is plainer. The rules do not read the chat's earlier messages, only
+  its last asset, alarm, site and unit, so a follow-up such as "and over the last 30 days?" needs the model.
+- The chat context sent to the model holds the last 10 turns (each answer cut to 800 characters) and 20 lines about
+  older turns. A question that needs more of an old answer than that, or that compares two assets, is not
+  supported.
 - Free OpenRouter models allow 20 requests a minute and 50 a day (1000 a day after buying credits). A question
   uses about three model calls and takes 10 to 25 seconds with a model, under a second without one.
 - The Alarm API's recommendations are checked against the documents with a rule-based check and the model. A
@@ -24,7 +28,7 @@
   meaning: a real number put in the wrong place, or a weak argument, can pass. The risk is small because code
   writes every factual section, the model writes only the summary and the analysis, and every statement shows
   its sources so the operator can check it.
-- The answer-quality set (`python -m copilot.evaluate`, 31 questions) checks the intent, the asset, the use of
+- The answer-quality set (`python -m copilot.evaluate`, 34 questions) checks the intent, the asset, the use of
   live data, the sources, key facts, the first step, the procedure and the citations, not the model's wording. In CI it runs offline; with the model
   it is run by hand, a few questions at a time, because of the free plan's daily limit.
 

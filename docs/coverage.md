@@ -11,7 +11,7 @@ Measured on 12 October 2026 with `pytest-cov` over the Python packages (statemen
 | Copilot backend | 1672 | 1550 | 93% |
 | **Total** | **4440** | **4186** | **94%** |
 
-457 Python tests and 72 GUI tests pass. The GUI tests (vitest and Testing Library) cover the screens, saved chats,
+476 Python tests and 72 GUI tests pass. The GUI tests (vitest and Testing Library) cover the screens, saved chats,
 address handling and the live-stream parser; GUI line coverage is not measured.
 
 ## Reproduce
@@ -39,8 +39,8 @@ report, `coverage.xml` and the JUnit test report as the `python-coverage-and-tes
 | MCP server | `mcp-servers/alarm-management/tests/` | Tool registration and discovery, schemas, auth on `/mcp`, trace propagation, error mapping, KPI two-step calls |
 | MCP client | `apps/backend/tests/test_mcp_client.py` | Connectivity, discovery, schema-checked invocation, invalid arguments, missing tools, unavailable server |
 | RAG | `rag/tests/` | Extraction, chunking, metadata, injection screening, golden-set retrieval quality, filters, confidence, citations |
-| Orchestration | `apps/backend/tests/test_investigation.py`, `test_answer.py`, `test_understanding.py` | Multi-step chains passing outputs between tools, RAG in the same workflow, combined answers, partial failures, conflicting evidence |
-| Answer quality | `apps/backend/tests/test_evaluate.py`, `test_text_check.py` | 31 golden operator questions through the whole copilot: intent, asset, live data, sources, key facts, first step, procedure, valid citations; the check on the model's numbers and codes |
+| Orchestration | `apps/backend/tests/test_investigation.py`, `test_answer.py`, `test_understanding.py`, `test_context.py` | Multi-step chains passing outputs between tools, RAG in the same workflow, combined answers, partial failures, conflicting evidence |
+| Answer quality | `apps/backend/tests/test_evaluate.py`, `test_text_check.py` | 34 golden operator questions through the whole copilot: intent, asset, live data, sources, key facts, first step, procedure, valid citations; the check on the model's numbers and codes |
 | Backend API | `apps/backend/tests/test_api.py`, `test_stream.py`, `test_conversation_api.py` | HTTP endpoints, live stream, saved chats, validation, degraded modes |
 | Language model | `apps/backend/tests/test_llm.py`, `test_openrouter.py`, `test_conversation_reply.py`, `test_titles.py` | Providers against a fake HTTP layer, retries, guardrails, titles |
 | End to end | `tests/e2e/test_e2e_mcp_rag.py` | Three real servers over HTTP and the acceptance question through the backend, plus a wrong-token degraded run |

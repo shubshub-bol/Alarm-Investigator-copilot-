@@ -67,3 +67,8 @@ async def test_the_report_says_how_each_question_was_understood_and_why_a_summar
     text = (tmp_path / "run.md").read_text(encoding="utf-8")
     assert "understood as investigate_asset (asset Boiler Feed Pump 101, type pump)" in text
     assert "summary rejected: number 31 is not in the evidence" in text
+
+
+async def test_the_report_has_unix_line_endings_like_the_rest_of_the_repository(service, tmp_path):
+    write_report(await evaluate(service, GOLDEN[:1]), tmp_path / "run.md", "offline")
+    assert b"\r\n" not in (tmp_path / "run.md").read_bytes()
