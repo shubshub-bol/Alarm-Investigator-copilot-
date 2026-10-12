@@ -75,7 +75,9 @@ services:
       alarm-mcp:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/api/health', timeout=3)"]
+      # Liveness only. /api/health also checks the MCP server and answers 503 while degraded; the backend keeps
+      # answering then (from documents), so a slow or stopped MCP server must not mark it unhealthy.
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/api/live', timeout=3)"]
       interval: 10s
       timeout: 5s
       retries: 6

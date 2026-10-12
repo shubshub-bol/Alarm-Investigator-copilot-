@@ -41,6 +41,7 @@ interface Backend {
   saved?: ConversationSummary[]; // what GET /api/conversations returns (read at call time)
   open?: (id: string) => Promise<Response>;
   reachable?: () => boolean; // false: every request fails as if the backend were not listening yet
+  checkHealth?: () => Response;
 }
 
 function mockBackend({
@@ -48,12 +49,13 @@ function mockBackend({
   saved = [],
   open = openSaved,
   reachable = () => true,
+  checkHealth = () => Response.json(health),
 }: Backend = {}) {
   vi.stubGlobal(
     "fetch",
     vi.fn(async (url: string, init?: RequestInit) => {
       if (!reachable()) throw new TypeError("Failed to fetch");
-      if (url.endsWith("/api/health")) return Response.json(health);
+      if (url.endsWith("/api/health")) return checkHealth();
       if (url.endsWith("/api/tools")) return Response.json(tools);
       if (url.endsWith("/api/examples")) return Response.json({ examples: [QUESTION] });
       if (url.endsWith("/api/chat/stream")) return chat();
@@ -117,6 +119,24 @@ test("a new chat gets its address and appears in the list after its first answer
   await askAndWait();
   await waitFor(() => expect(window.location.pathname).toBe("/c/conv-a14c5ce4373f"));
   expect(await within(sidebar()).findByRole("button", { name: SAVED.title })).toHaveAttribute("aria-current", "page");
+});
+
+test("an answer that could not be saved keeps the address, so a reload does not open a missing chat", async () => {
+  mockBackend({ chat: async () => sseResponse(streamText.replace('"saved": true', '"saved": false')) });
+  render(<App />);
+  await askAndWait();
+  await act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 50)); // give the address time to change, if it were going to
+  });
+  expect(window.location.pathname).toBe("/");
+});
+
+test("a degraded backend (HTTP 503) is shown as degraded, not as unreachable", async () => {
+  const degraded = { ...health, status: "degraded", mcp: { ...health.mcp, connected: false, tools: 0 } };
+  mockBackend({ checkHealth: () => Response.json(degraded, { status: 503 }) });
+  render(<App />);
+  expect(await screen.findByText("Alarm data unavailable")).toBeInTheDocument();
+  expect(screen.queryByText("Copilot service unreachable")).not.toBeInTheDocument();
 });
 
 test("opening a chat's address shows its saved answers", async () => {

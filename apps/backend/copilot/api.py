@@ -49,7 +49,7 @@ ConversationId = Annotated[str, Path(pattern=CONVERSATION_ID)]
 
 
 class ChatRequest(BaseModel):
-    message: str = Field(min_length=1, max_length=2000)
+    message: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=2000)]
     conversation_id: str | None = Field(None, pattern=CONVERSATION_ID)
 
 
@@ -151,7 +151,7 @@ def create_app(
 
     @app.post("/api/chat", response_model=ChatResponse)
     async def chat(body: ChatRequest, request: Request) -> ChatResponse:
-        return await svc(request).ask(body.message.strip(), body.conversation_id)
+        return await svc(request).ask(body.message, body.conversation_id)
 
     @app.post("/api/chat/stream")
     async def chat_stream(body: ChatRequest, request: Request) -> StreamingResponse:
@@ -166,7 +166,7 @@ def create_app(
 
         async def produce() -> None:
             try:
-                response = await service.ask(body.message.strip(), body.conversation_id, on_event=on_event)
+                response = await service.ask(body.message, body.conversation_id, on_event=on_event)
                 await queue.put(("answer", response.model_dump(mode="json")))
             except Exception:  # reported to the browser as an error event; details only in the logs
                 log.exception("chat stream failed", extra={"fields": {"trace_id": seen.get("trace_id")}})
@@ -227,8 +227,14 @@ def create_app(
     async def examples() -> dict:
         return {"examples": STARTER_QUESTIONS}
 
+    @app.get("/api/live")
+    async def live() -> dict:
+        """Liveness for the container health check: the process answers. Dependencies are /api/health's job."""
+        return {"status": "ok"}
+
     @app.get("/api/health")
-    async def health(request: Request) -> dict:
+    async def health(request: Request, response: Response) -> dict:
+        """Readiness with details. 503 while degraded, so monitors see it from the status code alone."""
         s = svc(request)
         listed = await s.list_tools()
         retriever = s.retriever
@@ -240,6 +246,8 @@ def create_app(
         llm_info = {"provider": "offline"} if s.llm is None else {"provider": s.llm.name}
         storage = await asyncio.to_thread(s.conversations.health)
         ready = listed.connected and retriever is not None and storage["ok"]
+        if not ready:
+            response.status_code = 503
         return {
             "status": "ok" if ready else "degraded",
             "version": __version__,

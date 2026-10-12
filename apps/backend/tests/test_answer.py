@@ -243,6 +243,33 @@ async def test_an_action_the_documents_conflict_with_is_never_recommended(accept
     assert answer.grounding.removed_statements == 1
 
 
+async def test_a_rejection_must_be_about_the_conflicting_action_itself(acceptance_run):
+    """A 'never' elsewhere in the sentence does not turn a recommendation of the conflicting action into a rejection."""
+    keep_running = "Continue operation and monitor vibration trend for 24 hours"
+    endorses = f"{keep_running} via the API, and never leave the pump unattended."
+    rejects = f"Do not {keep_running.lower()}; change over to the standby pump."
+    unrelated = "Never leave the pump unattended."
+    reply = {
+        "summary": "s",
+        "findings": [],
+        "likely_causes": [],
+        "procedure": [],
+        "recommended_actions": [
+            {"text": endorses, "citations": ["T7"]},
+            {"text": rejects, "citations": ["S1"]},
+            {"text": unrelated, "citations": ["S2"]},
+        ],
+        "action_assessments": [],
+        "gaps": [],
+    }
+    answer = await compose_answer(ACCEPTANCE, acceptance_run, llm=FakeLlm(reply=reply))
+    texts = [s.text for s in answer.recommended_actions]
+    assert endorses not in texts
+    assert rejects in texts
+    assert unrelated in texts
+    assert answer.grounding.removed_statements == 1
+
+
 async def test_llm_failure_degrades_to_template(acceptance_run):
     answer = await compose_answer(ACCEPTANCE, acceptance_run, llm=FakeLlm(error=LlmError("timeout")))
     assert answer.grounding.mode == "template"

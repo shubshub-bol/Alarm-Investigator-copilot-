@@ -16,7 +16,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ValidationError
 
 from copilot.investigation import ConversationState
 
@@ -152,9 +152,17 @@ class ConversationStore:
                     "SELECT state, title_source FROM conversations WHERE id = ?", (conversation_id,)
                 ).fetchone()
             if row is not None:
+                try:
+                    state = ConversationState.model_validate_json(row["state"])
+                except ValidationError as exc:  # damaged, or saved by an older version: only the context is lost
+                    log.warning(
+                        "saved follow-up context unreadable; continuing without it",
+                        extra={"fields": {"conversation_id": conversation_id, "error": str(exc)[:300]}},
+                    )
+                    state = ConversationState()
                 return OpenConversation(
                     conversation_id=conversation_id,
-                    state=ConversationState.model_validate_json(row["state"]),
+                    state=state,
                     needs_title=row["title_source"] == "placeholder",
                 )
         return OpenConversation(conversation_id=new_conversation_id())

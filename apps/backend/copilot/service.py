@@ -54,6 +54,7 @@ class ChatResponse(BaseModel):
     discovery: DiscoveryRecord | None  # None when no MCP session was needed (small talk)
     trace: list[TraceStep]
     timings: Timings
+    saved: bool = True  # False when storage failed: the chat has no address that can be opened again
 
 
 class ToolsResponse(BaseModel):
@@ -240,20 +241,22 @@ class CopilotService:
         return rule_title(u, evidence, [c.title for c in answer.citations])
 
     async def _resume(self, conversation_id: str | None) -> OpenConversation:
-        """The conversation to continue. Without working storage the question is answered as a new chat."""
+        """The conversation to continue. Without working storage: the same chat, without its earlier context."""
         try:
             return await asyncio.to_thread(self.conversations.resume, conversation_id)
         except StorageError as exc:
             log.error("could not load the conversation", extra={"fields": {"error": str(exc)}})
-            return OpenConversation(conversation_id=new_conversation_id())
+            return OpenConversation(conversation_id=conversation_id or new_conversation_id())
 
     async def _save(self, conv: OpenConversation, question: str, response: ChatResponse, title: str | None) -> None:
-        """Save the answered turn. A storage failure is logged and reported by health; the answer still goes out."""
+        """Save the answered turn. A storage failure is logged, reported by health and marked on the answer
+        (`saved: false`), which still goes out."""
         try:
             await asyncio.to_thread(
                 self.conversations.save_turn, conv, question, response.model_dump(mode="json"), title
             )
         except StorageError as exc:
+            response.saved = False
             log.error(
                 "could not save the turn",
                 extra={

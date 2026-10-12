@@ -41,6 +41,7 @@ def test_a_question_creates_a_named_chat(retriever, db):
         body = api.post("/api/chat", json={"message": ACCEPTANCE}).json()
         [chat] = api.get("/api/conversations").json()["conversations"]
     assert chat["conversation_id"] == body["conversation_id"]
+    assert body["saved"] is True
     assert chat["title"] == "Boiler Feed Pump 101: High Vibration"
     assert set(chat) == {"conversation_id", "title", "created_at", "updated_at"}
 
@@ -112,11 +113,13 @@ def test_a_broken_database_degrades_health_but_answers_still_work(retriever, db)
     raw.commit()
     raw.close()
     with backend(retriever, db) as api:
-        health = api.get("/api/health").json()
+        health = api.get("/api/health")
         answer = api.post("/api/chat", json={"message": "hello"})
         listing = api.get("/api/conversations")
-    assert health["status"] == "degraded" and health["storage"]["ok"] is False
+    assert health.status_code == 503
+    assert health.json()["status"] == "degraded" and health.json()["storage"]["ok"] is False
     assert answer.status_code == 200 and answer.json()["answer"]["summary"]
+    assert answer.json()["saved"] is False  # so the GUI does not give the chat an address that cannot be opened
     assert listing.status_code == 503
     assert listing.json() == {"detail": "Saved chats are unavailable right now. Check the backend logs."}
 

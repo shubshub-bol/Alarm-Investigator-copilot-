@@ -190,8 +190,9 @@ class OpenRouterProvider:
             data = {}
         error = data.get("error") if isinstance(data, dict) else None
         if response.status_code >= 400 or error:
-            code = (error or {}).get("code", response.status_code)
-            message = (error or {}).get("message") or response.text[:200]
+            details = error if isinstance(error, dict) else {"message": error}  # some gateways send a plain string
+            code = details.get("code", response.status_code)
+            message = details.get("message") or response.text[:200]
             raise LlmError(f"OpenRouter {code}: {message}"[:300])
         try:
             text = (data["choices"][0]["message"]["content"] or "").strip()

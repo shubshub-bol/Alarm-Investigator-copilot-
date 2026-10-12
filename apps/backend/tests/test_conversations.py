@@ -159,4 +159,27 @@ async def test_the_answer_survives_a_storage_failure(db):
     )
     response = await service.ask("hello")
     assert response.answer.summary
+    assert response.saved is False
     assert store.health()["ok"] is False
+
+
+async def test_a_chat_that_cannot_be_loaded_keeps_its_address(db):
+    """The question is answered without the earlier context, but in the same chat, not under a new unsaved id."""
+    raw(db, "PRAGMA user_version = 99")
+    service = CopilotService(
+        in_memory_connector(make_server(simulator_transport())), None, llm=None, conversations=ConversationStore(db)
+    )
+    response = await service.ask("hello", "conv-0123456789ab")
+    assert response.conversation_id == "conv-0123456789ab"
+    assert response.saved is False
+
+
+def test_unreadable_follow_up_context_keeps_the_chat(store, db):
+    """A damaged or older saved context only loses the follow-up context, not the chat."""
+    conv = store.resume(None)
+    store.save_turn(conv, "q", answer(), title="T")
+    raw(db, "UPDATE conversations SET state = '{not json'")
+    resumed = store.resume(conv.conversation_id)
+    assert resumed.conversation_id == conv.conversation_id
+    assert resumed.state == ConversationState()
+    assert resumed.needs_title is False

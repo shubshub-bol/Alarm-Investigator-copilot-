@@ -33,12 +33,30 @@ def api(retriever):
 
 
 def test_health_reports_all_dependencies(api):
-    body = api.get("/api/health").json()
+    response = api.get("/api/health")
+    body = response.json()
+    assert response.status_code == 200
     assert body["status"] == "ok"
     assert body["mcp"] == {"server": "alarm-management", "connected": True, "tools": 13, "error": None}
     assert body["rag"]["index_loaded"] and body["rag"]["chunks"] > 40
     assert body["llm"] == {"provider": "offline"}
     assert body["storage"] == {"ok": True, "conversations": 0}
+
+
+def test_liveness_answers_without_opening_an_mcp_session(retriever):
+    """The container health check: cheap, and not failed by a slow MCP server (the backend degrades instead)."""
+    opened = []
+    inner = in_memory_connector(make_server(simulator_transport()))
+
+    def counting():
+        opened.append(1)
+        return inner()
+
+    with client_for(retriever, connector=counting) as api:
+        response = api.get("/api/live")
+    assert response.status_code == 200
+    assert response.json() == {"status": "ok"}
+    assert opened == []
 
 
 def test_tool_discovery_view_has_schemas(api):
@@ -110,7 +128,13 @@ def test_cors_allows_the_frontend(api):
 
 @pytest.mark.parametrize(
     "body",
-    [{"message": ""}, {"message": "x" * 2001}, {"message": "hi", "conversation_id": "../../etc"}, {}],
+    [
+        {"message": ""},
+        {"message": "  \t "},
+        {"message": "x" * 2001},
+        {"message": "hi", "conversation_id": "../../etc"},
+        {},
+    ],
 )
 def test_invalid_requests_are_rejected(api, body):
     assert api.post("/api/chat", json=body).status_code == 422
@@ -125,8 +149,10 @@ def test_unknown_conversation_lookup_is_404(api):
 
 def test_mcp_server_down_degrades_to_documents(retriever):
     with client_for(retriever, connector=http_connector("http://127.0.0.1:9/mcp", "x", timeout_seconds=2)) as api:
-        health = api.get("/api/health").json()
+        health_response = api.get("/api/health")
         body = api.post("/api/chat", json={"message": ACCEPTANCE}).json()
+    health = health_response.json()
+    assert health_response.status_code == 503  # running but not ready: monitors see it without reading the body
     assert health["status"] == "degraded"
     assert health["mcp"]["connected"] is False
     assert body["status"] == "degraded"

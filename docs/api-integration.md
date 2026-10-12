@@ -187,11 +187,14 @@ through nginx at the same origin (`/api`); in development through the Vite proxy
 | `PATCH /api/conversations/{id}` | Rename a chat (`{"title": "..."}`, 1-80 characters) |
 | `DELETE /api/conversations/{id}` | Delete a chat and its answers |
 | `GET /api/tools` | The tools discovered from the MCP server, with their input schemas |
-| `GET /api/health` | MCP connection and tool count, index status, language model, chat storage |
+| `GET /api/health` | MCP connection and tool count, index status, language model, chat storage; HTTP 503 while degraded (same report) |
+| `GET /api/live` | Liveness only (`{"status": "ok"}`), for the container health check; checks no dependency |
 | `GET /api/examples` | Starter questions for an empty chat |
 
 Request body for both chat endpoints: `{"message": "...", "conversation_id": "conv-..."}`, where the message has
-1 to 2000 characters and the id is optional (omit it for a new chat).
+1 to 2000 characters (spaces around it are removed first, so a blank message is rejected) and the id is optional
+(omit it for a new chat). Every answer has `saved`: `false` means chat storage failed, so the chat cannot be
+opened again later; the GUI then keeps its current address.
 
 The stream sends these events:
 

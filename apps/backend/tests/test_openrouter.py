@@ -123,3 +123,11 @@ def test_build_provider_picks_openrouter_and_needs_a_real_key():
     assert isinstance(build_provider("openrouter", MODEL, "or-test-key"), OpenRouterProvider)
     assert build_provider("openrouter", MODEL, "replace-me") is None
     assert build_provider("openrouter", MODEL, None) is None
+
+
+@pytest.mark.parametrize("status", [400, 200])
+async def test_an_error_given_as_plain_text_is_reported_as_an_llm_error(status):
+    """Not every gateway sends {"error": {"message": ...}}; a plain string must not crash the request."""
+    llm, _ = provider(lambda n: httpx.Response(status, json={"error": "Invalid model"}))
+    with pytest.raises(LlmError, match="Invalid model"):
+        await llm.generate_text("s", "p")

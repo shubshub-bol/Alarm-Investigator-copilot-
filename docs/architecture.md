@@ -154,7 +154,8 @@ result's `meta`.
 
 The same information is in the GUI: the Steps tab lists every tool call (arguments, the Alarm API calls with
 status, attempts and time, the raw result) and every document search (query, filters, scores, confidence).
-`GET /api/health` reports MCP connectivity and tool count, index status, language model and chat storage.
+`GET /api/health` reports MCP connectivity and tool count, index status, language model and chat storage, and
+answers HTTP 503 while anything is degraded, so a monitor sees it from the status code alone.
 
 ## Failure handling
 
@@ -168,7 +169,8 @@ status, attempts and time, the raw result) and every document search (query, fil
 | Language model down or invalid JSON | Rules for understanding, template for the answer; the answer says the model was unavailable |
 | No relevant documents | Confidence `none` or `low`; nothing irrelevant is cited; the answer says what is missing |
 | Document index missing | The answer uses alarm data only and says documents were unavailable |
-| Chat storage unavailable | Answers still work; chat endpoints return 503 with a clear message; the GUI shows "Chats not saved" |
+| Chat storage unavailable | Answers still work, marked `saved: false` (the GUI keeps its address); chat endpoints return 503 with a clear message; the GUI shows "Chats not saved" |
+| Saved follow-up context unreadable | The chat continues without its earlier context; a warning is logged |
 | Backend unreachable | The GUI shows the problem and reconnects on its own; a failed question offers "Try again" |
 
 ## Deployment
@@ -180,12 +182,15 @@ each behind a health check:
 |---|---|---|---|---|
 | `alarm-api` | `python-app` | 8000 | `GET /health` | |
 | `alarm-mcp` | `python-app` | 9000 | `GET /health` | `alarm-api` healthy |
-| `copilot-backend` | `python-app` | 8080 | `GET /api/health` | `alarm-mcp` healthy |
+| `copilot-backend` | `python-app` | 8080 | `GET /api/live` | `alarm-mcp` healthy |
 | `frontend` | `gui` (nginx) | 3000 | `GET /` | `copilot-backend` healthy |
 
 The Python image installs from `uv.lock`, downloads the embedding model and builds the document index at build
 time, runs as a non-root user, and keeps code read-only; saved chats live in the `chats` volume. nginx serves the
-GUI, forwards `/api` (with buffering off for the live stream) and sends `/c/{id}` to the app. Without a `.env`
+GUI, forwards `/api` (with buffering off for the live stream) and sends `/c/{id}` to the app. It looks the backend's
+address up through Docker's DNS at request time, so a restarted backend container is still reached. The backend's
+health check is liveness only: a slow or stopped MCP server degrades answers (to documents only) but does not mark
+the backend unhealthy, because restarting it would not help. Without a `.env`
 file the stack runs in offline mode with demo tokens.
 
 ## Persistence

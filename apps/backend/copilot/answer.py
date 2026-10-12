@@ -316,16 +316,24 @@ def _merge_assessments(llm: list[ActionAssessment], rules: list[ActionAssessment
 
 
 _REJECTS = re.compile(r"\b(instead of|rather than|do not|don't|never|not to|conflicts?)\b", re.I)
+_CLAUSE_BREAK = re.compile(r"[.;:!?,]|\b(?:and|but|then|also)\b", re.I)
+_ACTION = "\x00"  # stands in for the action's text, which may itself contain "and" or a full stop
+
+
+def _recommends(text: str, action: str) -> bool:
+    """True if the text names the action in a clause that does not reject it ("never" elsewhere does not count)."""
+    marked = re.sub(re.escape(action), _ACTION, text, flags=re.I)
+    return any(_ACTION in clause and not _REJECTS.search(clause) for clause in _CLAUSE_BREAK.split(marked))
 
 
 def _drop_conflicting_actions(
     actions: list[Statement], assessments: list[ActionAssessment], grounding: Grounding
 ) -> list[Statement]:
     """Never recommend an Alarm API action the documents conflict with; naming it in order to reject it is fine."""
-    conflicting = [a.action.lower() for a in assessments if a.verdict == "conflict"]
+    conflicting = [a.action for a in assessments if a.verdict == "conflict"]
     kept = []
     for s in actions:
-        if any(c in s.text.lower() for c in conflicting) and not _REJECTS.search(s.text):
+        if any(_recommends(s.text, c) for c in conflicting):
             grounding.removed_statements += 1
             continue
         kept.append(s)

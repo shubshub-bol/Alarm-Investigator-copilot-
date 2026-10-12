@@ -268,6 +268,7 @@ export interface ChatResponse {
   discovery: Discovery | null; // null when no tools were needed (small talk)
   trace: TraceStep[];
   timings: { understanding_ms: number; investigation_ms: number; answer_ms: number; total_ms: number };
+  saved: boolean; // false when the backend could not save the chat
 }
 
 export interface Health {

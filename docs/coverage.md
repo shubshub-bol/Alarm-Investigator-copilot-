@@ -1,17 +1,17 @@
 # Test coverage
 
-Measured on 11 October 2026 with `pytest-cov` over the Python packages (statement coverage).
+Measured on 12 October 2026 with `pytest-cov` over the Python packages (statement coverage).
 
 | Component | Statements | Covered | Coverage |
 |---|---:|---:|---:|
-| Alarm API simulator | 1046 | 1027 | 98% |
+| Alarm API simulator | 1049 | 1030 | 98% |
 | Alarm API connector | 209 | 202 | 97% |
 | MCP server | 566 | 510 | 90% |
-| RAG | 941 | 891 | 95% |
-| Copilot backend | 1616 | 1492 | 92% |
-| **Total** | **4378** | **4122** | **94%** |
+| RAG | 944 | 894 | 95% |
+| Copilot backend | 1656 | 1534 | 93% |
+| **Total** | **4424** | **4170** | **94%** |
 
-387 Python tests and 67 GUI tests pass. The GUI tests (vitest and Testing Library) cover the screens, saved chats,
+394 Python tests and 69 GUI tests pass. The GUI tests (vitest and Testing Library) cover the screens, saved chats,
 address handling and the live-stream parser; GUI line coverage is not measured.
 
 ## Reproduce

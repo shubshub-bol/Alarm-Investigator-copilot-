@@ -29,8 +29,13 @@ def request(url: str, body: dict[str, Any] | None = None, timeout: float = 10) -
         raise ValueError(f"not an http(s) URL: {url}")
     data = json.dumps(body).encode() if body is not None else None
     req = urllib.request.Request(url, data=data, headers={"Content-Type": "application/json"})  # noqa: S310 - scheme checked above
-    with urllib.request.urlopen(req, timeout=timeout) as resp:  # noqa: S310 - scheme checked above
-        return json.loads(resp.read())
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:  # noqa: S310 - scheme checked above
+            return json.loads(resp.read())
+    except urllib.error.HTTPError as exc:
+        if exc.code == 503:  # /api/health while degraded: the report says which check fails
+            return json.loads(exc.read())
+        raise
 
 
 class Checks:

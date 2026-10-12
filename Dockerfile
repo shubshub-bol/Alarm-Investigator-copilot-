@@ -21,7 +21,14 @@ RUN --mount=type=cache,target=/root/.cache/uv \
     --mount=type=bind,source=pyproject.toml,target=pyproject.toml \
     uv sync --locked --no-install-project
 
-COPY . /app
+# Only what the three services run (docs, screenshots, tests and the GUI sources stay out of the image).
+COPY pyproject.toml uv.lock README.md LICENSE ./
+COPY services/alarm-simulator/alarm_simulator services/alarm-simulator/alarm_simulator
+COPY services/alarm-simulator/data services/alarm-simulator/data
+COPY connectors/alarm_api_client connectors/alarm_api_client
+COPY mcp-servers/alarm-management/alarm_mcp mcp-servers/alarm-management/alarm_mcp
+COPY rag rag
+COPY apps/backend/copilot apps/backend/copilot
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --locked
 

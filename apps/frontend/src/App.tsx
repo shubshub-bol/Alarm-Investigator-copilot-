@@ -40,7 +40,8 @@ export function App() {
   const backendUp = health.kind === "ok";
   const chats = useConversations(backendUp);
   const chat = useChat((response) => {
-    route.go(response.conversation_id, "replace"); // a new chat gets its address once it is saved
+    // A new chat gets its address once it is saved; an unsaved one keeps the current address, which still opens.
+    if (response.saved) route.go(response.conversation_id, "replace");
     void chats.refresh(); // shows a new chat and its title
   });
   const [examples, setExamples] = useState<string[]>(FALLBACK_EXAMPLES);

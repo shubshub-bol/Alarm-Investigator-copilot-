@@ -53,7 +53,17 @@ async function getJson<T>(path: string): Promise<T> {
   return (await request(path)).json() as Promise<T>;
 }
 
-export const getHealth = () => getJson<Health>("/api/health");
+/** The backend answers 503 while degraded; its body is the same report, so the GUI can say what is wrong. */
+export async function getHealth(): Promise<Health> {
+  let res: Response;
+  try {
+    res = await fetch(`${BASE}/api/health`);
+  } catch {
+    throw new ApiError(UNREACHABLE);
+  }
+  if (!res.ok && res.status !== 503) throw new ApiError(await describeFailure(res), res.status);
+  return res.json() as Promise<Health>; // a 503 without the report (another proxy) fails here: unreachable
+}
 export const getTools = () => getJson<ToolsResponse>("/api/tools");
 export const getExamples = () => getJson<{ examples: string[] }>("/api/examples");
 

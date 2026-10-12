@@ -1,5 +1,6 @@
 {
  "conversation_id": "conv-a14c5ce4373f",
+ "saved": true,
  "trace_id": "trace-f083af1932724e18",
  "question": "Investigate recurring high-severity alarms for Boiler Feed Pump 101 over the last 90 days, identify likely contributing factors, retrieve the relevant operating procedure, and provide recommended actions with source evidence.",
  "status": "ok",
