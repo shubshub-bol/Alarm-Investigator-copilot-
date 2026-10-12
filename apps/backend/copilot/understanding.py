@@ -217,10 +217,16 @@ async def understand(question: str, llm: LlmProvider | None) -> QueryUnderstandi
             merged[name] = getattr(rules, name)
     merged["severities"] = at_or_above(merged["severities"])
     merged["uses_context"] = merged["uses_context"] or rules.uses_context
+    # A named asset always gets its live data. Seen with an OpenRouter model: "Boiler B-201 how many times it failed
+    # in past?" was filed as a document question, so no tool was called and the answer said it could not tell.
+    asset_query = merged["asset_query"] or rules.asset_query
+    if merged["intent"] in _NO_DATA_INTENTS and asset_query:
+        merged.update(intent="investigate_asset", asset_query=asset_query)
     return QueryUnderstanding(**merged, question=question, method="llm")
 
 
 _GAP_FILL_FIELDS = ("asset_type", "site", "unit", "lookback_days", "severities", "alarm_topic", "status")
+_NO_DATA_INTENTS = ("knowledge_question", "conversation")
 _ORDER = ["low", "medium", "high", "critical"]
 
 

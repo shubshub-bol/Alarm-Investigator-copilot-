@@ -185,6 +185,26 @@ async def test_rules_fill_entities_the_llm_left_empty():
     assert u.uses_context is True
 
 
+@pytest.mark.parametrize(
+    "reply",
+    [
+        {"intent": "knowledge_question", "asset_query": "Boiler B-201"},  # seen with an OpenRouter model
+        {"intent": "knowledge_question"},  # the asset is named, but only the rules picked it up
+        {"intent": "conversation", "asset_query": "Boiler B-201"},
+    ],
+)
+async def test_a_named_asset_always_gets_its_live_data(reply):
+    u = await understand("Boiler B-201 how many times it failed in past ?", FakeLlm(reply=reply))
+    assert u.intent == "investigate_asset"
+    assert u.asset_query == "Boiler B-201"
+
+
+async def test_a_document_question_without_an_asset_stays_a_document_question():
+    llm = FakeLlm(reply={"intent": "knowledge_question"})
+    u = await understand("What does the safety instruction say about lockout?", llm)
+    assert u.intent == "knowledge_question"
+
+
 async def test_llm_failure_falls_back_to_rules():
     u = await understand(ACCEPTANCE, FakeLlm(error=LlmError("quota exceeded")))
     assert u.method == "rules"
