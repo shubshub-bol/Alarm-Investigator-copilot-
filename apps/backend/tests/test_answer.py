@@ -4,10 +4,10 @@ import httpx
 import pytest
 
 from copilot.answer import LlmReply, compose_answer
-from copilot.consistency import assess_actions
+from copilot.consistency import assess_actions, sentences
 from copilot.investigation import ConversationState, investigate
 from copilot.llm import LlmError
-from copilot.mcp_client import McpToolClient, in_memory_connector
+from copilot.mcp_client import McpToolClient, http_connector, in_memory_connector
 from copilot.understanding import understand_with_rules
 from copilot_test_helpers import simulator_transport
 from mcp_test_helpers import make_server
@@ -161,12 +161,57 @@ async def test_plain_summary_for_related_assets_names_those_with_recent_alarms(m
         "Motor M-502 (Cooling Water Pump) (3 in the 7 days before)" in answer.summary
     )
     assert f"[{key_for(answer, 'TG-MTR-003 §6')}]" in answer.summary
+    assert "(e.g. C-502); What to check: Surge events, anti-surge valve response time" in answer.summary  # a whole row
 
 
-async def test_plain_summary_for_a_document_question_quotes_the_best_passage(mcp, retriever):
+async def test_plain_summary_for_a_document_question_quotes_the_sentence_that_answers_it(mcp, retriever):
     answer = await answer_offline(mcp, retriever, "How quickly must a P1 alarm be responded to?")
-    assert answer.summary.startswith("ALM-PHIL-006")
-    assert answer.summary.endswith("[S1].")
+    assert answer.summary.startswith("ALM-PHIL-006 §2")
+    assert "5 minutes" in answer.summary
+
+
+async def test_plain_summary_for_the_ai_question_quotes_the_governing_rule(mcp, retriever):
+    question = "When an AI recommendation disagrees with the operating procedure, which one wins?"
+    answer = await answer_offline(mcp, retriever, question)
+    assert answer.summary.startswith("ALM-PHIL-006 §7")
+    assert "the approved procedure governs" in answer.summary
+
+
+async def test_plain_summary_says_when_nothing_is_active(mcp, retriever):
+    question = "Are there active alarms on Boiler Feed Pump 101 right now?"
+    answer = await answer_offline(mcp, retriever, ACCEPTANCE, question)
+    assert answer.summary == "There are no active alarms on Boiler Feed Pump 101."
+
+
+async def test_plain_summary_says_when_no_procedure_applies(mcp, retriever):
+    answer = await answer_offline(mcp, retriever, "Which procedure applies to Boiler B-201 alarms?")
+    assert answer.summary == "The documents have no procedure for boiler alarms."
+
+
+async def test_the_first_action_comes_from_the_section_about_the_alarm(mcp, retriever):
+    answer = await answer_offline(mcp, retriever, "Investigate Feedwater Control Valve FV-101")
+    assert answer.recommended_actions[0].text.startswith("Follow TG-DEA-007 §4:")  # the valve section, not §1
+
+
+async def test_no_procedure_step_comes_first_when_no_section_is_about_the_alarm(mcp, retriever):
+    answer = await answer_offline(mcp, retriever, "Show active alarms for Crude Charge Pump 401")
+    assert not answer.recommended_actions[0].text.startswith("Follow ")  # no section here covers seal leaks
+
+
+def test_sentences_keep_abbreviations_whole():
+    text = "Related asset: Driven compressor (e.g. C-502); What to check: Surge events. Next row here."
+    assert sentences(text) == [
+        "Related asset: Driven compressor (e.g. C-502); What to check: Surge events.",
+        "Next row here.",
+    ]
+
+
+async def test_weak_documents_are_flagged_when_the_alarm_data_is_unavailable(retriever):
+    question = "Investigate Fired Heater H-401"
+    async with McpToolClient(http_connector("http://127.0.0.1:9/mcp", token="x", timeout_seconds=2)) as mcp:
+        run = await investigate(understand_with_rules(question), mcp, retriever, ConversationState(), trace_id="t")
+    answer = await compose_answer(question, run, llm=None)
+    assert any("no relevant passages" in g.lower() for g in answer.gaps)
 
 
 # ------------------------------------------------------------------- LLM answers
@@ -363,6 +408,15 @@ async def test_an_action_the_model_finds_in_conflict_is_not_recommended(acceptan
     answer = await compose_answer(ACCEPTANCE, acceptance_run, llm=FakeLlm(reply=reply))
     assert not any(s.text.startswith(check_bearing) for s in answer.recommended_actions)
     assert answer.grounding.removed_statements == 1
+
+
+async def test_a_model_summary_that_endorses_a_conflicting_action_is_replaced(acceptance_run):
+    offline = await compose_answer(ACCEPTANCE, acceptance_run, llm=None)
+    summary = f"{KEEP_RUNNING}, as the Alarm API advises [T7]."
+    answer = await compose_answer(ACCEPTANCE, acceptance_run, llm=FakeLlm(reply={"summary": summary}))
+    assert answer.summary == offline.summary
+    assert answer.grounding.summary_source == "template"
+    assert "conflict" in answer.grounding.summary_rejected
 
 
 async def test_offline_answers_have_no_analysis(acceptance_run):

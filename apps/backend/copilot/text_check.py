@@ -8,6 +8,7 @@ import re
 _DASHES = re.compile(r"[\u2010-\u2015\u2212]")  # hyphens, non-breaking hyphen, en and em dashes, minus sign
 _CODE = re.compile(r"\b[A-Z][A-Z0-9]{1,5}(?:-[A-Z0-9]+)+\b")  # PMP-VIB-HI, AST-BFP-101, ALM-000411, SOP-BFP-001
 _NUMBER = re.compile(r"(?<![\w.])\d+(?:\.\d+)?")  # 24, 7.1, 11.07; not the 2 in a citation key such as T2
+_ANY_NUMBER = re.compile(r"\d+(?:\.\d+)?")  # in the evidence: also the 18 in a timestamp such as T18:36
 
 
 def unsupported(text: str, evidence: str) -> str | None:
@@ -21,7 +22,7 @@ def unsupported(text: str, evidence: str) -> str | None:
     for code in _CODE.findall(text):
         if code.lower() not in known:
             return f"code {code}"
-    values = [float(n) for n in _NUMBER.findall(evidence)]
+    values = [float(n) for n in _ANY_NUMBER.findall(evidence)]
     for raw in _NUMBER.findall(_CODE.sub(" ", text)):
         decimals = len(raw.split(".")[1]) if "." in raw else 0
         if not any(round(v, decimals) == float(raw) for v in values):

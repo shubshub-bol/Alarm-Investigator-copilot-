@@ -6,7 +6,7 @@ from copilot.text_check import unsupported
 
 EVIDENCE = (
     "Boiler Feed Pump 101 (AST-BFP-101) had 24 alarms; the most frequent was High Vibration (PMP-VIB-HI). "
-    "Latest ALM-000411: value 11.07 mm/s vs setpoint 7.1. Trend 1.5 -> 2.1 per week (+43%)."
+    "Latest ALM-000411 at 2026-06-28T18:36:00Z: value 11.07 mm/s vs setpoint 7.1. Trend 1.5 -> 2.1 per week (+43%)."
 )
 
 
@@ -19,6 +19,7 @@ EVIDENCE = (
         "PMP-VIB-HI on AST-BFP-101 (ALM-000411)",
         "BFP\u2011101 is vibrating",  # a non-breaking hyphen, as some models write it
         "no numbers at all",
+        "the latest alarm came at 18:36 on 28 June",  # a clock time from an ISO timestamp (T18:36)
     ],
 )
 def test_text_drawn_from_the_evidence_passes(text):

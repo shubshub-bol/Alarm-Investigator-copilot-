@@ -37,7 +37,7 @@ _STOP = re.compile(
     re.I,
 )
 _GOVERNS = re.compile(r"\b(procedure governs|takes precedence|overrides? (the )?recommendation)", re.I)
-_SENTENCE = re.compile(r"(?<=[.!?])\s+(?=[A-Z0-9])")
+_SENTENCE = re.compile(r"(?<=[.!?])(?<!\be\.g\.)(?<!\bi\.e\.)\s+(?=[A-Z0-9])")  # "e.g. C-502" stays one sentence
 _WORD = re.compile(r"[a-z][a-z0-9-]+")
 _GENERIC = set(
     "check verify schedule plan monitor review confirm inspect next window alarm alarms the and for with at "

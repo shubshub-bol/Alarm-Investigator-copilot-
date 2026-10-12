@@ -122,21 +122,55 @@ def _alarm_name(run: InvestigationRun) -> str:
     return (ev.focus_alarm or ev.top_alarm or {}).get("alarm_name", "")
 
 
+_VAGUE = {"high", "low", "alarm", "alarms", "detected"}  # in many alarm names: too vague to match a section by
+_STOPWORDS = set("a an and are be does for how in is it must of on one or say says the to what when which with".split())
+
+
+def _about(passage: RetrievedPassage, alarm_name: str, alarm_code: str) -> bool:
+    """Whether the passage's section is about this alarm: its title names the alarm code or a specific word of it."""
+    title = (passage.citation.section_title or "").lower()
+    words = set(_WORD.findall(alarm_name.lower())) - _VAGUE
+    return (bool(alarm_code) and alarm_code.lower() in title) or bool(words & set(_WORD.findall(title)))
+
+
 def _main_procedure(run: InvestigationRun) -> tuple[RetrievedPassage, str] | None:
-    """The procedure passage whose key step ranks highest (operating procedures first), with that step."""
-    name = _alarm_name(run)
-    ranked = [
-        (p.citation.doc_type == "operating_procedure", _ranked_step(p, name), p)
-        for p in _passages_for(run, "Approved operating procedure", "Procedure for")
-    ]
-    if not ranked:
+    """The first section about the alarm (operating procedures first, then search order) with its key step, taken
+    from the section's best passage when it came in several. None when no procedure section is about the alarm."""
+    alarm = run.evidence.focus_alarm or run.evidence.top_alarm or {}
+    name, code = alarm.get("alarm_name", ""), alarm.get("alarm_code", "")
+    about = [p for p in _passages_for(run, "Approved operating procedure", "Procedure for") if _about(p, name, code)]
+    if not about:
         return None
-    _, (_, step), passage = max(ranked, key=lambda r: (r[0], r[1][0]))  # max keeps the first on a tie
-    return passage, step
+    about.sort(key=lambda p: p.citation.doc_type != "operating_procedure")  # stable: search order otherwise
+    section = [p for p in about if p.citation.label == about[0].citation.label]
+    passage = max(section, key=lambda p: _ranked_step(p, name)[0])  # max keeps the first on a tie
+    return passage, _ranked_step(passage, name)[1]
 
 
 def _first_sentence(passage: RetrievedPassage) -> str:
     return (sentences(passage.text) or [passage.citation.snippet])[0]
+
+
+def _terms(text: str) -> set[str]:
+    """Content words cut to five letters, so that 'responded' meets 'response'."""
+    return {w[:5] for w in _WORD.findall(text.lower()) if w not in _STOPWORDS and w not in _VAGUE}
+
+
+def _closest_sentence(passages: list[RetrievedPassage], question: str) -> tuple[RetrievedPassage, str]:
+    """The sentence sharing the most words with the question (the first on a tie), with its passage; the first
+    passage's first sentence when no sentence shares a word."""
+    wanted = _terms(question)
+    best: tuple[int, RetrievedPassage, str] = (0, passages[0], _first_sentence(passages[0]))
+    for p in passages:
+        for s in sentences(p.text):
+            score = len(wanted & _terms(s))
+            if score > best[0]:
+                best = (score, p, s)
+    return best[1], best[2]
+
+
+def _no_document_gap(missing: list[str]) -> str | None:
+    return next((m for m in missing if m.startswith("The documents have no")), None)
 
 
 def _cited(sentence: str, *keys: str) -> str:
@@ -156,7 +190,9 @@ def _related_with_alarms(recommendations: dict | None) -> list[str]:
     return out
 
 
-def _plain_summary(run: InvestigationRun, by_tool: dict[str, list[Fact]], assessments: list[ActionAssessment]) -> str:
+def _plain_summary(
+    run: InvestigationRun, by_tool: dict[str, list[Fact]], assessments: list[ActionAssessment], question: str = ""
+) -> str:
     """The summary built from the evidence alone: one form per intent, every statement cited."""
     ev = run.evidence
     rec_facts = by_tool.get("get_operator_recommendations", [])
@@ -167,6 +203,8 @@ def _plain_summary(run: InvestigationRun, by_tool: dict[str, list[Fact]], assess
         passage, step = main
         c = passage.citation
         parts.append(_cited(f"{c.label} ({c.title}) applies: {step}", c.key))
+    elif ev.intent == "procedure_lookup" and (gap := _no_document_gap(ev.missing)):
+        parts.append(gap)
     elif ev.intent == "recommendation_check" and assessments and rec_facts:
         n = Counter(a.verdict for a in assessments)
         parts.append(
@@ -182,8 +220,8 @@ def _plain_summary(run: InvestigationRun, by_tool: dict[str, list[Fact]], assess
         for p in _passages_for(run, "Which related equipment")[:1]:
             parts.append(_cited(f"{p.citation.label} lists what to inspect: {_first_sentence(p)}", p.citation.key))
     elif ev.intent == "knowledge_question" and ev.passages:
-        p = ev.passages[0]
-        parts.append(_cited(f"{p.citation.label} ({p.citation.title}): {_first_sentence(p)}", p.citation.key))
+        p, sentence = _closest_sentence(ev.passages, question)
+        parts.append(_cited(f"{p.citation.label} ({p.citation.title}): {sentence}", p.citation.key))
     elif ev.ranked_alarms:
         best = ev.ranked_alarms[0]
         rank_fact = next((f for f in by_tool.get("score_alarm_priority", []) if best["alarm_id"] in f.statement), None)
@@ -219,15 +257,18 @@ def _plain_summary(run: InvestigationRun, by_tool: dict[str, list[Fact]], assess
             f"[{conflict.citation_keys[0]}]."
         )
     if not parts:
-        parts.append(
-            "Answer based on the plant documents only."
-            if ev.passages
-            else "I could not find reliable evidence for this question."
-        )
+        if ev.missing:
+            parts.append(ev.missing[0])  # what the investigation could not find answers the question honestly
+        elif ev.passages:
+            parts.append("Answer based on the plant documents only.")
+        else:
+            parts.append("I could not find reliable evidence for this question.")
     return " ".join(parts)
 
 
-def template_answer(run: InvestigationRun, facts: list[Fact], assessments: list[ActionAssessment]) -> AnswerBody:
+def template_answer(
+    run: InvestigationRun, facts: list[Fact], assessments: list[ActionAssessment], question: str = ""
+) -> AnswerBody:
     ev = run.evidence
     by_tool: dict[str, list[Fact]] = {}
     for f in facts:
@@ -235,7 +276,7 @@ def template_answer(run: InvestigationRun, facts: list[Fact], assessments: list[
     rec_fact = next(iter(by_tool.get("get_operator_recommendations", [])), None)
     rec_keys = [rec_fact.key] if rec_fact else []
 
-    summary = _plain_summary(run, by_tool, assessments)
+    summary = _plain_summary(run, by_tool, assessments, question)
 
     # findings: every tool fact except the API's recommendation list (shown under actions instead)
     findings = [Statement(text=f.statement, citations=[f.key]) for f in facts if f is not rec_fact]
@@ -535,7 +576,8 @@ async def compose_answer(question: str, run: InvestigationRun, llm: LlmProvider 
     rules = assess_actions(ev.recommendations["recommended_actions"], ev.passages) if ev.recommendations else []
     grounding = Grounding(mode="template", retrieval_confidence=ev.retrieval_confidence)
 
-    body = template_answer(run, facts, rules)  # the facts part: always from the evidence, with or without a model
+    body = template_answer(run, facts, rules, question)  # the facts part: from the evidence, with or without a model
+    plain_summary = body.summary
     if llm is not None:
         try:
             reply = await llm.generate_json(SYSTEM_PROMPT, _llm_prompt(question, run, facts), LlmReply)
@@ -550,6 +592,11 @@ async def compose_answer(question: str, run: InvestigationRun, llm: LlmProvider 
             _apply_reply(body, reply, _evidence_text(question, run, facts), valid, grounding)
 
     body.action_assessments = _merge_assessments(body.action_assessments, rules)
+    conflicting = [a.action for a in body.action_assessments if a.verdict == "conflict"]
+    if grounding.summary_source == "llm" and any(_recommends(body.summary, c) for c in conflicting):
+        body.summary, grounding.summary_source = plain_summary, "template"
+        grounding.summary_rejected = "it recommends an Alarm API action the documents conflict with"
+        log.warning("model summary rejected; using the plain summary", extra={"fields": {"reason": "conflict"}})
     body.recommended_actions = _drop_conflicting(body.recommended_actions, body.action_assessments, grounding)
     body.analysis = _drop_conflicting(body.analysis, body.action_assessments, grounding)
 

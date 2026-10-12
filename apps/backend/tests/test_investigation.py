@@ -235,3 +235,36 @@ def test_the_weakest_main_search_sets_the_confidence():
     inv._set_main_confidence("low")
     inv._set_main_confidence("medium")
     assert inv.evidence.retrieval_confidence == "low"
+
+
+# ------------------------------------------------------------- review fixes
+
+
+def purposes(run) -> dict[str, str]:
+    return {p.citation.label: run.evidence.passage_purposes[p.citation.key] for p in run.evidence.passages}
+
+
+async def test_another_active_alarm_is_searched_for_its_own_asset_type(mcp, retriever):
+    u = understand_with_rules("What alarms are active right now in NorthPlant Unit 1?")
+    run = await investigate(u, mcp, retriever, ConversationState(), trace_id="t")
+    overload = [label for label, why in purposes(run).items() if why.startswith("Procedure for Overload Current")]
+    assert overload  # the motor's alarm gets motor documents ...
+    assert not any(label.startswith("SOP-BFP-001") for label in overload)  # ... not the feed pump procedure
+
+
+async def test_an_active_alarm_on_an_asset_of_unknown_type_gets_no_document_search(mcp, retriever):
+    u = understand_with_rules("What alarms are active right now in EastRefinery?")
+    run = await investigate(u, mcp, retriever, ConversationState(), trace_id="t")
+    assert not any(why.startswith("Procedure for Low Excess O2") for why in purposes(run).values())
+
+
+async def test_a_fallback_search_about_a_known_asset_keeps_to_its_type(mcp, retriever):
+    u = understand_with_rules("Investigate Boiler B-201 alarms over the last 1 day")  # no alarms in that window
+    run = await investigate(u, mcp, retriever, ConversationState(), trace_id="t")
+    assert all(label.startswith("ALM-PHIL-006") for label in labels(run))  # general documents only, no pump ones
+
+
+async def test_a_procedure_question_states_its_time_window(mcp, retriever):
+    u = understand_with_rules("Which procedure applies to Boiler B-201 alarms?")
+    run = await investigate(u, mcp, retriever, ConversationState(), trace_id="t")
+    assert run.evidence.lookback_days == 90

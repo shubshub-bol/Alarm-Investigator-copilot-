@@ -224,8 +224,8 @@ class Investigation:
         types = [t for t in ((self.evidence.asset or {}).get("asset_type"), *extra) if t]
         return list(dict.fromkeys(types)) or None
 
-    def _no_procedure(self) -> str | None:
-        asset_type = (self.evidence.asset or {}).get("asset_type")
+    def _no_procedure(self, asset_type: str | None = None) -> str | None:
+        asset_type = asset_type or (self.evidence.asset or {}).get("asset_type")
         return f"The documents have no procedure for {asset_type.replace('_', ' ')} alarms." if asset_type else None
 
     # ============================================================ building blocks
@@ -450,21 +450,27 @@ class Investigation:
         return recs
 
     # ------------------------------------------------------------- RAG helpers
-    def _asset_filters(self, codes: list[str], doc_types: list[str] | None = None) -> RetrievalFilters:
+    def _asset_filters(
+        self, codes: list[str], doc_types: list[str] | None = None, asset_type: str | None = None
+    ) -> RetrievalFilters:
         asset = self.evidence.asset or {}
+        types = [asset_type] if asset_type else self._types()
         return RetrievalFilters(
-            alarm_codes=codes or None, site=asset.get("site"), equipment_types=self._types(), doc_types=doc_types
+            alarm_codes=codes or None, site=asset.get("site"), equipment_types=types, doc_types=doc_types
         )
 
-    async def rag_for_alarm(self, alarm_name: str, code: str, k: int = 3, main: bool = False) -> None:
-        asset_type = (self.evidence.asset or {}).get("asset_type", "")
+    async def rag_for_alarm(
+        self, alarm_name: str, code: str, k: int = 3, main: bool = False, asset_type: str | None = None
+    ) -> None:
+        """`asset_type` is given for an alarm on another asset than the one investigated."""
+        asset_type = asset_type or (self.evidence.asset or {}).get("asset_type", "")
         await self.retrieve(
             f"{asset_type} {alarm_name} ({code})".strip(),  # plain wording ranked best across alarm types
             f"Procedure for {alarm_name} ({code})",
-            self._asset_filters([code], PROCEDURE_DOC_TYPES),
+            self._asset_filters([code], PROCEDURE_DOC_TYPES, asset_type),
             k=k,
             main=main,
-            no_documents=self._no_procedure(),
+            no_documents=self._no_procedure(asset_type),
         )
 
     async def rag_for_factors(self) -> None:
@@ -499,9 +505,12 @@ class Investigation:
             ),
         )
 
-    async def rag_question(self, main: bool = False) -> None:
+    async def rag_question(self) -> None:
+        """Search the documents for the question itself: the main search of a document question, and of any playbook
+        that falls back to it. A known asset keeps the search to documents for its type."""
         question = self.u.question or self.u.rationale
-        await self.retrieve(question, "Search the documents for the question", k=4, main=main)
+        filters = RetrievalFilters(equipment_types=self._types())
+        await self.retrieve(question, "Search the documents for the question", filters, k=4, main=True)
 
     # ================================================================ playbooks
     async def investigate_asset(self) -> None:
@@ -562,11 +571,22 @@ class Investigation:
             if self.evidence.asset is None:
                 await self.load_asset(focus["asset_id"])
             await self.rag_for_alarm(focus["alarm_name"], focus["alarm_code"], main=True)
-            others = {(a["alarm_code"], a["alarm_name"]) for a in found["alarms"]} - {
-                (focus["alarm_code"], focus["alarm_name"])
+            # One other alarm also gets its procedure, searched for its own asset's type; an asset whose type is
+            # not known here (not the investigated one or related to it) gets no search rather than a wrong one.
+            known = {
+                a["asset_id"]: a.get("asset_type")
+                for a in [self.evidence.asset or {}, *self.evidence.related_assets]
+                if a
             }
-            for code, name in sorted(others)[:1]:
-                await self.rag_for_alarm(name, code, k=2)
+            others = sorted(
+                (a["alarm_code"], a["alarm_name"], a["asset_id"])
+                for a in found["alarms"]
+                if (a["alarm_code"], a["alarm_name"]) != (focus["alarm_code"], focus["alarm_name"])
+            )
+            for code, name, asset_id in others:
+                if other_type := known.get(asset_id):
+                    await self.rag_for_alarm(name, code, k=2, asset_type=other_type)
+                    break
         await self.rag_for_safety()
 
     async def highest_priority(self) -> None:
@@ -646,6 +666,7 @@ class Investigation:
                 self.evidence.missing.append("No alarm in context; ask about a specific asset or alarm first.")
             return None
         await self.load_asset(asset["asset_id"])
+        self.evidence.lookback_days = self.lookback  # the window of the alarm summary below
         top = await self.find_top_alarm(self.evidence.asset or asset)
         return await self.latest_alarm(self.evidence.asset or asset, top["alarm_code"]) if top else None
 
@@ -690,7 +711,7 @@ class Investigation:
             self.evidence.action_checks.append({**step, "passage_keys": [p.citation.key for p in passages]})
 
     async def knowledge_question(self) -> None:
-        await self.rag_question(main=True)
+        await self.rag_question()
 
     async def governance_if_conflict(self) -> None:
         """If the API's advice contradicts a retrieved document, also fetch the rule on which one governs."""
