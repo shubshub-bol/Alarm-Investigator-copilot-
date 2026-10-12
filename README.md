@@ -1,5 +1,7 @@
 # Alarm Investigation and Procedure Guidance Copilot
 
+[![CI](https://github.com/shubshub-bol/Alarm-Investigator-copilot-/actions/workflows/ci.yml/badge.svg)](https://github.com/shubshub-bol/Alarm-Investigator-copilot-/actions/workflows/ci.yml)
+
 > Senior Software Engineer – Copilot Integration assignment.
 > **Selected use case:** Alarm Investigation and Procedure Guidance Copilot.
 
@@ -43,8 +45,8 @@ every statement cites its evidence, with the full tool trace one click away.
 With Docker (Docker Desktop or Docker Engine with Compose v2):
 
 ```bash
-git clone <this repository>
-cd senior-copilot-mcp-rag-assignment
+git clone https://github.com/shubshub-bol/Alarm-Investigator-copilot-.git
+cd Alarm-Investigator-copilot-
 docker compose up --build
 ```
 
