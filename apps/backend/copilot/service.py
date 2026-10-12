@@ -10,6 +10,7 @@ from typing import Annotated, Any, Literal
 from pydantic import BaseModel, Field
 
 from copilot.answer import CopilotAnswer, compose_answer, conversation_reply
+from copilot.context import remember, render
 from copilot.conversations import ConversationStore, OpenConversation, StorageError, new_conversation_id
 from copilot.investigation import Evidence, investigate
 from copilot.llm import LlmProvider
@@ -105,11 +106,13 @@ class CopilotService:
         await emit("started", {"trace_id": trace_id, "conversation_id": conv.conversation_id})
 
         t0 = time.perf_counter()
-        u = await understand(question, self.llm)
+        chat = render(conv.state)  # the chat so far, for the model: recent turns in full, older ones in short
+        u = await understand(question, self.llm, chat)
         understanding_ms = _ms(t0)
         await emit("understanding", u.model_dump(mode="json"))
         if u.intent == "conversation":
             response = await self._reply_without_tools(question, u, conv, trace_id, started, understanding_ms)
+            remember(conv.state, question, response.answer.summary, response.evidence)
             await self._save(conv, question, response, title=None)  # small talk leaves the chat as "New chat"
             return response
 
@@ -132,7 +135,7 @@ class CopilotService:
             investigation_ms = _ms(t0)
 
             t0 = time.perf_counter()
-            answer = await compose_answer(question, run, self.llm)
+            answer = await compose_answer(question, run, self.llm, chat)
             answer_ms = _ms(t0)
             title = await self._title(title_task, u, run.evidence, answer) if conv.needs_title else None
         finally:
@@ -163,6 +166,8 @@ class CopilotService:
                 total_ms=_ms(started),
             ),
         )
+        said = " ".join([answer.summary, *(s.text for s in answer.analysis)])
+        remember(conv.state, question, said, run.evidence)
         await self._save(conv, question, response, title)
         log.info(
             "chat",

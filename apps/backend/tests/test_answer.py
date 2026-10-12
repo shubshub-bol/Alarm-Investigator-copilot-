@@ -424,6 +424,15 @@ async def test_a_model_summary_that_endorses_a_conflicting_action_is_replaced(ac
     assert "conflict" in answer.grounding.summary_rejected
 
 
+async def test_earlier_messages_are_shown_to_the_model_but_numbers_come_from_this_question(acceptance_run):
+    llm = FakeLlm(reply={"summary": "As before, vibration is at 31 mm/s [T5]."})
+    context = "\n".join(["User: How bad is it?", "Copilot: Vibration was 31 mm/s."])
+    answer = await compose_answer(ACCEPTANCE, acceptance_run, llm=llm, context=context)
+    assert "Copilot: Vibration was 31 mm/s." in llm.prompt
+    assert answer.grounding.summary_source == "template"  # 31 is only in the old chat, not in this evidence
+    assert "number 31" in answer.grounding.summary_rejected
+
+
 async def test_offline_answers_have_no_analysis(acceptance_run):
     answer = await compose_answer(ACCEPTANCE, acceptance_run, llm=None)
     assert answer.analysis == []

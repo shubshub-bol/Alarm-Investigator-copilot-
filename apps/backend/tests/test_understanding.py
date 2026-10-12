@@ -150,6 +150,7 @@ class FakeLlm:
 
     async def generate_json(self, system, prompt, schema):
         self.calls += 1
+        self.prompt = prompt
         if self.error:
             raise self.error
         return schema.model_validate(self.reply)
@@ -240,6 +241,17 @@ async def test_a_type_word_is_not_an_asset_name(reply):
     u = await understand("any boiler alarma are active", FakeLlm(reply=reply))
     assert u.asset_query is None  # 'boiler' names no single asset: three asset names contain the word
     assert u.asset_type == "boiler"
+
+
+async def test_the_model_sees_the_earlier_messages():
+    llm = FakeLlm(reply={"intent": "investigate_asset", "asset_query": "Boiler Feed Pump 101", "lookback_days": 30})
+    context = "\n".join(
+        ["Earlier in this chat, oldest first.", "User: Investigate Boiler Feed Pump 101", "Copilot: It vibrates."]
+    )
+    u = await understand("And over the last 30 days?", llm, context)
+    assert "User: Investigate Boiler Feed Pump 101" in llm.prompt
+    assert llm.prompt.endswith("Question: And over the last 30 days?")
+    assert (u.asset_query, u.lookback_days) == ("Boiler Feed Pump 101", 30)
 
 
 async def test_llm_failure_falls_back_to_rules():

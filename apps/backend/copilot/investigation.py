@@ -34,6 +34,14 @@ GUIDANCE_DOC_TYPES = ["maintenance_manual", "troubleshooting_guide", "knowledge_
 NO_PASSAGES = "No relevant passages were found in the document corpus for this question."
 
 
+class ChatTurn(BaseModel):
+    """One answered question, as the model sees it later (copilot/context.py)."""
+
+    question: str
+    answer: str  # the summary and analysis, without citation keys
+    bits: str  # the important bits, kept once the turn is older than the recent ones
+
+
 class ConversationState(BaseModel):
     """What a follow-up question ('this alarm') can refer back to."""
 
@@ -41,6 +49,8 @@ class ConversationState(BaseModel):
     last_alarm: dict | None = None
     last_site: str | None = None
     last_unit: str | None = None
+    history: list[ChatTurn] = []  # the most recent turns, in full
+    memory: list[str] = []  # the important bits of older turns
 
 
 class Evidence(BaseModel):
