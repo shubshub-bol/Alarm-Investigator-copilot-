@@ -58,3 +58,12 @@ async def test_the_report_has_the_score_and_every_question(service, tmp_path):
     assert "2/2 passed (offline)." in text
     for case in GOLDEN[:2]:
         assert case.question in text
+
+
+async def test_the_report_says_how_each_question_was_understood_and_why_a_summary_was_rejected(service, tmp_path):
+    report = await evaluate(service, GOLDEN[:1])
+    report.rows[0].response.answer.grounding.summary_rejected = "number 31 is not in the evidence"
+    write_report(report, tmp_path / "run.md", "LLM")
+    text = (tmp_path / "run.md").read_text(encoding="utf-8")
+    assert "understood as investigate_asset (asset Boiler Feed Pump 101, type pump)" in text
+    assert "summary rejected: number 31 is not in the evidence" in text

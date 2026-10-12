@@ -71,6 +71,9 @@ GOLDEN: list[Case] = [
          "AST-BFP-102", sources=("SOP-BFP-001",)),
     Case("Are there active alarms on Gas Compressor C-301 right now?", "active_alarms", "AST-CMP-301"),
     Case("What alarms are active right now in NorthPlant Unit 1?", "active_alarms"),
+    Case("any boiler alarma are active", "active_alarms", gap="no active alarms on boiler assets"),  # a real chat
+    Case("Are any pump alarms active?", "active_alarms", sources=("SOP-BFP-001",)),
+    Case("check for all boilers", ("investigate_asset", "active_alarms"), sources=(), procedure=False),  # a real chat
     # what matters most
     Case("Which alarm has the highest priority in EastRefinery, and why?", "highest_priority", "AST-CMP-301",
          sources=("ALM-PHIL-006",)),
@@ -179,6 +182,18 @@ def check(case: Case, response: ChatResponse) -> list[str]:
     return problems
 
 
+def notes(response: ChatResponse) -> str:
+    """How the question was understood, and why the model's summary was not shown (when it was not)."""
+    u = response.understanding
+    seen = ", ".join(
+        f"{k} {v}" for k, v in (("asset", u.asset_query), ("type", u.asset_type), ("topic", u.alarm_topic)) if v
+    )
+    out = [f"understood as {u.intent}" + (f" ({seen})" if seen else "")]
+    if response.answer.grounding.summary_rejected:
+        out.append(f"summary rejected: {response.answer.grounding.summary_rejected}")
+    return "; ".join(out)
+
+
 def facts_part(response: ChatResponse) -> list[tuple[str, tuple[str, ...]]]:
     """The answer's code-built sections, to compare two answers to the same question."""
     a = response.answer
@@ -215,9 +230,13 @@ def write_report(report: EvalReport, path: Path, mode: str) -> None:
         "|---|---|",
         *(f"| {name} | {value} |" for name, value in report.counts().items()),
         "",
-        "| Question | Result | Problems |",
-        "|---|---|---|",
-        *(f"| {r.case.question} | {'FAIL' if r.problems else 'pass'} | {'; '.join(r.problems)} |" for r in report.rows),
+        "| Question | Result | Problems | Notes |",
+        "|---|---|---|---|",
+        *(
+            f"| {r.case.question} | {'FAIL' if r.problems else 'pass'} | {'; '.join(r.problems)} | "
+            f"{notes(r.response)} |"
+            for r in report.rows
+        ),
     ]
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
@@ -252,6 +271,8 @@ def main(argv: list[str] | None = None) -> int:
         print(f"{'FAIL' if row.problems else 'pass'}  {row.case.question[:90]}")
         for problem in row.problems:
             print(f"      - {problem}")
+        if llm:
+            print(f"      ({notes(row.response)})")
     mode = "LLM" if llm else "keyword rules and template answers"
     print(f"\n{report.passed}/{len(report.rows)} passed ({mode})")
     if llm:
