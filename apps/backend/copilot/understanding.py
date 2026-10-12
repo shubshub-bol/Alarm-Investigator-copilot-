@@ -74,7 +74,7 @@ _MODIFIERS = (
 )
 _NAMED_ASSET = re.compile(rf"\b((?:(?:{_MODIFIERS})\s+){{0,3}})({_EQUIPMENT})\s+([a-z]{{0,3}}-?\d{{2,3}})\b", re.I)
 _ASSET_ID = re.compile(r"\b(AST-[A-Z]{2,4}-\d{3}|[A-Z]{1,4}-\d{3})\b")
-_EQUIPMENT_WORD = re.compile(rf"\b({_EQUIPMENT})s?\b", re.I)
+_EQUIPMENT_PHRASE = re.compile(rf"\b(?:(?:{_MODIFIERS})\s+){{0,3}}({_EQUIPMENT})s?\b", re.I)  # boiler feed pump: pump
 _SITE = re.compile(r"\b(east|north|south|west)\s?(refinery|plant)\b", re.I)
 _UNIT = re.compile(r"\bunit\s*(\d{1,2})\b", re.I)
 _ALARM_TOPICS = [
@@ -144,7 +144,7 @@ def _severities(text: str) -> list[str] | None:
 
 def understand_with_rules(question: str) -> QueryUnderstanding:
     asset_query = _asset_query(question)
-    equipment = _EQUIPMENT_WORD.search(question)
+    equipment = _EQUIPMENT_PHRASE.search(question)
     asset_type = equipment.group(1).lower() if equipment else None
     site_match, unit_match = _SITE.search(question), _UNIT.search(question)
     lower = question.lower()
@@ -218,12 +218,25 @@ async def understand(question: str, llm: LlmProvider | None) -> QueryUnderstandi
             merged[name] = getattr(rules, name)
     merged["severities"] = at_or_above(merged["severities"])
     merged["uses_context"] = merged["uses_context"] or rules.uses_context
+    # A type word is no asset name. Seen with an OpenRouter model: "any boiler alarms active" with the asset
+    # 'boiler', which matches three asset names equally, two of them boiler feed pumps.
+    if merged["asset_query"] and not re.search(r"\d", merged["asset_query"]):
+        merged["asset_type"] = merged["asset_type"] or merged["asset_query"]
+        merged["asset_query"] = None
+    if merged["asset_type"]:
+        merged["asset_type"] = _type_name(merged["asset_type"])
     # A named asset always gets its live data. Seen with an OpenRouter model: "Boiler B-201 how many times it failed
     # in past?" was filed as a document question, so no tool was called and the answer said it could not tell.
     asset_query = merged["asset_query"] or rules.asset_query
     if merged["intent"] in _NO_DATA_INTENTS and asset_query:
         merged.update(intent="investigate_asset", asset_query=asset_query)
     return QueryUnderstanding(**merged, question=question, method="llm", rules_intent=rules.intent)
+
+
+def _type_name(word: str) -> str:
+    """'Boilers' -> 'boiler', 'heat exchangers' -> 'heat_exchanger': the form asset types are stored in."""
+    word = "_".join(word.lower().split())
+    return word[:-1] if word.endswith("s") and not word.endswith("ss") else word
 
 
 _GAP_FILL_FIELDS = ("asset_type", "site", "unit", "lookback_days", "severities", "alarm_topic", "status")

@@ -216,6 +216,32 @@ async def test_rules_only_understanding_has_no_second_intent():
     assert (await understand("Boiler Feed Pump 101", None)).rules_intent is None
 
 
+@pytest.mark.parametrize(
+    ("text", "asset_type"),
+    [
+        ("Any boiler alarms active?", "boiler"),
+        ("Any boiler feed pump alarms active?", "pump"),  # 'boiler' and 'feed' describe the pump
+        ("Investigate Boiler Feed Pump 101", "pump"),
+        ("Why are compressor discharge pressure alarms repeatedly occurring?", "compressor"),
+    ],
+)
+def test_the_asset_type_is_the_equipment_word_a_phrase_ends_with(text, asset_type):
+    assert understand_with_rules(text).asset_type == asset_type
+
+
+@pytest.mark.parametrize(
+    "reply",
+    [
+        {"intent": "active_alarms", "asset_query": "boiler", "asset_type": "boiler"},  # seen with an OpenRouter model
+        {"intent": "active_alarms", "asset_query": "boilers"},
+    ],
+)
+async def test_a_type_word_is_not_an_asset_name(reply):
+    u = await understand("any boiler alarma are active", FakeLlm(reply=reply))
+    assert u.asset_query is None  # 'boiler' names no single asset: three asset names contain the word
+    assert u.asset_type == "boiler"
+
+
 async def test_llm_failure_falls_back_to_rules():
     u = await understand(ACCEPTANCE, FakeLlm(error=LlmError("quota exceeded")))
     assert u.method == "rules"
