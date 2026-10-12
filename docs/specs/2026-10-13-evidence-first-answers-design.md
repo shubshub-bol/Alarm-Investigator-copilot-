@@ -90,7 +90,7 @@ Plain summary per intent:
 | `related_assets` | The related assets with active alarms or alarms in the 7 days before (from the Alarm API's recommendation context); the documents' key sentence on what to inspect |
 | `procedure_lookup` | Which section applies and its key step |
 | `recommendation_check` | How many API actions match the documents, how many conflict, and which |
-| `knowledge_question` | The best passage's label and first sentence |
+| `knowledge_question` | The key sentence of the best passage |
 | No evidence | "I could not find reliable evidence for this question." (as today) |
 
 Every statement in the plain summary carries its citation keys.
@@ -145,8 +145,11 @@ Each playbook names its main search, and the answer's `retrieval_confidence` is 
 | `recommendation_check` | The checks of each API action; the lowest of them |
 | `knowledge_question` | The question itself |
 
-A playbook that stops before its main search (unknown asset, no alarms) reports confidence `none` without a
-"no relevant passages" gap; its own gap already says why.
+A playbook that stops before its main search falls back to searching the question itself, and that search is
+then its main search, limited to the asset's type when the asset is known. (Changed after the final review: a
+fallback with weak documents, for example when the MCP server is down, must still say so.) When no search runs at
+all (no active alarms), the confidence is `none` and no "no relevant passages" gap is added: the answer's own gap
+says why.
 
 ## 5. Question routing
 

@@ -224,9 +224,11 @@ questions stay below 0.55 ("What is the capital of France?" scores 0.40). Each p
 (for an investigation, the procedure for the top alarm), and the answer's confidence is that search's, so a
 well-matched safety passage cannot make a missing procedure look "high". When a main search is low or none, the
 answer adds the gap "No relevant passages were found in the document corpus for this question", or the more
-precise "The documents have no procedure for ... alarms" when nothing exists for the asset type. When no main
-search ran (an unknown asset, no active alarms), neither gap appears: the answer's own gap says why. The language model is told to list missing evidence under gaps instead of guessing, and the
-answer never contains an uncited statement. If the document index cannot be loaded at all, the copilot still
+precise "The documents have no procedure for ... alarms" when nothing exists for the asset type. A playbook that
+falls back to searching the question itself treats that search as its main search. When no search ran at all
+(no active alarms), neither gap appears: the answer's own gap says why, and the summary repeats it. The language
+model is told to list missing evidence under gaps instead of guessing, and every finding, cause, procedure item,
+action and analysis statement carries a citation. If the document index cannot be loaded at all, the copilot still
 answers from live alarm data and says that documents were unavailable.
 
 ## 13. Prompt-injection protections
