@@ -183,3 +183,41 @@ def test_unreadable_follow_up_context_keeps_the_chat(store, db):
     assert resumed.conversation_id == conv.conversation_id
     assert resumed.state == ConversationState()
     assert resumed.needs_title is False
+
+
+def test_a_chat_deleted_while_its_answer_runs_is_not_recreated(store, db):
+    conv = store.resume(None)
+    store.save_turn(conv, "q1", answer(), title="T")
+    resumed = store.resume(conv.conversation_id)  # a follow-up question starts...
+    store.delete(conv.conversation_id)  # ...and the user deletes the chat before its answer is saved
+    assert store.save_turn(resumed, "q2", answer(), title=None) is False
+    assert store.get(conv.conversation_id) is None
+    assert raw(db, "SELECT COUNT(*) FROM turns") == [(0,)]
+    assert store.health()["ok"] is True  # a deleted chat is not a storage failure
+
+
+async def test_an_answer_for_a_chat_deleted_meanwhile_is_marked_unsaved(db):
+    store = ConversationStore(db)
+    service = CopilotService(
+        in_memory_connector(make_server(simulator_transport())), None, llm=None, conversations=store
+    )
+    first = await service.ask("hello")
+
+    async def delete_when_started(event, data):
+        if event == "started":
+            store.delete(first.conversation_id)
+
+    second = await service.ask("hello again", first.conversation_id, on_event=delete_when_started)
+    assert second.saved is False
+    assert store.get(first.conversation_id) is None
+
+
+def test_a_damaged_answer_is_skipped_and_the_rest_of_the_chat_opens(store, db):
+    conv = store.resume(None)
+    store.save_turn(conv, "q1", answer("one"), title="T")
+    store.save_turn(store.resume(conv.conversation_id), "q2", answer("two"), title=None)
+    store.save_turn(store.resume(conv.conversation_id), "q3", answer("three"), title=None)
+    raw(db, "UPDATE turns SET response = '{broken' WHERE seq = 1")
+    raw(db, "UPDATE turns SET response = '[]' WHERE seq = 2")  # valid JSON, but not an answer
+    detail = store.get(conv.conversation_id)
+    assert [t.question for t in detail.turns] == ["q3"]

@@ -171,6 +171,8 @@ answers HTTP 503 while anything is degraded, so a monitor sees it from the statu
 | Document index missing | The answer uses alarm data only and says documents were unavailable |
 | Chat storage unavailable | Answers still work, marked `saved: false` (the GUI keeps its address); chat endpoints return 503 with a clear message; the GUI shows "Chats not saved" |
 | Saved follow-up context unreadable | The chat continues without its earlier context; a warning is logged |
+| A saved answer unreadable | That answer is skipped when the chat opens; the others are shown; a warning is logged |
+| Chat deleted while its answer runs | The answer is shown but not saved (`saved: false`), so the chat stays deleted |
 | Backend unreachable | The GUI shows the problem and reconnects on its own; a failed question offers "Try again" |
 
 ## Deployment

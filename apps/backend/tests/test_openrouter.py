@@ -131,3 +131,11 @@ async def test_an_error_given_as_plain_text_is_reported_as_an_llm_error(status):
     llm, _ = provider(lambda n: httpx.Response(status, json={"error": "Invalid model"}))
     with pytest.raises(LlmError, match="Invalid model"):
         await llm.generate_text("s", "p")
+
+
+@pytest.mark.parametrize("tag", ["JSON", "json5", "Json"])
+async def test_json_in_a_fence_with_any_language_tag_is_read(tag):
+    llm, _ = provider(lambda n: completion(f'```{tag}\n{{"intent": "active_alarms", "confidence": 0.9}}\n```'))
+    assert await llm.generate_json("classify", "Show active alarms", Verdict) == Verdict(
+        intent="active_alarms", confidence=0.9
+    )

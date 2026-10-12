@@ -134,7 +134,7 @@ OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
 # A failing upstream provider (502), no available provider (503) or a timeout is asked again; a rate limit (429),
 # missing credits (402) or a bad key (401) is not: retrying within seconds will not fix it.
 OPENROUTER_RETRY_STATUS = {408, 500, 502, 503, 504}
-_FENCE = re.compile(r"^```[a-z]*\s*|\s*```$")
+_FENCE = re.compile(r"^```[\w-]*\s*|\s*```$")  # any language tag: json, JSON, json5
 
 
 class OpenRouterProvider:

@@ -73,6 +73,7 @@ class OpenConversation:
     conversation_id: str
     state: ConversationState = field(default_factory=ConversationState)
     needs_title: bool = True  # still "New chat": the next real question names it
+    stored: bool = False  # loaded from the database (a saved chat), not new
 
 
 def new_conversation_id() -> str:
@@ -87,6 +88,15 @@ def _summary(row: sqlite3.Row) -> ConversationSummary:
     return ConversationSummary(
         conversation_id=row["id"], title=row["title"], created_at=row["created_at"], updated_at=row["updated_at"]
     )
+
+
+def _stored_turn(row: sqlite3.Row) -> StoredTurn | None:
+    """One saved answer, or None if it is damaged: the rest of the chat still opens."""
+    try:
+        return StoredTurn(question=row["question"], created_at=row["created_at"], response=json.loads(row["response"]))
+    except ValueError as exc:  # bad JSON, or JSON that is not an answer (pydantic's ValidationError is a ValueError)
+        log.warning("saved answer unreadable; skipped", extra={"fields": {"error": str(exc)[:300]}})
+        return None
 
 
 class ConversationStore:
@@ -164,40 +174,55 @@ class ConversationStore:
                     conversation_id=conversation_id,
                     state=state,
                     needs_title=row["title_source"] == "placeholder",
+                    stored=True,
                 )
         return OpenConversation(conversation_id=new_conversation_id())
 
-    def save_turn(self, conv: OpenConversation, question: str, response: dict[str, Any], title: str | None) -> None:
+    def save_turn(self, conv: OpenConversation, question: str, response: dict[str, Any], title: str | None) -> bool:
         """Append one answered turn in one transaction; the chat row is created with its first answer.
 
         `title` names a chat that is still "New chat"; it is ignored once the chat has an automatic or user title.
+        Returns False, and saves nothing, when a saved chat was deleted while this answer was running.
         """
         now = _now()
+        state = conv.state.model_dump_json()
         try:
             with self._connect() as conn:
-                conn.execute(
-                    "INSERT INTO conversations (id, title, title_source, created_at, updated_at, state) "
-                    "VALUES (?, ?, 'placeholder', ?, ?, ?) "
-                    "ON CONFLICT (id) DO UPDATE SET updated_at = excluded.updated_at, state = excluded.state",
-                    (conv.conversation_id, PLACEHOLDER_TITLE, now, now, conv.state.model_dump_json()),
-                )
-                if title:
+                if conv.stored:  # update only, so a chat deleted meanwhile stays deleted
+                    found = conn.execute(
+                        "UPDATE conversations SET updated_at = ?, state = ? WHERE id = ?",
+                        (now, state, conv.conversation_id),
+                    ).rowcount
+                else:
                     conn.execute(
-                        "UPDATE conversations SET title = ?, title_source = 'auto' "
-                        "WHERE id = ? AND title_source = 'placeholder'",
-                        (title, conv.conversation_id),
+                        "INSERT INTO conversations (id, title, title_source, created_at, updated_at, state) "
+                        "VALUES (?, ?, 'placeholder', ?, ?, ?) "
+                        "ON CONFLICT (id) DO UPDATE SET updated_at = excluded.updated_at, state = excluded.state",
+                        (conv.conversation_id, PLACEHOLDER_TITLE, now, now, state),
                     )
-                conn.execute(
-                    "INSERT INTO turns (conversation_id, seq, question, response, created_at) "
-                    "SELECT ?, COALESCE(MAX(seq), 0) + 1, ?, ?, ? FROM turns WHERE conversation_id = ?",
-                    (conv.conversation_id, question, json.dumps(response), now, conv.conversation_id),
-                )
+                    found = 1
+                if found:
+                    if title:
+                        conn.execute(
+                            "UPDATE conversations SET title = ?, title_source = 'auto' "
+                            "WHERE id = ? AND title_source = 'placeholder'",
+                            (title, conv.conversation_id),
+                        )
+                    conn.execute(
+                        "INSERT INTO turns (conversation_id, seq, question, response, created_at) "
+                        "SELECT ?, COALESCE(MAX(seq), 0) + 1, ?, ?, ? FROM turns WHERE conversation_id = ?",
+                        (conv.conversation_id, question, json.dumps(response), now, conv.conversation_id),
+                    )
         except StorageError as exc:
             self.error = str(exc)
             raise
         self.error = None
+        if not found:
+            log.info("chat deleted while its answer ran; not saved", extra={"fields": {"id": conv.conversation_id}})
+            return False
         if title:
             conv.needs_title = False
+        return True
 
     def list_conversations(self) -> list[ConversationSummary]:
         """Newest activity first. Renaming does not change the order: only a new turn moves a chat up.
@@ -223,13 +248,7 @@ class ConversationStore:
                 "SELECT question, created_at, response FROM turns WHERE conversation_id = ? ORDER BY seq",
                 (conversation_id,),
             ).fetchall()
-        return ConversationDetail(
-            **_summary(row).model_dump(),
-            turns=[
-                StoredTurn(question=t["question"], created_at=t["created_at"], response=json.loads(t["response"]))
-                for t in turns
-            ],
-        )
+        return ConversationDetail(**_summary(row).model_dump(), turns=[s for t in turns if (s := _stored_turn(t))])
 
     def rename(self, conversation_id: str, title: str) -> ConversationSummary | None:
         with self._connect() as conn:

@@ -78,7 +78,9 @@ export function useChat(onAnswer?: (response: ChatResponse) => void) {
       const id = nextId();
       setTurns((all) => [...all, { id, question, phase: "running", startedAt: Date.now(), steps: [] }]);
       const abort = takeOver();
-      const current = () => controller.current === abort; // false once another chat was opened
+      // False once another chat was opened, or the address changed (Back/Forward) before the app has reacted.
+      const askedFrom = window.location.pathname;
+      const current = () => controller.current === abort && window.location.pathname === askedFrom;
       const fail = (message: string) =>
         current() && update(id, (turn) => ({ ...turn, phase: "failed", error: message, finishedAt: Date.now() }));
 

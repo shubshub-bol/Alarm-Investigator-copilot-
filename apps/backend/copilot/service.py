@@ -249,10 +249,10 @@ class CopilotService:
             return OpenConversation(conversation_id=conversation_id or new_conversation_id())
 
     async def _save(self, conv: OpenConversation, question: str, response: ChatResponse, title: str | None) -> None:
-        """Save the answered turn. A storage failure is logged, reported by health and marked on the answer
-        (`saved: false`), which still goes out."""
+        """Save the answered turn. The answer still goes out when it is not saved (storage failed, or the chat was
+        deleted meanwhile), marked `saved: false`; a storage failure is also logged and reported by health."""
         try:
-            await asyncio.to_thread(
+            response.saved = await asyncio.to_thread(
                 self.conversations.save_turn, conv, question, response.model_dump(mode="json"), title
             )
         except StorageError as exc:

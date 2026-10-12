@@ -131,6 +131,39 @@ test("an answer that could not be saved keeps the address, so a reload does not 
   expect(window.location.pathname).toBe("/");
 });
 
+test("leaving with Back or Forward while an answer is coming: the late answer does not change the address", async () => {
+  let release!: () => void;
+  const gate = new Promise<void>((resolve) => (release = resolve));
+  const cut = streamText.indexOf("event: answer");
+  const encoder = new TextEncoder();
+  mockBackend({
+    chat: async () =>
+      new Response(
+        new ReadableStream<Uint8Array>({
+          async start(controller) {
+            controller.enqueue(encoder.encode(streamText.slice(0, cut))); // progress arrives...
+            await gate; // ...the answer only after the user has left
+            controller.enqueue(encoder.encode(streamText.slice(cut)));
+            controller.close();
+          },
+        }),
+        { headers: { "Content-Type": "text/event-stream" } },
+      ),
+  });
+  render(<App />);
+  await userEvent.type(screen.getByRole("textbox", { name: "Question" }), `${QUESTION}{Enter}`);
+  await waitFor(() =>
+    expect(vi.mocked(fetch).mock.calls.some(([url]) => String(url).endsWith("/api/chat/stream"))).toBe(true),
+  );
+  // The browser has already moved to another chat; the app has not handled the popstate event yet.
+  window.history.pushState(null, "", "/c/conv-000000000000");
+  await act(async () => {
+    release();
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  });
+  expect(window.location.pathname).toBe("/c/conv-000000000000");
+});
+
 test("a degraded backend (HTTP 503) is shown as degraded, not as unreachable", async () => {
   const degraded = { ...health, status: "degraded", mcp: { ...health.mcp, connected: false, tools: 0 } };
   mockBackend({ checkHealth: () => Response.json(degraded, { status: 503 }) });
