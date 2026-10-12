@@ -5,7 +5,7 @@ import pytest
 
 from copilot.investigation import ConversationState, Investigation, investigate
 from copilot.mcp_client import McpToolClient, http_connector, in_memory_connector
-from copilot.understanding import understand_with_rules
+from copilot.understanding import QueryUnderstanding, understand_with_rules
 from copilot_test_helpers import simulator_transport
 from mcp_test_helpers import make_server
 
@@ -268,3 +268,37 @@ async def test_a_procedure_question_states_its_time_window(mcp, retriever):
     u = understand_with_rules("Which procedure applies to Boiler B-201 alarms?")
     run = await investigate(u, mcp, retriever, ConversationState(), trace_id="t")
     assert run.evidence.lookback_days == 90
+
+
+# ------------------------------------------------------------- all assets of a type
+
+PUMPS = {"AST-BFP-101", "AST-BFP-102", "AST-PMP-202", "AST-PMP-401", "AST-PMP-601"}
+
+
+async def test_active_alarms_for_a_type_check_every_asset_of_that_type(mcp, retriever):
+    run = await investigate(
+        understand_with_rules("Are any boiler alarms active?"), mcp, retriever, ConversationState(), trace_id="t"
+    )
+    assert tools_called(run) == ["search_assets", "get_alarms"]  # find the boilers, then one alarm query
+    assert run.steps[0].arguments["asset_type"] == "boiler"
+    assert "There are no active alarms on boiler assets (Boiler B-201)." in run.evidence.missing
+
+
+async def test_active_alarms_for_a_type_are_ranked_when_there_are_some(mcp, retriever):
+    run = await investigate(
+        understand_with_rules("Are any pump alarms active?"), mcp, retriever, ConversationState(), trace_id="t"
+    )
+    ev = run.evidence
+    assert ev.ranked_alarms
+    assert {a["asset_id"] for a in ev.active_alarms} <= PUMPS  # only pumps, from any site
+    assert ev.focus_alarm["asset_id"] in PUMPS
+
+
+async def test_a_document_question_keeps_to_the_type_it_names(mcp, retriever):
+    u = QueryUnderstanding(
+        intent="knowledge_question",
+        asset_type="boiler",
+        question="What do the documents say about boiler steam pressure?",
+    )
+    run = await investigate(u, mcp, retriever, ConversationState(), trace_id="t")
+    assert all(label.startswith("ALM-PHIL-006") for label in labels(run))  # no pump documents for a boiler

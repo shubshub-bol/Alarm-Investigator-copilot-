@@ -206,6 +206,11 @@ def test_sentences_keep_abbreviations_whole():
     ]
 
 
+async def test_a_document_question_gets_no_invented_step(mcp, retriever):
+    answer = await answer_offline(mcp, retriever, "How quickly must a P1 alarm be responded to?")
+    assert answer.recommended_actions == []  # before: "Follow ALM-PHIL-006 §6.", a step no procedure gave
+
+
 async def test_weak_documents_are_flagged_when_the_alarm_data_is_unavailable(retriever):
     question = "Investigate Fired Heater H-401"
     async with McpToolClient(http_connector("http://127.0.0.1:9/mcp", token="x", timeout_seconds=2)) as mcp:

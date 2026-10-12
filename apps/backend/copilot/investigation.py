@@ -256,29 +256,35 @@ class Investigation:
             return last
         return None
 
-    async def pick_asset_by_topic(self) -> dict | None:
-        """No named asset: find assets of the mentioned type and pick the one with most matching alarms."""
+    async def assets_of_type(self) -> list[dict] | None:
+        """The assets of the mentioned type; None when the search failed, [] (with a gap) when there are none."""
         u = self.u
-        if not u.asset_type:
-            return None
-        site, unit = u.site, u.unit
         found = await self.tool(
             "search_assets",
             f"Find {u.asset_type} assets",
             query=u.asset_type,
             asset_type=u.asset_type,
-            site=site,
-            unit=unit,
+            site=u.site,
+            unit=u.unit,
             limit=20,
         )
         if found and not found["results"]:  # the word may not be an exact asset_type (e.g. 'cooler')
             found = await self.tool(
                 "search_assets", f"Find assets matching '{u.asset_type}'", query=u.asset_type, limit=20
             )
-        candidates = (found or {}).get("results", [])
+        if found is None:
+            return None
+        if not found["results"]:
+            self.evidence.missing.append(f"No {u.asset_type} assets found.")
+        return found["results"]
+
+    async def pick_asset_by_topic(self) -> dict | None:
+        """No named asset: find assets of the mentioned type and pick the one with most matching alarms."""
+        u = self.u
+        if not u.asset_type:
+            return None
+        candidates = await self.assets_of_type()
         if not candidates:
-            if found is not None:
-                self.evidence.missing.append(f"No {u.asset_type} assets found.")
             return None
         summary = await self.tool(
             "summarize_alarms",
@@ -509,7 +515,8 @@ class Investigation:
         """Search the documents for the question itself: the main search of a document question, and of any playbook
         that falls back to it. A known asset keeps the search to documents for its type."""
         question = self.u.question or self.u.rationale
-        filters = RetrievalFilters(equipment_types=self._types())
+        named_type = [self.u.asset_type] if self.u.asset_type else None
+        filters = RetrievalFilters(equipment_types=self._types() or named_type)
         await self.retrieve(question, "Search the documents for the question", filters, k=4, main=True)
 
     # ================================================================ playbooks
@@ -540,6 +547,8 @@ class Investigation:
         u = self.u
         asset = await self.resolve_asset()
         site, unit = (u.site or self.state.last_site, u.unit or self.state.last_unit) if not asset else (None, None)
+        if asset is None and not (site or unit) and u.asset_type and not u.asset_query:
+            return await self.active_alarms_of_type()
         if asset is None and not (site or unit):
             if not self.evidence.missing:
                 self.evidence.missing.append("Name an asset, site or unit to list its active alarms.")
@@ -564,7 +573,38 @@ class Investigation:
             where = (self.evidence.asset or {}).get("name") or " ".join(x for x in (site, unit) if x)
             self.evidence.missing.append(f"There are no active {level}alarms on {where}.")
             return
-        await self.rank(found["alarms"])
+        await self.explain_active(found["alarms"])
+
+    async def active_alarms_of_type(self) -> None:
+        """'Are any boiler alarms active?': every asset of that type, checked with one alarm query."""
+        u = self.u
+        candidates = await self.assets_of_type()
+        if not candidates:
+            return
+        found = await self.tool(
+            "get_alarms",
+            f"Alarms that are active now on {len(candidates)} {u.asset_type} asset(s)",
+            status="active",
+            severity=u.severities,
+            fetch_all=True,
+            max_items=200,
+        )
+        if found is None:
+            return await self.rag_question()
+        ids = {c["asset_id"] for c in candidates}
+        alarms = [a for a in found["alarms"] if a["asset_id"] in ids]
+        self.evidence.active_alarms = alarms
+        if not alarms:
+            level = "/".join(u.severities) + " " if u.severities else ""
+            names = ", ".join(c["name"] for c in candidates[:5]) + (", ..." if len(candidates) > 5 else "")
+            kind = u.asset_type.replace("_", " ")
+            self.evidence.missing.append(f"There are no active {level}alarms on {kind} assets ({names}).")
+            return
+        await self.explain_active(alarms)
+
+    async def explain_active(self, alarms: list[dict]) -> None:
+        """Rank the active alarms, then the API's advice and the documents for the most urgent one."""
+        await self.rank(alarms)
         focus = self.evidence.focus_alarm
         if focus:
             await self.recommend(focus["alarm_id"])
@@ -580,7 +620,7 @@ class Investigation:
             }
             others = sorted(
                 (a["alarm_code"], a["alarm_name"], a["asset_id"])
-                for a in found["alarms"]
+                for a in alarms
                 if (a["alarm_code"], a["alarm_name"]) != (focus["alarm_code"], focus["alarm_name"])
             )
             for code, name, asset_id in others:

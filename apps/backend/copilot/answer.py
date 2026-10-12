@@ -333,8 +333,6 @@ def template_answer(
                     citations=rec_keys,
                 )
             )
-    if not actions and procedure:
-        actions.append(Statement(text=f"Follow {procedure[0].text.split(' - ')[0]}.", citations=procedure[0].citations))
     for p in _passages_for(run, "Safety requirements")[:1]:
         actions.append(
             Statement(
