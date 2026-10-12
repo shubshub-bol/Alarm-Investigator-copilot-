@@ -3,7 +3,7 @@
 import httpx
 import pytest
 
-from copilot.answer import LlmAnswer, compose_answer
+from copilot.answer import LlmReply, compose_answer
 from copilot.consistency import assess_actions
 from copilot.investigation import ConversationState, investigate
 from copilot.llm import LlmError
@@ -185,59 +185,92 @@ class FakeLlm:
         return schema.model_validate(self.reply)
 
 
-async def test_llm_answer_citations_are_validated(acceptance_run):
+KEEP_RUNNING = "Continue operation and monitor vibration trend for 24 hours"
+
+
+async def test_model_mode_shows_the_same_facts_as_offline_mode(acceptance_run):
+    offline = await compose_answer(ACCEPTANCE, acceptance_run, llm=None)
     reply = {
-        "summary": "Vibration on BFP-101 is recurring and rising [T2].",
-        "findings": [
-            {"text": "24 high vibration alarms in 90 days.", "citations": ["T2"]},
-            {"text": "Invented statistic.", "citations": ["T99"]},
-        ],
-        "likely_causes": [{"text": "Coupling misalignment.", "citations": ["S99"]}],
-        "procedure": [{"text": "Change over to the standby pump above 7.1 mm/s.", "citations": ["S2", "S42"]}],
-        "recommended_actions": [{"text": "Start the standby pump.", "citations": ["S2"]}],
-        "action_assessments": [],
-        "gaps": [],
+        "summary": "Vibration on Boiler Feed Pump 101 is rising [T3].",
+        "recommended_actions": [{"text": KEEP_RUNNING, "citations": ["T7"]}],  # not in the schema: ignored
     }
     llm = FakeLlm(reply=reply)
     answer = await compose_answer(ACCEPTANCE, acceptance_run, llm=llm)
     assert answer.grounding.mode == "llm"
-    texts = [s.text for s in all_statements(answer)]
-    assert "Invented statistic." not in texts and "Coupling misalignment." not in texts
-    assert answer.procedure[0].citations == ["S2"]
-    assert set(answer.grounding.unknown_citations) == {"T99", "S99", "S42"}
-    assert answer.grounding.removed_statements == 2
-    assert "UNTRUSTED" in llm.prompt.upper() or "untrusted" in llm.prompt  # documents passed as untrusted data
+    assert answer.summary == "Vibration on Boiler Feed Pump 101 is rising [T3]."
+    for section in ("findings", "likely_causes", "procedure", "recommended_actions"):
+        assert getattr(answer, section) == getattr(offline, section)
+    assert "untrusted" in llm.prompt.lower()  # documents are passed as untrusted data
 
 
-async def test_grouped_inline_citations_are_parsed_and_validated(acceptance_run):
-    """Seen with Gemini: it writes '[T2, T3]' inside the text."""
+@pytest.mark.parametrize(
+    ("summary", "shown"),
+    [
+        ("Boiler Feed Pump 101 had 24 High Vibration alarms in 90 days [T2].", None),
+        ("The latest reading was 11.1 mm/s against the 7.1 mm/s limit [T5].", None),  # 11.07, rounded
+        ("Vibration on BFP\u2011101 is rising [T3].", None),
+        ("Vibration is rising (T3).", "Vibration is rising [T3]."),
+        ("Vibration is rising [T2, T3].", "Vibration is rising [T2] [T3]."),
+    ],
+)
+async def test_a_model_summary_that_passes_the_check_is_shown(acceptance_run, summary, shown):
+    answer = await compose_answer(ACCEPTANCE, acceptance_run, llm=FakeLlm(reply={"summary": summary}))
+    assert answer.summary == (shown or summary)
+    assert answer.grounding.summary_source == "llm"
+    assert answer.grounding.summary_rejected is None
+
+
+@pytest.mark.parametrize(
+    ("summary", "reason"),
+    [
+        ("Boiler Feed Pump 101 had 31 alarms [T2].", "number 31"),
+        ("PMP-XYZ-HI alarms are rising [T2].", "code PMP-XYZ-HI"),
+        ("Vibration is rising.", "no citation"),
+        ("Vibration is rising [T99].", "unknown citation T99"),
+        ("Vibration is rising [T3]. " + "It keeps rising. " * 40, "too long"),
+    ],
+)
+async def test_a_model_summary_that_fails_the_check_is_replaced(acceptance_run, summary, reason):
+    offline = await compose_answer(ACCEPTANCE, acceptance_run, llm=None)
+    answer = await compose_answer(ACCEPTANCE, acceptance_run, llm=FakeLlm(reply={"summary": summary}))
+    assert answer.summary == offline.summary
+    assert answer.grounding.summary_source == "template"
+    assert reason in answer.grounding.summary_rejected
+
+
+async def test_each_analysis_statement_is_checked_on_its_own(acceptance_run):
+    cause = "Motor M-101's bearing heats up a median 12 min before the vibration in 79% of cases: misalignment."
+    first = "Start the standby pump first, as the procedure requires above 7.1 mm/s."
     reply = {
-        "summary": "Vibration is rising [T2, T99] and needs action [S2].",
-        "findings": [{"text": "24 alarms, rising 43% [T2, T3].", "citations": []}],
-        "recommended_actions": [{"text": "Change over to the standby pump [S2; S77].", "citations": ["S2"]}],
+        "summary": "Vibration is rising [T3].",
+        "analysis": [
+            {"text": cause, "citations": ["T4", "S4"]},
+            {"text": "Bearing wear explains 88% of the alarms [T4].", "citations": []},  # 88 is not in the evidence
+            {"text": "Coupling misalignment is the cause.", "citations": ["S99"]},  # S99 does not exist
+            {"text": f"{first[:-1]} [S2].", "citations": []},  # cited inline only
+        ],
     }
     answer = await compose_answer(ACCEPTANCE, acceptance_run, llm=FakeLlm(reply=reply))
-    assert answer.summary == "Vibration is rising [T2] and needs action [S2]."
-    assert answer.findings[0].text == "24 alarms, rising 43%."
-    assert answer.findings[0].citations == ["T2", "T3"]
-    assert answer.recommended_actions[0].citations == ["S2"]
-    assert {"T99", "S77"} <= set(answer.grounding.unknown_citations)
+    assert [(s.text, s.citations) for s in answer.analysis] == [(cause, ["T4", "S4"]), (first, ["S2"])]
+    assert answer.grounding.removed_statements == 2
+    assert "S99" in answer.grounding.unknown_citations
+    assert "### Analysis (AI)" in answer.markdown
 
 
-async def test_citations_with_extra_words_keep_their_statement(acceptance_run):
-    """Seen with an OpenRouter model: citations like 'S1 step 6', so the whole procedure section was dropped."""
+async def test_analysis_citations_with_extra_words_keep_their_statement(acceptance_run):
+    """Seen with an OpenRouter model: citations like 'S1 step 6'."""
     reply = {
-        "summary": "s",
-        "procedure": [
-            {"text": "Change over to the standby pump above 7.1 mm/s.", "citations": ["S1 step 6", "S1 step 7"]},
+        "summary": "Vibration is rising [T3].",
+        "analysis": [
+            {"text": "The procedure requires a change-over above 7.1 mm/s.", "citations": ["S1 step 6", "S1 step 7"]},
             {"text": "An invented step.", "citations": ["S99 step 2"]},
         ],
     }
     answer = await compose_answer(ACCEPTANCE, acceptance_run, llm=FakeLlm(reply=reply))
-    assert [(s.text, s.citations) for s in answer.procedure] == [
-        ("Change over to the standby pump above 7.1 mm/s.", ["S1"])
+    assert [(s.text, s.citations) for s in answer.analysis] == [
+        ("The procedure requires a change-over above 7.1 mm/s.", ["S1"])
     ]
-    assert answer.grounding.removed_statements == 1  # the invented step: S99 does not exist
+    assert answer.grounding.removed_statements == 1
     assert answer.grounding.unknown_citations == ["S99"]
 
 
@@ -258,21 +291,16 @@ async def test_assessment_citations_with_extra_words_are_read(acceptance_run):
 async def test_missing_llm_assessments_are_filled_and_conflicts_kept(acceptance_run):
     reply = {
         "summary": "s",
-        "findings": [],
-        "likely_causes": [],
-        "procedure": [],
-        "recommended_actions": [],
         "action_assessments": [
             {
                 "step": 1,
-                "action": "Continue operation and monitor vibration trend for 24 hours",
+                "action": KEEP_RUNNING,
                 "verdict": "consistent",
                 "document_guidance": None,
                 "citation_keys": [],
                 "explanation": "looks fine",
             }
         ],
-        "gaps": [],
     }
     answer = await compose_answer(ACCEPTANCE, acceptance_run, llm=FakeLlm(reply=reply))
     verdicts = {a.step: a.verdict for a in answer.action_assessments}
@@ -284,21 +312,16 @@ async def test_llm_conflict_without_document_text_keeps_the_rule_checks_quote(ac
     """Seen with an OpenRouter model: verdict 'conflict' but no document text, so the warning ended in 'say:'."""
     reply = {
         "summary": "s",
-        "findings": [],
-        "likely_causes": [],
-        "procedure": [],
-        "recommended_actions": [],
         "action_assessments": [
             {
                 "step": 1,
-                "action": "Continue operation and monitor vibration trend for 24 hours",
+                "action": KEEP_RUNNING,
                 "verdict": "conflict",
                 "document_guidance": None,
                 "citation_keys": [],
                 "explanation": "the procedure says to change over",
             }
         ],
-        "gaps": [],
     }
     answer = await compose_answer(ACCEPTANCE, acceptance_run, llm=FakeLlm(reply=reply))
     conflict = next(a for a in answer.action_assessments if a.step == 1)
@@ -308,55 +331,44 @@ async def test_llm_conflict_without_document_text_keeps_the_rule_checks_quote(ac
     assert conflict.citation_keys
 
 
-async def test_an_action_the_documents_conflict_with_is_never_recommended(acceptance_run):
-    """Seen with a free OpenRouter model: it listed the API's 'keep running' advice under what to do."""
-    keep_running = "Continue operation and monitor vibration trend for 24 hours"
-    reply = {
-        "summary": "s",
-        "findings": [],
-        "likely_causes": [],
-        "procedure": [],
-        "recommended_actions": [
-            {"text": f"API action 1 - {keep_running}", "citations": ["T7"]},
-            {"text": f"Follow SOP-BFP-001 instead of the API's '{keep_running}'.", "citations": ["S1"]},
-            {"text": "Change over to the standby pump.", "citations": ["S2"]},
-        ],
-        "action_assessments": [],
-        "gaps": [],
-    }
-    answer = await compose_answer(ACCEPTANCE, acceptance_run, llm=FakeLlm(reply=reply))
-    texts = [s.text for s in answer.recommended_actions]
-    assert f"API action 1 - {keep_running}" not in texts  # the conflicting advice itself is removed
-    assert f"Follow SOP-BFP-001 instead of the API's '{keep_running}'." in texts  # mentioning it to reject it is fine
-    assert "Change over to the standby pump." in texts
-    assert answer.grounding.removed_statements == 1
-
-
-async def test_a_rejection_must_be_about_the_conflicting_action_itself(acceptance_run):
-    """A 'never' elsewhere in the sentence does not turn a recommendation of the conflicting action into a rejection."""
-    keep_running = "Continue operation and monitor vibration trend for 24 hours"
-    endorses = f"{keep_running} via the API, and never leave the pump unattended."
-    rejects = f"Do not {keep_running.lower()}; change over to the standby pump."
+async def test_analysis_never_endorses_an_action_the_documents_conflict_with(acceptance_run):
+    """A 'never' elsewhere in the sentence does not turn an endorsement into a rejection."""
+    endorses = f"{KEEP_RUNNING} via the API, and never leave the pump unattended."
+    rejects = f"Do not {KEEP_RUNNING.lower()}; change over to the standby pump."
     unrelated = "Never leave the pump unattended."
     reply = {
-        "summary": "s",
-        "findings": [],
-        "likely_causes": [],
-        "procedure": [],
-        "recommended_actions": [
+        "summary": "Vibration is rising [T3].",
+        "analysis": [
             {"text": endorses, "citations": ["T7"]},
             {"text": rejects, "citations": ["S1"]},
             {"text": unrelated, "citations": ["S2"]},
         ],
-        "action_assessments": [],
-        "gaps": [],
     }
     answer = await compose_answer(ACCEPTANCE, acceptance_run, llm=FakeLlm(reply=reply))
-    texts = [s.text for s in answer.recommended_actions]
-    assert endorses not in texts
-    assert rejects in texts
-    assert unrelated in texts
+    assert [s.text for s in answer.analysis] == [rejects, unrelated]
     assert answer.grounding.removed_statements == 1
+
+
+async def test_an_action_the_model_finds_in_conflict_is_not_recommended(acceptance_run):
+    check_bearing = "Check drive motor bearing temperature"
+    verdict = {
+        "step": 2,
+        "action": check_bearing,
+        "verdict": "conflict",
+        "document_guidance": None,
+        "citation_keys": [],
+        "explanation": "the model reads the procedure differently",
+    }
+    reply = {"summary": "Vibration is rising [T3].", "action_assessments": [verdict]}
+    answer = await compose_answer(ACCEPTANCE, acceptance_run, llm=FakeLlm(reply=reply))
+    assert not any(s.text.startswith(check_bearing) for s in answer.recommended_actions)
+    assert answer.grounding.removed_statements == 1
+
+
+async def test_offline_answers_have_no_analysis(acceptance_run):
+    answer = await compose_answer(ACCEPTANCE, acceptance_run, llm=None)
+    assert answer.analysis == []
+    assert "Analysis" not in answer.markdown
 
 
 async def test_llm_failure_degrades_to_template(acceptance_run):
@@ -364,12 +376,13 @@ async def test_llm_failure_degrades_to_template(acceptance_run):
     assert answer.grounding.mode == "template"
     assert answer.grounding.degraded is True
     assert "timeout" in answer.grounding.degraded_reason
+    assert answer.grounding.summary_source == "template"
     assert answer.recommended_actions
 
 
-def test_llm_answer_schema_rejects_garbage():
+def test_llm_reply_schema_rejects_garbage():
     with pytest.raises(ValueError):
-        LlmAnswer.model_validate({"summary": 5})
+        LlmReply.model_validate({"summary": 5})
 
 
 # ----------------------------------------------------------------- weak evidence
