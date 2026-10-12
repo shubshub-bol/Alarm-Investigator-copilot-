@@ -54,6 +54,7 @@ anyio_mode = "auto"  # every `async def` test runs with anyio (the MCP SDK's tes
 [tool.ruff]
 line-length = 120
 target-version = "py312"
+extend-exclude = ["docs/plans"]  # plans quote code fragments (methods without their class) that cannot be formatted
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "B", "UP", "S"]
