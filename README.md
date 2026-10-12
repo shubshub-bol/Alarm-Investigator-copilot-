@@ -124,7 +124,7 @@ case has no ticketing system.
 | Install dependencies | `make install` | `uv sync --locked` and `npm --prefix apps/frontend ci` |
 | Build the document index | `make ingest` | `uv run python -m rag.ingestion` |
 | Python tests (394) | `make test-python` | `uv run pytest` |
-| GUI tests (67) | `make test-gui` | `npm --prefix apps/frontend run test` |
+| GUI tests (69) | `make test-gui` | `npm --prefix apps/frontend run test` |
 | Coverage report | `make coverage` | see [docs/coverage.md](docs/coverage.md) |
 | Formatting, lint, types | `make lint` | `uv run ruff format --check .`, `uv run ruff check .`, `uv run mypy`, `npm --prefix apps/frontend run typecheck` |
 | Retrieval quality | | `uv run python -m rag.evaluate` |
