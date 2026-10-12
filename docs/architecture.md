@@ -16,7 +16,7 @@ below.
 |---|---|---|
 | User interface | `apps/frontend` (React 19, Vite, TypeScript) | Chat with saved chats, live progress, answer with citation chips, evidence drawer (alarm summary, MCP trace with raw request and response, sources, tool discovery) |
 | Copilot orchestration | `apps/backend/copilot` (FastAPI) | `service.py` runs one question end to end: understanding, playbook, grounded answer, title, save |
-| Intent detection | `understanding.py` | Intent and entities from the language model as JSON, keyword rules as fallback |
+| Intent detection | `understanding.py` | Intent and entities from the language model as JSON, keyword rules as fallback; a named asset always gets its live data |
 | Planning (playbooks) | `investigation.py` | 8 playbooks, one per intent, chaining MCP calls and document searches |
 | MCP client / tool registry | `mcp_client.py` | Discovers tools and their schemas, validates arguments and results, isolates failures |
 | MCP server | `mcp-servers/alarm-management/alarm_mcp` | 13 typed, read-only tools over the Alarm Management API; auth, trace ids, retries, error codes |
@@ -25,6 +25,7 @@ below.
 | RAG ingestion | `rag/ingestion` | Load, screen, sanitise, chunk, embed, save the index |
 | Retrieval service | `rag/retrieval` | Hybrid search, filters, confidence, citations, untrusted-context rendering |
 | Evidence and answer | `facts.py`, `consistency.py`, `answer.py` | Citable tool facts, API advice vs documents, LLM or template answer, citation validation |
+| Answer quality | `evaluate.py` | 30 golden operator questions through the whole copilot: intent, asset, live data, sources, valid citations |
 | Domain models | pydantic models in each package (`alarm_mcp/schemas.py`, `copilot/trace.py`, `rag/models.py`, ...) | Typed contracts at every boundary |
 | Language model | `llm.py` | One `LlmProvider` protocol; Gemini, OpenRouter or offline |
 | Persistence | `conversations.py` | Saved chats in SQLite |

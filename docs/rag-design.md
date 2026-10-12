@@ -201,6 +201,7 @@ Every returned passage becomes a citation with a key, a readable label and where
 - Tool results get keys too (`[T1]`, `[T2]`, built in `copilot/facts.py`), each tied to its trace step.
 - The answer is validated after it is written: citation keys that were not given are removed, and any
   finding, cause, procedure item or action left without a valid citation is dropped (`copilot/answer.py`).
+  A key written with extra words, such as `S1 step 6`, is read as `S1`.
 - In the GUI, `[S#]` chips open the passage; the Sources tab lists every passage and why it was searched for.
 
 ## 12. Low-confidence handling
