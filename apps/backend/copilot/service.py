@@ -16,7 +16,8 @@ from copilot.agent import Agent, AgentRun, compose_agent_answer
 from copilot.answer import CopilotAnswer, compose_answer, conversation_reply
 from copilot.context import remember, render
 from copilot.conversations import ConversationStore, OpenConversation, StorageError, new_conversation_id
-from copilot.investigation import Evidence, investigate
+from copilot.evidence import Evidence
+from copilot.investigation import investigate
 from copilot.llm import LlmProvider
 from copilot.mcp_client import Connector, McpToolClient
 from copilot.titles import llm_title, rule_title

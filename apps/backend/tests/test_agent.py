@@ -412,8 +412,11 @@ async def test_a_direct_recommendations_lookup_stays_in_the_details(mcp, retriev
         retriever=retriever,
     )
     answer = compose_agent_answer(question, result, llm)
-    assert result.run.evidence.recommendations is None  # only a recipe sets them: nothing else shows this fact
-    assert any(s.citations == ["T1"] and "get_operator_recommendations" in s.text for s in answer.findings)
+    assert result.run.evidence.recommendations is not None  # the agent's own advice lookup fills the record too
+    assert any(f.key == "T1" and f.tool == "get_operator_recommendations" for f in answer.facts)
+    # the advice is shown as causes and actions, each citing the lookup's fact, not as a raw finding as well
+    assert [s.citations for s in answer.likely_causes] == [["T1"]]
+    assert answer.recommended_actions and all(s.citations == ["T1"] for s in answer.recommended_actions)
 
 
 async def test_a_recipe_answer_keeps_the_recipe_details(mcp, retriever):
@@ -833,3 +836,59 @@ async def test_a_models_corrected_input_slip_does_not_make_the_answer_partial(re
     assert response.trace[0].status == "invalid_input"
     assert response.answer.summary == "Boiler B-201 is the only boiler [T1]."  # the model's answer was shown
     assert response.status == "ok"
+
+
+async def test_the_agents_own_lookups_fill_the_evidence_record(mcp, retriever):
+    state = ConversationState()
+    result, _ = await run_agent(
+        "Boiler B-201 how many times it failed in past?",
+        tool("search_assets", query="Boiler B-201"),
+        tool("get_alarms", asset_id="AST-BLR-201"),
+        done("Boiler B-201 had 24 alarms [T2].", "count"),
+        mcp=mcp,
+        retriever=retriever,
+        state=state,
+    )
+    assert result.run.evidence.asset["asset_id"] == "AST-BLR-201"
+    assert state.last_asset["asset_id"] == "AST-BLR-201"  # a follow-up ("this boiler") can refer back to it
+
+
+async def test_a_comparison_leaves_the_questions_asset_open(mcp, retriever):
+    result, _ = await run_agent(
+        "Compare Boiler Feed Pump 101 and Boiler Feed Pump 102",
+        tool("get_asset_metadata", asset_id="AST-BFP-101"),
+        tool("get_asset_metadata", asset_id="AST-BFP-102"),
+        done("Both are high-criticality pumps [T1] [T2].", "compare"),
+        mcp=mcp,
+        retriever=retriever,
+    )
+    assert result.run.evidence.asset is None
+
+
+async def test_a_recipe_lists_only_the_advice_it_fetched(mcp, retriever):
+    """The agent's own advice lookup now fills the record too; a later recipe must not present it as its own."""
+    question = "Which procedure applies to Gas Compressor C-301 discharge pressure alarms?"
+    _, llm = await run_agent(
+        question,
+        tool("get_operator_recommendations", alarm_id="ALM-000418"),  # a Gas Compressor C-301 alarm
+        recipe("procedure_lookup", asset="Gas Compressor C-301", alarm_topic="discharge pressure"),
+        done("SOP-CMP-004 applies [S1].", "document"),
+        mcp=mcp,
+        retriever=retriever,
+    )
+    assert "API RECOMMENDED ACTIONS TO ASSESS" not in llm.prompts[2]  # procedure_lookup fetches no advice
+
+
+async def test_a_recipe_investigates_its_own_asset(mcp, retriever):
+    """An earlier look at another asset must not leave the recipe without one (its document filters need it)."""
+    result, _ = await run_agent(
+        "Investigate Boiler Feed Pump 101",
+        tool("get_asset_metadata", asset_id="AST-CMP-301"),
+        recipe("investigate_asset", asset="Boiler Feed Pump 101"),
+        done("High vibration recurs [T2].", "why"),
+        mcp=mcp,
+        retriever=retriever,
+    )
+    ev = result.run.evidence
+    assert ev.asset["asset_id"] == "AST-BFP-101"
+    assert "SOP-BFP-001 §4.1" in {p.citation.label for p in ev.passages}

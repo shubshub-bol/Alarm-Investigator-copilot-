@@ -8,7 +8,8 @@ fetched fresh for each question.
 
 import re
 
-from copilot.investigation import ChatTurn, ConversationState, Evidence
+from copilot.evidence import Evidence
+from copilot.investigation import ChatTurn, ConversationState
 
 RECENT_TURNS = 10
 ANSWER_CHARS = 800  # one answer's summary and analysis: enough to follow a reference, short enough to stay cheap

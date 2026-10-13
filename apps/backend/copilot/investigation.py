@@ -16,6 +16,7 @@ import anyio
 from pydantic import BaseModel
 
 from copilot.consistency import assess_actions
+from copilot.evidence import Evidence, record_result
 from copilot.mcp_client import McpToolClient
 from copilot.trace import RetrievalRecord, RetrievedRef, ToolCallRecord
 from copilot.understanding import QueryUnderstanding
@@ -51,30 +52,6 @@ class ConversationState(BaseModel):
     last_unit: str | None = None
     history: list[ChatTurn] = []  # the most recent turns, in full
     memory: list[str] = []  # the important bits of older turns
-
-
-class Evidence(BaseModel):
-    """Everything the investigation established, kept as structured data for the answer writer."""
-
-    intent: str
-    lookback_days: int | None = None
-    asset: dict | None = None
-    related_assets: list[dict] = []
-    alarm_summary: dict | None = None
-    top_alarm: dict | None = None
-    trend: dict | None = None
-    contributing_factors: list[dict] = []
-    active_alarms: list[dict] = []
-    ranked_alarms: list[dict] = []
-    focus_alarm: dict | None = None
-    priority: dict | None = None
-    recommendations: dict | None = None
-    action_checks: list[dict] = []  # per API action: the passages retrieved to check it
-    passages: list[RetrievedPassage] = []
-    passage_purposes: dict[str, str] = {}  # citation key -> why it was retrieved
-    retrieval_confidence: str = "none"
-    notes: list[str] = []  # assumptions, selections and partial failures, shown to the user
-    missing: list[str] = []  # what could not be established
 
 
 class InvestigationRun(BaseModel):
@@ -126,6 +103,7 @@ class Investigation:
         record = await self.mcp.call(name, args, trace_id=self.trace_id, purpose=purpose)
         await self._record(record)
         if record.status == "ok":
+            record_result(self.evidence, name, args, record.result or {})
             return record.result
         if record.error_code == "MCP_UNAVAILABLE":
             self.mcp_down = True
@@ -248,6 +226,15 @@ class Investigation:
         asset_type = asset_type or (self.evidence.asset or {}).get("asset_type")
         return f"The documents have no procedure for {asset_type.replace('_', ' ')} alarms." if asset_type else None
 
+    def _metadata_loaded(self, asset_id: str) -> bool:
+        return any(
+            isinstance(s, ToolCallRecord)
+            and s.tool == "get_asset_metadata"
+            and s.status == "ok"
+            and s.arguments.get("asset_id") == asset_id
+            for s in self.steps
+        )
+
     # ============================================================ building blocks
     async def resolve_asset(self) -> dict | None:
         """Named asset -> search_assets. 'this alarm/asset' -> the asset from the previous answer."""
@@ -338,12 +325,7 @@ class Investigation:
         return asset
 
     async def load_asset(self, asset_id: str) -> dict | None:
-        meta = await self.tool("get_asset_metadata", "Asset details and related assets", asset_id=asset_id)
-        if meta:
-            keep = ("asset_id", "name", "asset_type", "site", "unit", "criticality", "manufacturer", "model")
-            self.evidence.asset = {k: meta[k] for k in keep}
-            self.evidence.related_assets = meta["related_assets"]
-        return meta
+        return await self.tool("get_asset_metadata", "Asset details and related assets", asset_id=asset_id)
 
     async def find_top_alarm(self, asset: dict) -> dict | None:
         u = self.u
@@ -359,11 +341,6 @@ class Investigation:
         if summary is None:
             return None
         groups = summary["groups"]
-        self.evidence.alarm_summary = {
-            "time_range": summary["time_range"],
-            "totals": summary["totals"],
-            "groups": groups[:6],
-        }
         if not groups:
             level = "/".join(u.severities) + " " if u.severities else ""
             self.evidence.missing.append(f"No {level}alarms on {asset['name']} in the last {self.lookback} days.")
@@ -374,7 +351,7 @@ class Investigation:
         return self.evidence.top_alarm
 
     async def trend_for(self, asset: dict, code: str) -> None:
-        trend = await self.tool(
+        await self.tool(
             "get_alarm_trends",
             "Is this alarm getting more or less frequent",
             asset_ids=[asset["asset_id"]],
@@ -382,8 +359,6 @@ class Investigation:
             bucket="weekly",
             lookback_days=self.lookback,
         )
-        if trend:
-            self.evidence.trend = {**trend["trend"], "bucket": "weekly", "points": len(trend["series"])}
 
     async def contributing_factors(self, asset: dict, code: str, min_support: int = 3) -> None:
         related = [a["asset_id"] for a in self.evidence.related_assets][:19]
@@ -456,24 +431,9 @@ class Investigation:
             self.evidence.focus_alarm = next(a for a in alarms if a["alarm_id"] == best["alarm_id"])
 
     async def recommend(self, alarm_id: str) -> dict | None:
-        recs = await self.tool(
+        return await self.tool(
             "get_operator_recommendations", "The Alarm API's recommended actions for this alarm", alarm_id=alarm_id
         )
-        if recs:
-            self.evidence.recommendations = {
-                k: recs[k]
-                for k in (
-                    "likely_causes",
-                    "recommended_actions",
-                    "source",
-                    "related_assets",
-                    "asset_context",
-                    "historical_pattern",
-                )
-            }
-            if self.evidence.priority is None:
-                self.evidence.priority = {**recs["priority"], "alarm_id": alarm_id}
-        return recs
 
     # ------------------------------------------------------------- RAG helpers
     def _asset_filters(
@@ -587,7 +547,6 @@ class Investigation:
             await self.load_asset(asset["asset_id"])
         if found is None:
             return await self.rag_question()
-        self.evidence.active_alarms = found["alarms"]
         if not found["alarms"]:
             level = "/".join(u.severities) + " " if u.severities else ""
             where = (self.evidence.asset or {}).get("name") or " ".join(x for x in (site, unit) if x)
@@ -628,7 +587,7 @@ class Investigation:
         focus = self.evidence.focus_alarm
         if focus:
             await self.recommend(focus["alarm_id"])
-            if self.evidence.asset is None:
+            if not self._metadata_loaded(focus["asset_id"]):
                 await self.load_asset(focus["asset_id"])
             await self.rag_for_alarm(focus["alarm_name"], focus["alarm_code"], main=True)
             # One other alarm also gets its procedure, searched for its own asset's type; an asset whose type is
@@ -669,7 +628,6 @@ class Investigation:
             where = " ".join(x for x in (site, unit) if x) or "the plant"
             self.evidence.missing.append(f"There are no active alarms in {where}.")
             return
-        self.evidence.active_alarms = found["alarms"]
         await self.rank(found["alarms"])
         focus = self.evidence.focus_alarm
         if focus:
@@ -713,12 +671,7 @@ class Investigation:
         """The alarm a follow-up refers to: the previous answer's alarm, or the top alarm of a named asset."""
         last = self.state.last_alarm
         if self.u.uses_context and last and not self.u.asset_query:
-            detail = await self.tool(
-                "get_alarm_details", "Reload the alarm from the previous answer", alarm_id=last["alarm_id"]
-            )
-            if detail:
-                self.evidence.focus_alarm = {k: v for k, v in detail.items() if k not in ("asset", "meta")}
-                self.evidence.asset = detail["asset"]
+            await self.tool("get_alarm_details", "Reload the alarm from the previous answer", alarm_id=last["alarm_id"])
             return self.evidence.focus_alarm
         asset = await self.resolve_asset()
         if asset is None:
@@ -757,8 +710,6 @@ class Investigation:
         recs = await self.recommend(alarm["alarm_id"])
         if recs is None:
             return await self.rag_for_alarm(alarm["alarm_name"], alarm["alarm_code"], main=True)
-        if self.evidence.asset is None and recs.get("asset_context"):
-            self.evidence.asset = recs["asset_context"]
         asset_type = (self.evidence.asset or {}).get("asset_type", "")
         for step in recs["recommended_actions"][:4]:
             passages = await self.retrieve(
