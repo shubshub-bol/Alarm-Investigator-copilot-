@@ -2,7 +2,7 @@
 
 import pytest
 
-from copilot.evaluate import GOLDEN, Case, evaluate, facts_part, services_down, write_report
+from copilot.evaluate import GOLDEN, Case, check, evaluate, facts_part, services_down, write_report
 from copilot.mcp_client import http_connector, in_memory_connector
 from copilot.service import CopilotService
 from copilot_test_helpers import simulator_transport
@@ -17,7 +17,7 @@ def service(retriever):
 async def test_every_golden_question_passes_offline(service):
     report = await evaluate(service)
     assert {row.case.question: row.problems for row in report.failed} == {}
-    assert report.passed == len(GOLDEN)
+    assert report.passed == len([c for c in GOLDEN if not c.model_only])
 
 
 async def test_a_wrong_answer_is_reported_with_every_problem(service):
@@ -102,3 +102,15 @@ async def test_the_report_counts_shortened_summaries(service, tmp_path):
     text = (tmp_path / "run.md").read_text(encoding="utf-8")
     assert "| summaries shortened to fit | 1 |" in text
     assert "summary shortened" in text
+
+
+async def test_model_only_questions_are_skipped_without_a_model(service):
+    report = await evaluate(service, [Case("How many refineries do we have?", "agent", model_only=True)])
+    assert report.rows == []
+
+
+async def test_the_answer_type_and_the_direct_answer_are_checked(service):
+    response = (await evaluate(service, GOLDEN[:1])).rows[0].response
+    response.answer.answer_type = "compare"
+    case = Case(GOLDEN[0].question, "investigate_asset", answer_type="count", answer=("999 alarms",))
+    assert [p.split(":")[0] for p in check(case, response)] == ["answer type", "answer"]

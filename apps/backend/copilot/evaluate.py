@@ -45,6 +45,9 @@ class Case:
     facts: tuple[str, ...] = ()  # text each of which must appear in the findings
     first_step: str | None = None  # a source label the first recommended action must cite
     procedure: bool | None = None  # the procedure section must be present (True) or absent (False)
+    answer_type: str | None = None  # the agent's expected answer type (checked when the answer has one)
+    answer: tuple[str, ...] = ()  # text the direct answer must contain
+    model_only: bool = False  # needs the model: skipped offline
     history: tuple[str, ...] = ()  # earlier questions in the same chat, for "this alarm"
 
 
@@ -112,6 +115,14 @@ GOLDEN: list[Case] = [
     Case("What can you do?", "conversation", uses_data=False, sources=()),
     Case("Tell me a joke", OFF_TOPIC, uses_data=False, sources=()),
     Case("What is the capital of France?", OFF_TOPIC, uses_data=False, sources=()),
+    # no playbook covers these: the agent combines tools (skipped offline)
+    Case("How many refineries do we have?", ("agent", "active_alarms"), answer_type="count",
+         answer=("EastRefinery",), model_only=True),
+    Case("Compare Boiler Feed Pump 101 and Boiler Feed Pump 102 over the last 90 days", ("agent", "investigate_asset"),
+         answer_type="compare", answer=("42", "20"), model_only=True),
+    Case("Which motor alarmed most in the last 90 days?", ("agent", "investigate_asset"), answer=("Motor M-101",),
+         model_only=True),
+    Case("How many assets are at EastRefinery?", "agent", answer_type="count", answer=("7",), model_only=True),
 ]  # fmt: skip
 
 
@@ -147,6 +158,8 @@ class EvalReport:
             "model and rules disagreed on the intent": sum(
                 u.rules_intent is not None and u.rules_intent != u.intent for u in understood
             ),
+            "agent steps": sum(a.grounding.agent_steps for a in answers),
+            "stopped at the step limit": sum(a.grounding.agent_hit_limit for a in answers),
         }
 
 
@@ -179,6 +192,10 @@ def check(case: Case, response: ChatResponse) -> list[str]:
             problems.append(f"first step: cites {', '.join(cited) or 'nothing'}, expected {case.first_step}")
     if case.procedure is not None and bool(response.answer.procedure) != case.procedure:
         problems.append("procedure: missing" if case.procedure else "procedure: present, expected none")
+    if case.answer_type and response.answer.answer_type and response.answer.answer_type != case.answer_type:
+        problems.append(f"answer type: {response.answer.answer_type}, expected {case.answer_type}")
+    if missing := [a for a in case.answer if a not in response.answer.summary]:
+        problems.append(f"answer: {', '.join(missing)} not in the direct answer")
     if response.answer.grounding.unknown_citations:
         problems.append(f"citations: rejected {', '.join(response.answer.grounding.unknown_citations)}")
     return problems
@@ -230,6 +247,8 @@ async def _ask(service: CopilotService, case: Case) -> ChatResponse:
 async def evaluate(service: CopilotService, cases: Sequence[Case] = GOLDEN, repeat: bool = False) -> EvalReport:
     rows = []
     for case in cases:
+        if case.model_only and service.llm is None:
+            continue
         response = await _ask(service, case)
         problems = check(case, response)
         if repeat and facts_part(await _ask(service, case)) != facts_part(response):
