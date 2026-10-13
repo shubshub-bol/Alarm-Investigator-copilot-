@@ -32,8 +32,11 @@
   recipe covers uses about 2 model calls (one step to choose it, one to answer); other questions use 2 to 6; a new
   chat's title is 1 more. Each step is a model call, so a question with several steps is slower; without a model
   it takes under a second.
-- The Alarm API's recommendations are checked against the documents with a rule-based check and the model. A
-  conflict phrased very differently from the procedure could be missed by the rule-based part.
+- The Alarm API's recommendations are checked against the documents with a rule-based check and the model (with
+  the agent, the model assesses the actions a recipe listed when it writes its final answer). A conflict phrased
+  very differently from the procedure could be missed by the rule-based part. The model sees each passage cut to
+  600 characters, so it can miss a requirement further into a long passage; the rule-based check reads whole
+  passages, and a conflict either check finds is kept.
 - The model's text is checked for valid citations and for numbers and codes found in the evidence, not for
   meaning: a real number put in the wrong place, or a weak argument, can pass. The risk is small because code
   writes every factual section, the model writes only the direct answer and the analysis, and every statement
@@ -45,9 +48,11 @@
   can answer, which are skipped offline. It checks the intent, the asset, the use of live data, the sources, key
   facts, the first step, the procedure and the citations, not the model's wording. The 4 model-only questions
   check the answer type and the whole numbers in the direct answer, and pass only on a model-written direct
-  answer. In CI the 34 run offline; with the model the set is run by hand, a few questions at a time, because of
-  the free plan's daily limit. The free Gemini tier's daily limit bounds how often the model-only questions can
-  be evaluated.
+  answer. With a model, a document or off-topic question that no recipe covers is answered by the agent, so for
+  those questions the intent check also accepts `agent` when no tool ran. The report gives each question's agent
+  steps, whether it stopped at the step limit, and the model's error. In CI the 34 run offline; with the model the
+  set is run by hand, a few questions at a time, because of the free plan's daily limit. The free Gemini tier's
+  daily limit bounds how often the model-only questions can be evaluated.
 
 **Security and operations**
 

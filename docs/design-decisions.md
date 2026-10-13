@@ -168,8 +168,10 @@ With a model, one agent answers every question. At each step the model picks one
 read-only MCP tools, a document search, or "done" with the answer. A recipe is one of the 6 playbooks that read
 live data (investigate an asset, active alarms, highest priority, related assets, procedure lookup, recommendation
 check), so a common question is one step. An unusual one is meant to combine small tools: "compare pump 101 and
-102" needs each pump's alarm summary. The limits are in code: at most 6 steps, one recipe per question, read-only tools,
-arguments checked against each tool's schema, and a repeated call is not run again. The model names the answer
+102" needs each pump's alarm summary. The limits are in code: at most 6 steps, one recipe per question, read-only tools
+(only tools the MCP server marks read-only are offered or run), arguments checked against each tool's schema, and a
+repeated call is not run again. The agent's own document searches do not use up a recipe's passage limit, so a
+recipe keeps its procedure, safety and governance passages. The model names the answer
 type (count, list, compare, why, what to do, document, cannot answer) and writes a direct answer, which leads the
 answer. Code still builds the details and runs the checks of decisions 7 and 17. Without a model the keyword
 rules choose a playbook, as before.

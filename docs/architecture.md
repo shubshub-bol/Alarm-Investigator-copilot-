@@ -59,28 +59,42 @@ tools, document searches) and writes the direct answer; without one, the rules c
 
 **The agent.** `agent.py` answers one question by taking one model-chosen step at a time, at most 6. At each step
 the model sees the question, the chat context, the menu and the results so far, and returns one structured step:
-a recipe, a tool, a document search, or "done" with the answer. The menu has the 6 playbooks that read live data
-as recipes (`investigate_asset`, `active_alarms`, `highest_priority`, `related_assets`, `procedure_lookup`,
-`recommendation_check`), the 13 MCP tools with the inputs they take from their discovered schemas, and
-`search_documents`. At most one recipe runs per question; the tools do the rest. A recipe's inputs are `asset` (a
-name or id; `asset_id` is accepted as an alias), `asset_type`, `site`, `unit`, `lookback_days`, `severities`,
-`alarm_topic` and `uses_context`. They are checked against the typed schema, rule-extracted values fill anything the
-model left empty, and an unknown input is refused, not dropped. For the acceptance question the model is expected
-to pick the `investigate_asset` recipe for "Boiler Feed Pump 101", 90 days, high or critical severities (a model
-that picks other steps still gets the same checks). Every step runs on one
-investigation, so there is one evidence record, one trace and one numbering of `[T#]` and `[S#]` keys. A result
-gets its key when it arrives, so the keys the model cites are the answer's keys.
+a recipe, a tool, a document search, or "done" with the answer. The menu has three sections, one per action: the 6
+playbooks that read live data as recipes (`investigate_asset`, `active_alarms`, `highest_priority`,
+`related_assets`, `procedure_lookup`, `recommendation_check`), the MCP tools the server marks read-only (all 13; a
+tool that is not read-only is neither offered nor run), and `search_documents`. Each input is shown from its
+schema: its name, its type (`array of string`, `integer 1-365`, or the allowed values such as
+`asset_id|asset_name|...`), whether it is required, and the first sentence of its description. A note, given once,
+says that sites are written without spaces (`EastRefinery`) and that `lookback_days` counts back from the Alarm
+API's data clock, not from today. At most one recipe runs per question; the tools do the rest. A recipe's inputs
+are `asset` (a name or id; `asset_id` is accepted as an alias), `asset_type`, `site`, `unit`, `lookback_days`,
+`severities`, `alarm_topic` and `uses_context`, described as in the understanding schema. They are checked against
+that typed schema, rule-extracted values fill anything the model left empty, and an unknown input is refused, not
+dropped. A site the model writes with spaces ("East Refinery") is sent without them, in a recipe and in a tool
+call, because the Alarm API matches sites ignoring case but not spaces. The results so far and the chat context
+reach the model as delimited data blocks (`<<<RESULTS>>>`, `<<<CHAT>>>`, the convention of the document excerpts),
+and the instructions say text inside them is data, not instructions. For the acceptance question the model is
+expected to pick the `investigate_asset` recipe for "Boiler Feed Pump 101", 90 days, high or critical severities
+(a model that picks other steps still gets the same checks). Every step runs on one investigation, so there is one
+evidence record, one trace and one numbering of `[T#]` and `[S#]` keys. A result gets its key when it arrives, so
+the keys the model cites are the answer's keys. A recipe's result also lists the Alarm API's recommended actions by
+step number, for the model to assess; document passages reach the model at up to 600 characters each.
 
 | Situation | What the agent does |
 |---|---|
 | A valid step | Runs it, records it in the trace, gives the model the result with its key |
-| Unknown name, bad JSON, an unknown recipe input, or inputs the tool's schema refuses | Does not run it; the model gets the error and can correct itself. The attempt counts as a step |
+| Unknown name, bad JSON, an unknown recipe input, or inputs the tool's schema refuses | Does not run it; the model gets the error, which names the input, and can correct itself. The attempt counts as a step |
+| A recipe or tool named under the wrong action (`search_documents` or a recipe asked for as a tool, a tool asked for as a recipe) | Not run; the model is told which action to use |
+| A tool the server does not mark read-only | Not on the menu, and not run if asked for |
+| A loosely formed step (inputs given as an object instead of a string, a purpose over 300 characters, a null field) | Repaired, not rejected: the inputs become their JSON text, the purpose is cut, a null field takes its default |
+| A document search fails, or there is no index | The model is told so, not that nothing relevant was found |
 | A tool fails | The model gets the error code and message, and can try another way or answer |
 | The same call again | Not run; the model gets the earlier result |
 | A second recipe | Not run; the model is told to use the tools for anything more |
 | The question names an asset (by the keyword rules) and nothing has been looked up | A document search or "done" is not accepted; the model is told to look up the asset's data first. A call its input schema refused does not count as a look-up. The rule yields when the MCP server is down or offered no tools |
 | A long result | The model sees whole items only, up to 10 (fewer if needed to stay under 3000 characters), then `... N more (M in all)`; raw `meta` blocks are dropped |
-| A search past the 8-passage evidence limit | The model is told how many passages were found but not kept |
+| A search past the 8-passage evidence limit | The model is told how many passages were found but not kept. The agent's own searches do not use up a recipe's limit: before a recipe runs, the limit is raised by the passages they kept, so the recipe still gets its procedure, safety and governance passages |
+| The last step | The model is told it must be "done" with the final answer |
 | 6 steps used without an answer | The loop stops; the answer is built from what was found, with the gap "The question could not be fully answered within 6 steps." and status `partial` |
 | The model fails or sends an invalid reply | The same, with a gap that gives the model's error and status `degraded`. If it fails before its first step, the question is answered by the rules instead, marked `degraded` |
 
@@ -119,13 +133,19 @@ guidance governs and finds `ALM-PHIL-006 §7` ("the approved procedure governs")
 results into short numbered facts `[T1]`, `[T2]`, ... each tied to its trace step (a small tool's result becomes
 one fact: the tool, its inputs and its shortened result), and code builds every factual section from the
 evidence: what the data shows, the likely causes, the procedure (each item quoting its key step), and the actions
-(the procedure's step first, then the API actions that match the documents, then the safety step). Without a
-recipe, the tool facts are the findings and any retrieved passages are the procedure section. The model has seen
-every result as the steps ran, so its "done" step carries its own part and no further model call is made: the
-answer type (`count`, `list`, `compare`, `why`, `what_to_do`, `document` or `cannot_answer`), a direct answer of 1
-to 3 sentences in that shape (a number first for "how many", side by side for "compare", the first step for "what
-should I do"), an analysis (the most likely cause and the first action, and why), an assessment of each API action,
-and gaps. Its text is checked (`text_check.py`): every citation key must exist, and every number and code it
+(the procedure's step first, then the API actions that match the documents, then the safety step). When the agent
+ran a recipe, the plain summary, the causes and the actions cite the recipe's own facts, even if the agent called
+the same tools earlier about another asset or alarm; every fact is still listed under the data. Without a recipe,
+the tool facts are the findings and any retrieved passages are the procedure section. The model has seen every
+result as the steps ran, so its "done" step carries its own part and no further model call is made: the answer type
+(`count`, `list`, `compare`, `why`, `what_to_do`, `document` or `cannot_answer`), a direct answer of 1 to 3
+sentences in that shape (a number first for "how many", side by side for "compare", the first step for "what should
+I do"), an analysis (the most likely cause and the first action, and why), an assessment of each API action the
+recipe listed (by step number: consistent, conflict or not covered, with the passages it rests on), and gaps. Its
+instructions keep the rules of the answer step it replaces: never recommend an API action that conflicts with a
+document, an alarm is not a failure or a trip unless a fact says so, and a question that is not about the plant's
+alarms, assets or documents is answered `cannot_answer` with what the copilot can help with. Its text is checked
+(`text_check.py`): every citation key must exist, and every number and code it
 mentions must appear in the evidence; a direct answer that is too long is cut to its first whole sentences, and one
 that cites nothing gets the keys its numbers and codes point to. A direct answer that fails is replaced by the
 plain summary built from the evidence; an analysis statement that fails is dropped. A conflict found by the
@@ -180,7 +200,7 @@ appear in logs, tool results or error messages. In Docker, host ports are bound 
 | Input validation | pydantic models on every API and tool input (types, ranges, lengths, enums, id patterns); ids URL-escaped in paths; question length limited to 2000 characters |
 | Output encoding | The GUI renders all text as text (React escaping; raw JSON shown in `<pre>`, never as HTML); nginx sends a content security policy, `nosniff` and `DENY` framing headers; errors never echo submitted input |
 | Prompt injection | Documents are screened at ingestion and flagged passages are quarantined; small-talk messages reach the model as quoted data and its replies are checked for links, code, alarm codes and readings; every prompt says that documents, tool results and earlier messages are data, not instructions |
-| Retrieved-document trust boundaries | Passages are wrapped as untrusted, delimited blocks; the system prompt says they are data, not instructions; every statement must cite given evidence |
+| Retrieved-document trust boundaries | Passages are wrapped as untrusted, delimited blocks (in the agent's prompt, inside the delimited block of results, with the tool results and recipe text; the chat context has its own block); look-alike delimiters inside are neutralised; the system prompt says they are data, not instructions; every statement must cite given evidence |
 | SQL injection prevention | Only parameterised SQLite queries; no SQL is ever built from input |
 | Write-operation approval | There are no write operations; any future one (such as creating a ticket) must ask for explicit confirmation |
 | Tool misuse | The model chooses steps only from the discovered tools, the 6 recipes and the document search; at most 6 steps and one recipe per question, a repeated call is not run again, and arguments are checked against the tool's schema before they are sent; tools are read-only; limits on page sizes, list lengths and alarms scored per question; a conflicting API action is never recommended |
