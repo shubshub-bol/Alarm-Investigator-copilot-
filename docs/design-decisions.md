@@ -167,8 +167,8 @@ and invites reusing stale alarm data, or sending nothing, which made "and over t
 With a model, one agent answers every question. At each step the model picks one action: a recipe, one of the 13
 read-only MCP tools, a document search, or "done" with the answer. A recipe is one of the 6 playbooks that read
 live data (investigate an asset, active alarms, highest priority, related assets, procedure lookup, recommendation
-check), so a common question is one step. An unusual one combines small tools: "compare pump 101 and 102" asks for
-each pump's alarm summary. The limits are in code: at most 6 steps, one recipe per question, read-only tools,
+check), so a common question is one step. An unusual one is meant to combine small tools: "compare pump 101 and
+102" needs each pump's alarm summary. The limits are in code: at most 6 steps, one recipe per question, read-only tools,
 arguments checked against each tool's schema, and a repeated call is not run again. The model names the answer
 type (count, list, compare, why, what to do, document, cannot answer) and writes a direct answer, which leads the
 answer. Code still builds the details and runs the checks of decisions 7 and 17. Without a model the keyword
@@ -179,8 +179,8 @@ rules choose a playbook, as before.
 because they are tested and chain the right tools in the right order, safety search included, so the model does
 not have to rediscover that for each question.
 
-*Cost:* about 2 model calls for a question a recipe covers (choose the recipe, then answer; the chat title is one
-more for a new chat), and 3 to 7 for the rest, so the worst case is bounded by the step limit. What the answer
+*Cost:* about 2 model calls for a question one recipe covers (one step to choose it, one to answer), and 2 to 6
+for the other questions, plus 1 for a new chat's title, so the worst case is bounded by the step limit. What the answer
 says now depends on the model's choices of steps, which no unit test can fix in advance; the evaluation measures
 it (4 questions that only the agent can answer, run with the model). Answers built from small tools have plainer
 details than a recipe's.

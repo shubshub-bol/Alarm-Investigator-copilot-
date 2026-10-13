@@ -18,16 +18,20 @@
 - The agent takes at most 6 steps and runs one recipe per question. A question that needs more is answered from
   what was found, with the gap "The question could not be fully answered within 6 steps." and the status
   `partial`. A comparison of two assets is done with the small tools, so its details are plainer than a recipe's.
-- Questions only the agent can answer ("How many refineries do we have?") need a model. Offline they get "This
-  question needs the language model."
+- Questions only the agent can answer need a model. Without one, a question the rules cannot place gets the
+  document search and, if nothing relevant is found, the gap "This question needs the language model." ("How many
+  refineries do we have?" is one). A comparison, ranking or count that names an asset, an asset type or a site gets
+  that playbook's answer instead, which may not answer the question asked ("Compare Boiler Feed Pump 101 and 102"
+  gets the investigation of pump 101 only).
 - Without a language model, intent detection uses keyword rules and the answer uses templates. Unusual phrasing
   can get the wrong intent, and the wording is plainer. The rules do not read the chat's earlier messages, only
   its last asset, alarm, site and unit, so a follow-up such as "and over the last 30 days?" needs the model.
 - The chat context sent to the model holds the last 10 turns (each answer cut to 800 characters) and 20 lines about
   older turns. A question that needs more of an old answer than that is not supported.
-- Free OpenRouter models allow 20 requests a minute and 50 a day (1000 a day after buying credits). A question a
-  recipe covers uses about 2 model calls (one more for the title of a new chat); other questions use 3 to 7. Each
-  step is a model call, so a question with several steps is slower; without a model it takes under a second.
+- Free OpenRouter models allow 20 requests a minute and 50 a day (1000 a day after buying credits). A question one
+  recipe covers uses about 2 model calls (one step to choose it, one to answer); other questions use 2 to 6; a new
+  chat's title is 1 more. Each step is a model call, so a question with several steps is slower; without a model
+  it takes under a second.
 - The Alarm API's recommendations are checked against the documents with a rule-based check and the model. A
   conflict phrased very differently from the procedure could be missed by the rule-based part.
 - The model's text is checked for valid citations and for numbers and codes found in the evidence, not for

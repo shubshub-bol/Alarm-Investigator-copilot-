@@ -319,8 +319,11 @@ from the copilot, because it stands in for the external source system.
 - Eight question types have playbooks; floods, rationalization and KPIs are available as MCP tools but not in a
   playbook yet. With a model, the agent can still use those tools.
 - The agent takes at most 6 steps and runs one recipe per question. Questions only the agent can answer need a
-  model; without one they get "This question needs the language model."
-- Free language model plans are rate-limited; a question a recipe covers uses about 2 model calls, others 3 to 7.
+  model. Without one, a question the rules cannot place gets the document search and, if nothing relevant is
+  found, "This question needs the language model."; a comparison, ranking or count that names an asset, type or
+  site gets that playbook's answer, which may not answer the question asked.
+- Free language model plans are rate-limited; a question one recipe covers uses about 2 model calls, others 2 to 6,
+  plus 1 for a new chat's title.
 - Logs and the in-GUI trace, but no metrics or tracing backend.
 
 The full list, including small deferred review items, and the planned improvements are in

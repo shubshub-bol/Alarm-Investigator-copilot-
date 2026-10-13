@@ -7,7 +7,8 @@ citations.
     python -m copilot.evaluate --llm --skip 10 --limit 10 --report ...            # part 2, and so on
     --repeat asks every question twice and compares the facts part (doubles the requests)
 
-A question costs about 3 model requests. It needs the Alarm API and the MCP server running, as the backend does.
+A question one recipe covers costs about 2 model requests, any other 2 to 6, plus 1 for a new chat's title. It needs
+the Alarm API and the MCP server running, as the backend does.
 Its chats stay in memory, never in the saved chat history. The test suite runs the same set offline on an
 in-memory stack (tests/test_evaluate.py).
 """

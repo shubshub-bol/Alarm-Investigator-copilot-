@@ -129,8 +129,8 @@ The chaining collection's 10 flows show how the API is meant to be combined:
 | CHAIN-09 | EastRefinery active alarms -> alarm detail -> priority score -> recommendations |
 | CHAIN-10 | nuisance KPI generate -> execute -> rationalization candidates |
 
-The copilot performs the same kind of chains, but through MCP tools and chosen by the question's intent; see
-the playbooks in [architecture.md](architecture.md).
+The copilot performs the same kind of chains, but through MCP tools. With a model, the agent chooses the steps;
+without one, the playbook for the question's intent does. See [architecture.md](architecture.md).
 
 ## 2. The Alarm API connector
 
@@ -201,7 +201,7 @@ The stream sends these events:
 | Event | Data |
 |---|---|
 | `started` | `trace_id`, `conversation_id` |
-| `understanding` | intent and entities, and whether the model or the rules produced them |
+| `understanding` | the keyword rules' reading of the question (intent and entities; `method` is always `rules`), sent before any model call. With a model, the agent then chooses the steps; the final reading (intent `agent`, or the recipe's intent) arrives in the `answer` event |
 | `discovery` | MCP connection, tool count and names |
 | `step` | one tool call or document search: arguments, result, Alarm API calls, status, duration |
 | `answer` | the full response: answer, evidence, trace, timings, citations |

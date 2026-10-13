@@ -65,8 +65,9 @@ as recipes (`investigate_asset`, `active_alarms`, `highest_priority`, `related_a
 `search_documents`. At most one recipe runs per question; the tools do the rest. A recipe's inputs are `asset` (a
 name or id; `asset_id` is accepted as an alias), `asset_type`, `site`, `unit`, `lookback_days`, `severities`,
 `alarm_topic` and `uses_context`. They are checked against the typed schema, rule-extracted values fill anything the
-model left empty, and an unknown input is refused, not dropped. For the acceptance question the model picks the
-`investigate_asset` recipe for "Boiler Feed Pump 101", 90 days, high or critical severities. Every step runs on one
+model left empty, and an unknown input is refused, not dropped. For the acceptance question the model is expected
+to pick the `investigate_asset` recipe for "Boiler Feed Pump 101", 90 days, high or critical severities (a model
+that picks other steps still gets the same checks). Every step runs on one
 investigation, so there is one evidence record, one trace and one numbering of `[T#]` and `[S#]` keys. A result
 gets its key when it arrives, so the keys the model cites are the answer's keys.
 
@@ -85,8 +86,8 @@ gets its key when it arrives, so the keys the model cites are the answer's keys.
 
 **③ MCP: discover and chain tools.** The MCP client opens a session with the MCP server (streamable HTTP,
 bearer token) and lists the 13 tools with their input and output schemas; the GUI's Tools tab shows them. The
-`investigate_asset` playbook (the agent's first step, or the rules' choice without a model) then calls 8 tools,
-each using the previous results, all with the same trace id:
+`investigate_asset` playbook (typically the agent's first step for this question, or the rules' choice without a
+model) then calls 8 tools, each using the previous results, all with the same trace id:
 
 | # | Tool | Uses | Finds |
 |---|---|---|---|
@@ -216,7 +217,7 @@ answers HTTP 503 while anything is degraded, so a monitor sees it from the statu
 | A tool call hangs | `MCP_TIMEOUT` after 60 s; recorded as a failed step |
 | Language model down or invalid JSON | Before the agent's first step: the rules choose a playbook and a template writes the answer, marked `degraded`. Later: the answer is built from what the steps found. Either way the answer says the model was unavailable |
 | The agent reaches 6 steps without an answer | The answer is built from what was found, with the gap "The question could not be fully answered within 6 steps."; status `partial` |
-| A question only the agent can answer, with no model | The document search runs as for any unknown question; if it finds nothing relevant, the gap is "This question needs the language model." |
+| No model, and a question the rules cannot place | The document search runs; if it finds nothing relevant, the gap is "This question needs the language model." A comparison, ranking or count that names an asset, type or site gets that playbook's answer instead, which may not answer the question asked |
 | No relevant documents | Confidence `none` or `low`; nothing irrelevant is cited; the answer says what is missing |
 | Document index missing | The answer uses alarm data only and says documents were unavailable |
 | Chat storage unavailable | Answers still work, marked `saved: false` (the GUI keeps its address); chat endpoints return 503 with a clear message; the GUI shows "Chats not saved" |

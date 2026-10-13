@@ -94,18 +94,19 @@
 
   <rect class="box" x="386" y="282" width="222" height="166" rx="6"/>
   <text class="bt" x="398" y="304">② Understand</text>
-  <text class="file" x="398" y="322">understanding.py</text>
-  <text class="tx" x="398" y="344">Intent + asset, site, unit,</text>
-  <text class="tx" x="398" y="362">time window, severity</text>
-  <text class="tx" x="398" y="380">LLM returns JSON; keyword</text>
-  <text class="tx" x="398" y="398">rules fill gaps or take over</text>
-  <text class="tx" x="398" y="422">Small talk: a guarded reply,</text>
+  <text class="file" x="398" y="322">understanding.py, agent.py</text>
+  <text class="tx" x="398" y="340">With a model: the agent picks</text>
+  <text class="tx" x="398" y="356">up to 6 steps (recipes, MCP</text>
+  <text class="tx" x="398" y="372">tools, document search)</text>
+  <text class="tx" x="398" y="388">No model: keyword rules pick</text>
+  <text class="tx" x="398" y="404">a playbook</text>
+  <text class="tx" x="398" y="424">Small talk: a guarded reply,</text>
   <text class="tx" x="398" y="440">no tools, no documents</text>
 
   <rect class="box" x="624" y="282" width="222" height="166" rx="6"/>
   <text class="bt" x="636" y="304">③ ④ Playbook</text>
   <text class="file" x="636" y="322">investigation.py</text>
-  <text class="tx" x="636" y="344">8 playbooks, one per intent</text>
+  <text class="tx" x="636" y="344">8 playbooks (6 are recipes)</text>
   <text class="tx" x="636" y="362">Chains MCP tool calls: each</text>
   <text class="tx" x="636" y="380">uses what the last one found</text>
   <text class="tx" x="636" y="398">Builds document searches</text>
@@ -118,7 +119,7 @@
   <text class="tx" x="874" y="344">Tool facts [T#], passages [S#]</text>
   <text class="tx" x="874" y="362">API advice vs documents:</text>
   <text class="tx" x="874" y="380">consistent or conflict</text>
-  <text class="tx" x="874" y="398">LLM writes JSON; invented</text>
+  <text class="tx" x="874" y="398">LLM's direct answer: invented</text>
   <text class="tx" x="874" y="416">citations are removed</text>
   <text class="tx" x="874" y="440">Template if the LLM is down</text>
 
