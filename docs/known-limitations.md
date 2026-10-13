@@ -44,15 +44,25 @@
 - With the agent, the model also chooses the steps, so an answer can rest on the wrong tool or on an incomplete
   list (a long result is shown to the model cut to 10 items, with the total). The checks do not see that. The
   answer depends on the model's choices, which is why the evaluation has questions only the agent can answer.
-- The answer-quality set (`python -m copilot.evaluate`) has 34 questions that run offline and 4 that only the agent
-  can answer, which are skipped offline. It checks the intent, the asset, the use of live data, the sources, key
-  facts, the first step, the procedure and the citations, not the model's wording. The 4 model-only questions
-  check the answer type and the whole numbers in the direct answer, and pass only on a model-written direct
-  answer. With a model, a document or off-topic question that no recipe covers is answered by the agent, so for
-  those questions the intent check also accepts `agent` when no tool ran. The report gives each question's agent
-  steps, whether it stopped at the step limit, and the model's error. In CI the 34 run offline; with the model the
-  set is run by hand, a few questions at a time, because of the free plan's daily limit. The free Gemini tier's
-  daily limit bounds how often the model-only questions can be evaluated.
+- Agent tool facts still show shortened raw data in the findings. A tool the agent calls directly is stated as the
+  tool, its inputs and its result cut to 10 items per list (and 3000 characters), not turned into prose; under
+  "What the data shows" a statement is cut to 800 characters. Only a lookup that found nothing is put in words
+  ("found 0 alarms").
+- The exam checks the route only offline. The answer-quality set (`python -m copilot.evaluate`) judges what the
+  operator gets: the asset, the use of live data, the sources, key facts (in the findings or the direct answer, a
+  number as a whole number), the first step, the procedure, the honest "nothing found" facts and the citations, not
+  the model's wording. The intent (which playbook ran) is checked only on the rules path, so with a model a poor
+  route to an answer that looks right is not caught by the exam; the trace still shows it. Routing is tested by the
+  34 questions that run offline.
+- The set has 34 questions that run offline and 4 that only the agent can answer, which are skipped offline. The 4
+  model-only questions check the answer type and the whole numbers in the direct answer, and pass only on a
+  model-written direct answer. The report gives each question's tools and document searches, its agent steps,
+  whether it stopped at the step limit, and the model's error. In CI the 34 run offline; with the model the set is
+  run by hand, a few questions at a time, because of the free plan's daily limit. The free Gemini tier's daily limit
+  bounds how often the model-only questions can be evaluated.
+- The question's asset is set only when the calls clearly focus on one asset. Calls about two assets (a comparison)
+  or about no single asset (a site-wide list, a search with several results) set none, so after such an answer a
+  follow-up such as "this pump" has nothing new to refer back to; name the asset.
 
 **Security and operations**
 

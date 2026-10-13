@@ -219,19 +219,22 @@ Every returned passage becomes a citation with a key, a readable label and where
 | high | >= 0.70 | Used as evidence |
 | medium | >= 0.62, or an exact alarm-code hit | Used as evidence |
 | low | below 0.62, some passage above the floor | Used, and the answer states the weak evidence |
-| none | nothing above the 0.55 floor | No document evidence; the answer says so |
+| none | nothing above the 0.55 floor | No document evidence; the answer says so, as a cited fact |
 
 The thresholds were measured on this corpus: relevant passages score about 0.70 and above, unrelated
 questions stay below 0.55 ("What is the capital of France?" scores 0.40). Each playbook names its main search
 (for an investigation, the procedure for the top alarm), and the answer's confidence is that search's, so a
-well-matched safety passage cannot make a missing procedure look "high". When a main search is low or none, the
-answer adds the gap "No relevant passages were found in the document corpus for this question", or the more
-precise "The documents have no procedure for ... alarms" when nothing exists for the asset type. A playbook that
+well-matched safety passage cannot make a missing procedure look "high". What the answer says about a weak main
+search depends on what came back. If passages came back but with low confidence, the answer adds the gap "The
+passages found for this question are weak matches." If a search ran and found nothing at all, that is a finding, not
+a gap: a cited fact, tied to the search's trace step, such as "The documents have no procedure for ... alarms" when
+the asset type is known, or "No relevant passages were found in the document corpus for this question." for a main
+search without a more precise wording. A search that could not run (no index, an error) stays a gap. A playbook that
 falls back to searching the question itself treats that search as its main search. When no search ran at all
-(no active alarms), neither gap appears: the answer's own gap says why, and the summary repeats it. The language
-model is told to list missing evidence under gaps instead of guessing, and every finding, cause, procedure item,
-action and analysis statement carries a citation. If the document index cannot be loaded at all, the copilot still
-answers from live alarm data and says that documents were unavailable.
+(no active alarms), neither appears: the cited fact about the alarms says why, and the summary repeats it. The
+language model is told to list missing evidence under gaps instead of guessing, and every finding, cause, procedure
+item, action and analysis statement carries a citation. If the document index cannot be loaded at all, the copilot
+still answers from live alarm data and says that documents were unavailable.
 
 ## 13. Prompt-injection protections
 

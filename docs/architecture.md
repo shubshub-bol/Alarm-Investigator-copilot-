@@ -25,8 +25,8 @@ below.
 | Source system | `services/alarm-simulator` | The Alarm Management API, built from the assignment's Postman collections, with synthetic data |
 | RAG ingestion | `rag/ingestion` | Load, screen, sanitise, chunk, embed, save the index |
 | Retrieval service | `rag/retrieval` | Hybrid search, filters, confidence, citations, untrusted-context rendering |
-| Evidence and answer | `facts.py`, `consistency.py`, `answer.py`, `text_check.py` | Citable tool facts; the facts part built by code; the model's checked direct answer and analysis; API advice vs documents |
-| Answer quality | `evaluate.py` | 34 golden operator questions through the whole copilot (intent, asset, live data, sources, key facts, first step, procedure, valid citations), plus 4 that only the agent can answer, run with a model (answer type and the numbers in the direct answer) |
+| Evidence and answer | `evidence.py`, `facts.py`, `consistency.py`, `answer.py`, `text_check.py` | The evidence record, filled by one recorder from every tool result; citable tool facts, including lookups that found nothing; the facts part built by code; the model's checked direct answer and analysis (no evidence, no claim); API advice vs documents |
+| Answer quality | `evaluate.py` | 34 golden operator questions through the whole copilot, judged on what the operator gets (asset, live data, sources, key facts, first step, procedure, valid citations; the intent only on the rules path), plus 4 that only the agent can answer, run with a model (answer type and the numbers in the direct answer) |
 | Domain models | pydantic models in each package (`alarm_mcp/schemas.py`, `copilot/trace.py`, `rag/models.py`, ...) | Typed contracts at every boundary |
 | Language model | `llm.py` | One `LlmProvider` protocol; Gemini, OpenRouter or offline |
 | Chat context | `context.py` | What a chat remembers for the model: the last 10 turns in full, older turns as their important bits |
@@ -93,6 +93,9 @@ step number, for the model to assess; document passages reach the model at up to
 | The same call again | Not run; the model gets the earlier result |
 | A second recipe | Not run; the model is told to use the tools for anything more |
 | The question names an asset (by the keyword rules) and nothing has been looked up | A document search or "done" is not accepted; the model is told to look up the asset's data first. A call its input schema refused does not count as a look-up. The rule yields when the MCP server is down or offered no tools |
+| "done" with an answer type other than `cannot_answer`, and nothing has been looked up (no tool call that reached the server, no document search) | Not accepted, once: "nothing has been looked up yet: search the documents or call a tool, or answer cannot_answer." The named-asset rule above is the stricter case. The refusal is skipped when nothing can be looked up (no index, and the MCP server down or without tools); the answer checks then decide |
+| A tool succeeds and its main list is empty (assets, alarms, alarm groups, trend points, alarm pairs, floods or candidates) | The model is told what was found in words, with the count, before the shortened data (`found 0 alarms: {...}`), and the result becomes a negative fact with its own key |
+| A document search runs and finds nothing relevant | The model gets a negative fact with a key it can cite ("The document search for '...' found 0 relevant passages."), not a bare "nothing" |
 | A long result | The model sees whole items only, up to 10 (fewer if needed to stay under 3000 characters), then `... N more (M in all)`; raw `meta` blocks are dropped |
 | A search past the 8-passage evidence limit | The model is told how many passages were found but not kept. The agent's own searches do not use up a recipe's limit: before a recipe runs, the limit is raised by the passages they kept, so the recipe still gets its procedure, safety and governance passages. A passage the agent's search kept and the recipe finds again takes the recipe's purpose, so it still gives the answer its procedure or safety step |
 | The last step | The model is told it must be "done" with the final answer |
@@ -119,6 +122,58 @@ Inside the MCP server each tool validates its input, calls the Alarm API through
 `x-trace-id`, timeout, retries), validates the response against its output schema and returns it with
 `meta.api_calls`. A failed tool call is recorded as a failed step and the playbook continues with what it has.
 
+**The evidence record.** Every tool call, whether a playbook or the agent made it, passes through one door,
+`Investigation.call_tool`. After a successful call it hands the result to `record_result` (`evidence.py`), which
+writes what that result plainly shows into the evidence record. Playbooks no longer copy results into the record;
+they keep only their judgements: the top alarm, the focus alarm, the ranking, which contributing factors are strong
+enough, and the notes. So an agent that calls tools directly fills the same record: the evidence panel shows its
+asset and alarms, and a follow-up such as "this boiler" has an asset to refer to.
+
+| Tool | What the recorder writes |
+|---|---|
+| `search_assets` | Every asset found, as a known asset (`known_assets`, by asset id). Never the question's asset |
+| `get_asset_metadata` | The asset (the fields the asset fact uses) and its related assets; the call is about that asset |
+| `get_alarm_details` | The alarm (the first one stays) and its asset as known; the call is about that asset |
+| `get_alarms` | With `status=active`: the active alarms. Filtered to one asset id: the call is about that asset |
+| `summarize_alarms` | For exactly one asset id and not grouped per asset: the alarm summary, and the call is about that asset |
+| `get_alarm_trends` | For exactly one asset id: the trend, and the call is about that asset |
+| `score_alarm_priority` | The priority (the first one stays) |
+| `get_operator_recommendations` | The API's advice and the trace step that produced it (`recommendations_step`), its priority, and the asset it names as known; the call is about that asset |
+| `correlate_alarms`, floods, rationalization candidates, KPI tools | Nothing beyond their fact. The playbook judges which pairs are contributing factors |
+
+Two rules keep the record honest. **One asset:** the question's asset is set only while every call about a single
+asset is about the same one, and that asset is known (found by a search, or in the details of an alarm or asset).
+Calls about two different assets leave it open, a summary grouped per asset is a comparison and sets nothing, and
+a search with several results never sets it. **One alarm's advice:** the API's advice is "the advice" only while it
+was fetched for one alarm. Advice for a second, different alarm leaves it open; the facts that state it stay under
+"What the data shows", and nothing is shown as the advice for either. When the advice is held, the causes and the
+recommended actions cite the fact from its own step (`recommendations_step`), whoever made the call. A playbook that
+the agent runs as a recipe starts from a clean record for its own subject (`begin_playbook`): the asset and its
+related assets, the alarm, the priority, the advice, the summary, the trend and the active alarms are forgotten,
+while what was found about the plant stays (the known assets, the passages, the findings that nothing was found, the
+notes and the gaps).
+
+**Nothing found is a fact, not a gap.** A lookup that works and finds nothing is evidence ("There are 0 active
+alarms on boiler assets"), so it becomes a fact with its own key `[T#]`, tied to the trace step that established it.
+Only a lookup that succeeded can establish it: a failed call is a failed step with a note, never "found nothing".
+
+| Where | What becomes a fact |
+|---|---|
+| A playbook | Each negative finding it writes after a lookup (`_found_nothing`), tied to the latest successful step of that tool among the playbook's own steps: "There are 0 active alarms on boiler assets (Boiler B-201).", "No asset matches 'Boiler Feed Pump 999'.", "There are 0 high/critical alarms on X in the last 90 days.", "No alarm consistently preceded the main alarm (no clear contributing factor)." |
+| The agent's tool calls | A successful result whose main list is empty (see the situation table above), worded with the count |
+| A document search | A search that runs and finds nothing: "The documents have no procedure for boiler alarms." in a playbook, "No relevant passages were found in the document corpus for this question." for a main search without a more precise wording, "The document search for '...' found 0 relevant passages." for the agent. A search that could not run (no index, an error) stays a gap |
+
+Findings about alarms state the count as the number 0, not "no", so a model's "0 active alarms [T2]" passes the
+number check. Every such fact is marked `negative`. In a playbook's facts the negative ones follow the positive ones,
+in the order the lookups ran; the agent's tool facts keep the order of its calls. A plain summary does not count a
+negative fact as "something looked up": it cites one when there is nothing else to say (or, for a procedure question,
+when the documents have no procedure).
+
+**Gaps** are now only what could not be looked up or failed: the MCP server down, a tool error, no document index, a
+search error, a missing input such as "Name an asset, site or unit to list its active alarms.", and the step limit.
+One warning joins them: "The passages found for this question are weak matches." for a main search whose passages
+are low confidence. Notes (assumptions and selections) are listed with the gaps.
+
 **④ RAG: search the documents.** The playbook builds its searches from the MCP results: the procedure for
 `PMP-VIB-HI` on a pump (finds `SOP-BFP-001 §4.1`), guidance on the contributing factor "motor bearing
 temperature before pump vibration" (maintenance, troubleshooting and knowledge documents only), and isolation
@@ -133,8 +188,9 @@ guidance governs and finds `ALM-PHIL-006 §7` ("the approved procedure governs")
 **⑤ Grounded answer.** The code guarantees the facts and the model does the thinking. `facts.py` turns the tool
 results into short numbered facts `[T1]`, `[T2]`, ... each tied to its trace step (a small tool's result becomes
 one fact: the tool, its inputs and its shortened result), and code builds every factual section from the
-evidence: what the data shows, the likely causes, the procedure (each item quoting its key step), and the actions
-(the procedure's step first, then the API actions that match the documents, then the safety step). When the agent
+evidence: what the data shows (every fact, including the ones that say a lookup found nothing, each cited), the
+likely causes, the procedure (each item quoting its key step), and the actions (the procedure's step first, then the
+API actions that match the documents, then the safety step). When the agent
 ran a recipe, the plain summary, the causes and the actions cite the recipe's own facts, even if the agent called
 the same tools earlier about another asset or alarm; every fact is still listed under the data. Without a recipe,
 the tool facts are the findings and any retrieved passages are the procedure section. The model has seen every
@@ -148,8 +204,11 @@ document, an alarm is not a failure or a trip unless a fact says so, and a quest
 alarms, assets or documents is answered `cannot_answer` with what the copilot can help with. Its text is checked
 (`text_check.py`): every citation key must exist, and every number and code it
 mentions must appear in the evidence; a direct answer that is too long is cut to its first whole sentences, and one
-that cites nothing gets the keys its numbers and codes point to. A direct answer that fails is replaced by the
-plain summary built from the evidence; an analysis statement that fails is dropped. A conflict found by the
+that cites nothing gets the keys its numbers and codes point to. **No evidence, no claim:** when there are no facts
+and no passages at all, any direct answer or analysis statement is rejected with the reason `no evidence was
+looked up`, unless the answer type is `cannot_answer` (an honest "I cannot answer that" needs no key). A direct
+answer that fails is replaced by the plain summary built from the evidence; an analysis statement that fails is
+dropped. A conflict found by the
 rule-based check is kept even if the model missed it, and no direct answer, action or analysis statement may
 recommend an API action the documents conflict with. The answer's `answer_type` is set only when the model's
 direct answer is shown, and `grounding.mode` is `llm` only when the agent produced a final reply. When there is no
@@ -239,7 +298,8 @@ answers HTTP 503 while anything is degraded, so a monitor sees it from the statu
 | Language model down or invalid JSON | Before the agent's first step: the rules choose a playbook and a template writes the answer, marked `degraded`. Later: the answer is built from what the steps found. Either way the answer says the model was unavailable |
 | The agent reaches 6 steps without an answer | The answer is built from what was found, with the gap "The question could not be fully answered within 6 steps."; status `partial` |
 | No model, and a question the rules cannot place | The document search runs; if it finds nothing relevant, the gap is "This question needs the language model." A comparison, ranking or count that names an asset, type or site gets that playbook's answer instead, which may not answer the question asked |
-| No relevant documents | Confidence `none` or `low`; nothing irrelevant is cited; the answer says what is missing |
+| A lookup works and finds nothing (no active alarms, no matching asset, no relevant documents) | A negative fact with its own key, cited in the answer ("There are 0 active alarms on ..."). It is a finding, not a gap |
+| Weak documents | Confidence `low`: the passages are used and the gap says "The passages found for this question are weak matches."; nothing irrelevant is cited |
 | Document index missing | The answer uses alarm data only and says documents were unavailable |
 | Chat storage unavailable | Answers still work, marked `saved: false` (the GUI keeps its address); chat endpoints return 503 with a clear message; the GUI shows "Chats not saved" |
 | Saved follow-up context unreadable | The chat continues without its earlier context; a warning is logged |

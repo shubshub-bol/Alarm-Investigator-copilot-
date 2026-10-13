@@ -25,6 +25,7 @@ investigations, so the copilot still works offline.
 | MCP | [MCP server](#mcp-server) and the [tool catalog](docs/mcp-tool-catalog.md) |
 | RAG | [Document RAG](#document-rag) and the [RAG design](docs/rag-design.md) |
 | The agent | [How it works](docs/architecture.md) and [why it was built this way](docs/design-decisions.md) (section 19) |
+| The evidence | [The evidence record, facts and gaps](docs/architecture.md) and [why](docs/design-decisions.md) (section 20) |
 | Quality | [Tests](#build-run-and-test), [coverage](docs/coverage.md) and [answer-quality runs](docs/evaluation/) |
 
 ## Main capabilities
@@ -45,7 +46,9 @@ investigations, so the copilot still works offline.
   builds the facts part of the answer from the evidence; the model writes only the direct answer and its
   analysis, and both are checked: every number and code must appear in the evidence, invented citations are
   removed, and advice the documents conflict with is never endorsed. Each Alarm API recommendation is checked
-  against the procedures, and conflicts are shown as "Check before acting".
+  against the procedures, and conflicts are shown as "Check before acting". A lookup that finds nothing is a cited
+  fact too ("There are 0 active alarms on ... [T2]"), and with nothing looked up the only valid answer is "I cannot
+  answer that".
 - **Follow-up questions.** "Which procedure applies to this alarm?" or "and over the last 30 days?" work in the
   same chat. The model sees the last 10 turns (each question with its answer's summary and analysis) and only
   the important bits of older ones (asset, alarm, time window). This is background for following the
@@ -55,7 +58,8 @@ investigations, so the copilot still works offline.
   discovered tools.
 - **Graceful degradation.** Without a language model it uses rules and templates. If the model fails before its
   first step (quota, outage), the rules answer and the answer is marked degraded. Without the MCP server it
-  answers from documents and says so. Failed steps are listed as gaps.
+  answers from documents and says so. Gaps are only what could not be looked up or failed (a service down, an
+  error, a missing input); a lookup that worked and found nothing is a finding, not a gap.
 - **A usable GUI.** Chat with saved chats, live progress, evidence drawer, light and dark themes, responsive. The
   direct answer comes first; "What to do" stays on the answer for "what should I do" and "why" questions (or when
   advice conflicts) and is in the evidence drawer otherwise.
@@ -144,7 +148,7 @@ case has no ticketing system.
 | Smoke test a running stack | `make smoke` | `uv run python scripts/smoke_stack.py` |
 | Install dependencies | `make install` | `uv sync --locked` and `npm --prefix apps/frontend ci` |
 | Build the document index | `make ingest` | `uv run python -m rag.ingestion` |
-| Python tests (565) | `make test-python` | `uv run pytest` |
+| Python tests (629) | `make test-python` | `uv run pytest` |
 | GUI tests (82) | `make test-gui` | `npm --prefix apps/frontend run test` |
 | Coverage report | `make coverage` | see [docs/coverage.md](docs/coverage.md) |
 | Formatting, lint, types | `make lint` | `uv run ruff format --check .`, `uv run ruff check .`, `uv run mypy`, `npm --prefix apps/frontend run typecheck` |
@@ -359,6 +363,8 @@ from the copilot, because it stands in for the external source system.
   site gets that playbook's answer, which may not answer the question asked.
 - Free language model plans are rate-limited; a question one recipe covers uses about 2 model calls, others 2 to 6,
   plus 1 for a new chat's title.
+- Facts from tools the agent calls directly still show shortened raw data in the findings. The answer-quality set
+  judges outcomes; the route (the intent) is checked only on the rules path, without a model.
 - With the agent, only the 4 agent questions have been run with a real model so far; the earlier model runs in
   [docs/evaluation](docs/evaluation/) used the previous flow (the model read the question, then a playbook ran).
 - Logs and the in-GUI trace, but no metrics or tracing backend.
@@ -376,9 +382,9 @@ The full list, including small deferred review items, and the planned improvemen
 | [rag-design.md](docs/rag-design.md) | Corpus, ingestion, chunking, metadata, embeddings, index, hybrid search, ranking, filters, citations, low confidence, prompt injection, refresh |
 | [rag-examples.md](docs/rag-examples.md) | Real retrieved chunks, scores, citations and edge cases |
 | [api-integration.md](docs/api-integration.md) | The Alarm API contract, the connector, the backend API and its live stream |
-| [design-decisions.md](docs/design-decisions.md) | The main choices and their trade-offs (section 19: the agent) |
+| [design-decisions.md](docs/design-decisions.md) | The main choices and their trade-offs (section 19: the agent; section 20: evidence integrity) |
 | [evaluation/](docs/evaluation/) | Answer-quality runs with a language model, question by question |
-| [specs/](docs/specs/) and [plans/](docs/plans/) | Design specs (chat sessions, evidence-first answers, the agent) and their build plans |
+| [specs/](docs/specs/) and [plans/](docs/plans/) | Design specs (chat sessions, evidence-first answers, the agent, evidence integrity) and their build plans |
 | [known-limitations.md](docs/known-limitations.md) | Limitations and future improvements |
 | [coverage.md](docs/coverage.md) | Test coverage and what the tests cover |
 

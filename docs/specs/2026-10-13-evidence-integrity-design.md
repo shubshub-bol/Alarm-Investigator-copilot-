@@ -1,8 +1,9 @@
 # Evidence integrity: design
 
-Date: 2026-10-13. Status: agreed in review (part 1 approved; the user approved the rest: "go ahead with all you
-want"). Clarified while building: correlate_alarms records nothing; a summary grouped per asset is a comparison; a
-playbook starts from a clean record for its subject.
+Date: 2026-10-13. Status: built on 2026-10-13. It was agreed in review (part 1 approved; the user approved the
+rest: "go ahead with all you want") and clarified while building: correlate_alarms records nothing; a summary
+grouped per asset is a comparison; a playbook starts from a clean record for its subject; the API's advice is "the
+advice" only while it was fetched for one alarm.
 
 ## Goal
 
@@ -45,10 +46,10 @@ per tool, writing the same shapes the playbooks write today (so facts, the GUI a
 | `get_asset_metadata` | the asset (the fields the asset fact uses) and its related assets |
 | `get_alarm_details` | the alarm, and its asset as known |
 | `get_alarms` with `status=active` | the active alarms |
-| `summarize_alarms` | the alarm summary |
-| `get_alarm_trends` | the trend |
+| `summarize_alarms` | the alarm summary, for exactly one asset and not grouped per asset (a per-asset grouping is a comparison) |
+| `get_alarm_trends` | the trend, for exactly one asset |
 | `score_alarm_priority` | the priority |
-| `get_operator_recommendations` | the API's advice, and the asset it names as known |
+| `get_operator_recommendations` | the API's advice, the trace step that produced it, and the asset it names as known. The advice is kept only while all the advice fetched was for one alarm: advice for a second, different alarm leaves it open (neither is "the" advice) |
 | `correlate_alarms` | nothing beyond its fact (the playbook judges which pairs are contributing factors) |
 | floods, rationalization candidates, KPI tools | nothing beyond their fact |
 
@@ -65,7 +66,7 @@ the evidence panel and the chat memory, so a follow-up ("this boiler") works.
 ### 2a. Nothing found is a fact
 
 - **Agent tool calls.** A successful result whose main list is empty is stated in words with the count, before
-  the shortened data: `get_alarms(status="active", asset_id="AST-BLR-201") found 0 alarms.`
+  the shortened data: `get_alarms(status="active", asset_id="AST-BLR-201") found 0 alarms: {...}`
 - **Playbooks.** Every negative finding a playbook writes after a lookup is recorded with the step that
   established it and becomes a fact (`T#`) in step order, for example "There are 0 active alarms on boiler assets
   (Boiler B-201).", "No asset matches 'Boiler Feed Pump 999'.", "There are 0 high/critical alarms on X in the last

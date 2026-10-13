@@ -191,3 +191,43 @@ details than a recipe's.
 *Instead of:* a router in front of an agent, which makes two paths and a router that can choose wrong, and the
 wrong choice is silent. Or plan-then-execute, where the model writes the whole plan first and so cannot use one
 step's result in the next ("the busiest motor" must be found before its alarms can be read).
+
+## 20. Evidence integrity
+
+The first full run with the agent and Gemini passed 33 of 38 questions. The 5 failures were not five bugs. They had
+three root causes, and each is fixed at its cause, so the whole class of problem goes away:
+
+| Root cause | What went wrong |
+|---|---|
+| 1. The evidence had holes | "Nothing found" was not evidence, so an honest "no active boiler alarms" had nothing to cite and was thrown away for an invented key. And when nothing was looked up at all, uncited text passed the checks ("AI vs procedure, which wins?" was answered from the model's memory) |
+| 2. The exam checked the route, not the result | The cases were written for the fixed playbooks and checked which playbook ran, so a good answer through another valid recipe was marked wrong |
+| 3. Only playbooks filled the evidence record | The agent's own tool calls left the asset, alarms and summary empty, so after its answer "this boiler" had no asset to refer to and the evidence panel was empty |
+
+Three rules follow, one for each cause:
+
+1. **One record, filled in one place.** Every tool call passes through `Investigation.call_tool`, and one recorder
+   (`evidence.py`) writes what each result plainly shows. Playbooks keep only their judgements (the top alarm, the
+   focus alarm, the ranking, which contributing factors are strong enough, the notes). The question's asset is set
+   only when the calls clearly focus on one asset; two assets (a comparison) leave it open. Advice is "the advice"
+   only while it was fetched for one alarm.
+2. **No holes, and no claim without evidence.** A lookup that works and finds nothing is a fact with its own key,
+   tied to its trace step. Gaps are only what could not be looked up or failed. With nothing looked up, the only
+   valid answer is `cannot_answer`: the agent refuses "done" once, and the answer checks reject an evidence-free
+   claim with the reason `no evidence was looked up`.
+3. **The exam judges outcomes.** The intent is checked only on the rules path, where routing is what is tested.
+   With a model, every other expectation is something the operator sees: the asset, live data used or not, the
+   values in the findings or the direct answer (as whole numbers), the sources, the first step, the procedure, the
+   honest negative facts, and valid keys.
+
+*Options for the evidence record.* **A, one recorder at the single door (chosen):** every tool call is recorded the
+same way, whoever made it, and a new tool needs one more rule in one place. **B, rebuild the record from the trace
+afterwards:** the same result, but too large a rewrite, because the playbooks, the facts and the GUI read the record
+while the investigation runs. **C, an agent-only adapter that copies the agent's results into the record:** small,
+but two places to keep in sync, which is how the holes appeared.
+
+*Cost:* negative findings are now facts, so their wording has to carry the number 0 ("There are 0 active alarms on
+Boiler B-201") for a model's "0 active alarms [T2]" to pass the number check; the findings list is a little longer
+for the questions that find nothing; and a comparison leaves the question's asset open, so a follow-up such as "this
+pump" after it must name the pump. The agent's tool facts still show shortened raw data, as before (see
+[known limitations](known-limitations.md)). *Instead of:* loosening the exam until the five cases pass, or adding a
+guard for each wrong answer (a special case per question), which is reactive and would not stop the next one.
