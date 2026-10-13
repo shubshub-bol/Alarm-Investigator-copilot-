@@ -380,9 +380,11 @@ async def compose_agent_answer(
         degraded_reason=agent_run.model_error,
         extra_gaps=[STEP_LIMIT_GAP] if agent_run.hit_limit else None,
     )
-    answer.answer_type = final.answer_type if final else None
+    # The mode is "llm" only when the final reply was applied; without one, compose_answer left it "template".
     g = answer.grounding
-    g.mode, g.agent_steps, g.agent_hit_limit = "llm", agent_run.steps, agent_run.hit_limit
+    g.agent_steps, g.agent_hit_limit = agent_run.steps, agent_run.hit_limit
     last = getattr(llm, "last_call", {}) or {}
     g.model, g.llm_latency_ms = last.get("model"), last.get("latency_ms")
+    if final and g.summary_source == "llm":  # the type describes the direct answer, so only a shown one has it
+        answer.answer_type = final.answer_type
     return answer

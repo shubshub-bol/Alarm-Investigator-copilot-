@@ -381,6 +381,7 @@ async def test_an_agent_answer_without_a_final_reply_says_what_was_looked_up(mcp
     assert answer.summary.startswith("Looked up with search_assets")
     assert "The question could not be fully answered within 6 steps." in answer.gaps
     assert answer.answer_type is None and answer.grounding.agent_hit_limit is True
+    assert answer.grounding.mode == "template"  # no model text is shown: the same as on the rules path
 
 
 async def test_a_long_tool_result_is_cut_in_the_findings_but_whole_in_the_facts(mcp, retriever):
@@ -395,6 +396,22 @@ async def test_a_long_tool_result_is_cut_in_the_findings_but_whole_in_the_facts(
     answer = await compose_agent_answer(question, result, llm)
     assert len(answer.facts[0].statement) > 800  # the fact keeps its whole statement
     assert [len(s.text) for s in answer.findings] == [800] and answer.findings[0].text.endswith("...")
+
+
+async def test_a_direct_recommendations_lookup_stays_in_the_details(mcp, retriever):
+    alarms = await mcp.call("get_alarms", {"asset_id": "AST-CMP-301", "status": "active"}, trace_id="t")
+    alarm_id = alarms.result["alarms"][0]["alarm_id"]
+    question = "What does the alarm system recommend for this alarm?"
+    result, llm = await run_agent(
+        question,
+        tool("get_operator_recommendations", alarm_id=alarm_id),
+        done("Recommendations were returned [T1].", "what_to_do"),
+        mcp=mcp,
+        retriever=retriever,
+    )
+    answer = await compose_agent_answer(question, result, llm)
+    assert result.run.evidence.recommendations is None  # only a recipe sets them: nothing else shows this fact
+    assert any(s.citations == ["T1"] and "get_operator_recommendations" in s.text for s in answer.findings)
 
 
 async def test_a_recipe_answer_keeps_the_recipe_details(mcp, retriever):
@@ -422,6 +439,7 @@ async def test_a_model_failure_midway_is_degraded_but_keeps_the_data(mcp, retrie
     answer = await compose_agent_answer("How many boilers do we have?", result, llm)
     assert answer.grounding.degraded and "timeout" in answer.grounding.degraded_reason
     assert answer.findings
+    assert answer.grounding.mode == "template" and answer.grounding.agent_steps == 1
 
 
 async def test_an_invented_number_in_the_direct_answer_is_rejected(mcp, retriever):
@@ -434,6 +452,7 @@ async def test_an_invented_number_in_the_direct_answer_is_rejected(mcp, retrieve
     )
     answer = await compose_agent_answer("How many boilers do we have?", result, llm)
     assert answer.grounding.summary_source == "template" and "number 731" in answer.grounding.summary_rejected
+    assert answer.answer_type is None  # the direct answer is not shown, so its type is not either
 
 
 async def test_a_rejected_answer_after_a_document_search_falls_back_to_the_documents(mcp, retriever):
@@ -448,3 +467,4 @@ async def test_a_rejected_answer_after_a_document_search_falls_back_to_the_docum
     answer = await compose_agent_answer(question, result, llm)
     assert answer.grounding.summary_source == "template"
     assert answer.summary.startswith("SAF-")  # the closest sentence of the best safety instruction, cited
+    assert answer.answer_type is None

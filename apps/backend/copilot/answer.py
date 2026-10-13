@@ -296,8 +296,10 @@ def template_answer(
 
     summary = _plain_summary(run, by_tool, assessments, question)
 
-    # findings: every tool fact except the API's recommendation list (shown under actions instead)
-    findings = [Statement(text=_fit(f.statement), citations=[f.key]) for f in facts if f is not rec_fact]
+    # findings: every tool fact except the API's recommendation list, which is shown under actions instead; when
+    # nothing shows it there (the agent called the tool itself, so there are no recommendations), it stays a finding
+    hidden = rec_fact if ev.recommendations else None
+    findings = [Statement(text=_fit(f.statement), citations=[f.key]) for f in facts if f is not hidden]
 
     # likely causes
     causes = [Statement(text=_fit(f.statement), citations=[f.key]) for f in by_tool.get("correlate_alarms", [])]
