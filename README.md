@@ -16,7 +16,8 @@ investigations, so the copilot still works offline.
 
 ![The copilot answering the acceptance question](docs/screenshots/answer.png)
 
-https://github.com/user-attachments/assets/6bc69f19-2633-4302-a65b-a0688a82acbf
+
+https://github.com/user-attachments/assets/4a4044bf-8898-4c7f-8209-afa9ca4be980
 
 **Demo video (6 minutes, narrated):** [watch on Google Drive](https://drive.google.com/file/d/1BXwOnMjUBtnicGWQ3C8ii375OabSCgsF/view?usp=sharing):
 a full investigation, the MCP trace and tool discovery, RAG citations, the agent, honest "found nothing" and
