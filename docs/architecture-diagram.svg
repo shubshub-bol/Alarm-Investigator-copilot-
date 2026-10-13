@@ -41,7 +41,7 @@
   <text class="tx" x="58" y="249">Live progress while it works</text>
   <text class="tx" x="58" y="268">Answer with [T#] and [S#] citations</text>
   <text class="tx" x="58" y="296" font-weight="700">Evidence drawer tabs</text>
-  <text class="tx" x="58" y="315">Evidence: alarm summary panel</text>
+  <text class="tx" x="58" y="315">Evidence: summary, What to do</text>
   <text class="tx" x="58" y="334">Steps: MCP trace, raw JSON</text>
   <text class="tx" x="58" y="353">Sources: cited passages</text>
   <text class="tx" x="58" y="372">Tools: MCP tool discovery</text>
@@ -98,8 +98,8 @@
   <text class="tx" x="398" y="340">With a model: the agent picks</text>
   <text class="tx" x="398" y="356">up to 6 steps (recipes, MCP</text>
   <text class="tx" x="398" y="372">tools, document search)</text>
-  <text class="tx" x="398" y="388">No model: keyword rules pick</text>
-  <text class="tx" x="398" y="404">a playbook</text>
+  <text class="tx" x="398" y="388">No model, or it fails at once:</text>
+  <text class="tx" x="398" y="404">keyword rules pick a playbook</text>
   <text class="tx" x="398" y="424">Small talk: a guarded reply,</text>
   <text class="tx" x="398" y="440">no tools, no documents</text>
 
@@ -116,11 +116,12 @@
   <rect class="box" x="862" y="282" width="212" height="166" rx="6"/>
   <text class="bt" x="874" y="304">⑤ Grounded answer</text>
   <text class="file" x="874" y="322">facts, consistency, answer</text>
-  <text class="tx" x="874" y="344">Tool facts [T#], passages [S#]</text>
-  <text class="tx" x="874" y="362">API advice vs documents:</text>
-  <text class="tx" x="874" y="380">consistent or conflict</text>
-  <text class="tx" x="874" y="398">LLM's direct answer: invented</text>
-  <text class="tx" x="874" y="416">citations are removed</text>
+  <text class="tx" x="874" y="340">Tool facts [T#], passages [S#]</text>
+  <text class="tx" x="874" y="356">API advice vs documents:</text>
+  <text class="tx" x="874" y="372">consistent or conflict</text>
+  <text class="tx" x="874" y="388">LLM's text checked: numbers,</text>
+  <text class="tx" x="874" y="404">codes, citations must be in the</text>
+  <text class="tx" x="874" y="420">evidence; conflicts not endorsed</text>
   <text class="tx" x="874" y="440">Template if the LLM is down</text>
 
   <line class="grey" x1="454" y1="460" x2="454" y2="488" marker-end="url(#a-grey)"/>
