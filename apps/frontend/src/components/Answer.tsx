@@ -19,6 +19,9 @@ export function Answer({ response, selectedKey, onCite, onOpen }: Props) {
   const { answer, evidence, discovery, status } = response;
   const chip = chipRenderer(response, selectedKey, onCite);
   const conflicts = answer.action_assessments.filter((a) => a.verdict === "conflict");
+  // Steps belong on the answer when it is about what to do or why, or when a warning points at them.
+  const type = answer.answer_type;
+  const showSteps = !type || type === "what_to_do" || type === "why" || conflicts.length > 0;
 
   if (response.understanding.intent === "conversation") {
     return (
@@ -70,7 +73,7 @@ export function Answer({ response, selectedKey, onCite, onOpen }: Props) {
         </section>
       )}
 
-      {answer.recommended_actions.length > 0 && (
+      {showSteps && answer.recommended_actions.length > 0 && (
         <section aria-labelledby={`${response.trace_id}-todo`}>
           <h3 id={`${response.trace_id}-todo`}>What to do</h3>
           <StatementList items={answer.recommended_actions} chip={chip} ordered />

@@ -136,3 +136,18 @@ test("no analysis section when the answer has none, as in chats saved before it 
   renderAnswer();
   expect(screen.queryByRole("heading", { name: "Analysis (AI)" })).not.toBeInTheDocument();
 });
+
+test("a count answer leads with the number and leaves the steps to the details", () => {
+  const counted = structuredClone(response);
+  counted.answer.answer_type = "count";
+  counted.answer.action_assessments = []; // no conflict to warn about
+  renderAnswer({ response: counted });
+  expect(screen.queryByRole("heading", { name: "What to do" })).not.toBeInTheDocument();
+});
+
+test("a what-to-do answer keeps its steps on the answer", () => {
+  const steps = structuredClone(response);
+  steps.answer.answer_type = "what_to_do";
+  renderAnswer({ response: steps });
+  expect(screen.getByRole("heading", { name: "What to do" })).toBeInTheDocument();
+});

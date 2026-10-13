@@ -48,9 +48,12 @@ export interface Grounding {
   llm_latency_ms: number | null;
 }
 
+export type AnswerType = "count" | "list" | "compare" | "why" | "what_to_do" | "document" | "cannot_answer";
+
 export interface CopilotAnswer {
   summary: string;
   analysis?: Statement[]; // the model's reasoning; absent offline and in chats saved before it existed
+  answer_type?: AnswerType | null; // the agent's answer type; absent on the rules path and in older chats
   findings: Statement[];
   likely_causes: Statement[];
   procedure: Statement[];
@@ -135,7 +138,8 @@ export type Intent =
   | "procedure_lookup"
   | "recommendation_check"
   | "knowledge_question"
-  | "conversation";
+  | "conversation"
+  | "agent";
 
 export interface Understanding {
   intent: Intent;

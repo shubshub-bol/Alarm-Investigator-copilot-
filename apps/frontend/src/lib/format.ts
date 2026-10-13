@@ -9,6 +9,7 @@ export const INTENT_LABEL: Record<Intent, string> = {
   recommendation_check: "Check API advice against the documents",
   knowledge_question: "Question about the documents",
   conversation: "Conversation",
+  agent: "Answered with the alarm tools",
 };
 
 export function seconds(ms: number): string {
