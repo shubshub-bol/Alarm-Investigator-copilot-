@@ -43,12 +43,13 @@ INTENT_HELP = {
 }
 
 
-class LlmUnderstanding(BaseModel):
-    """The part the LLM fills in (also the JSON schema sent to it)."""
+class _Reading[IntentT: str](BaseModel):
+    """What a reading of the question holds. The intent type is a parameter, so the model's reading and the
+    copilot's own can allow different intents without a subclass widening its parent's field."""
 
     model_config = ConfigDict(extra="ignore")
 
-    intent: PlaybookIntent  # the model never chooses "agent": the schema it is sent lists the playbooks only
+    intent: IntentT
     asset_query: str | None = Field(None, max_length=80, description="Asset name or id exactly as the user wrote it")
     asset_type: str | None = Field(None, max_length=30, description="pump, motor, compressor... if no specific asset")
     site: str | None = Field(None, max_length=40, description="Site name without spaces, e.g. EastRefinery")
@@ -61,10 +62,15 @@ class LlmUnderstanding(BaseModel):
     rationale: str = Field("", max_length=300)
 
 
-class QueryUnderstanding(LlmUnderstanding):
+# The model never chooses "agent": the schema it is sent lists the playbooks only.
+class LlmUnderstanding(_Reading[PlaybookIntent]):
+    """The part the LLM fills in (also the JSON schema sent to it)."""
+
+
+# The copilot's reading of a question: the rules', the model's merged with the rules', or the agent's ("agent").
+class QueryUnderstanding(_Reading[Intent]):
     model_config = ConfigDict(extra="forbid")
 
-    intent: Intent  # the agent's own reading may be "agent"; the model's reading never is
     question: str = ""  # the original text, kept for document search
     method: Literal["rules", "llm"] = "rules"
     fallback_reason: str | None = None

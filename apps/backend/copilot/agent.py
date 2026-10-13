@@ -435,9 +435,9 @@ class Agent:
             return f"Not run: there is no tool '{step.name}'. Tools: {', '.join(sorted(self.tools))}."
         before = len(self.inv.steps)
         result = await self.inv.call_tool(step.name, step.why or f"Agent step: {step.name}", args)
-        if len(self.inv.steps) == before:
+        record = self.inv.steps[-1] if len(self.inv.steps) > before else None
+        if not isinstance(record, ToolCallRecord):  # call_tool records nothing once the MCP server is down
             return "Failed: the MCP server is unavailable."
-        record = self.inv.steps[-1]
         if result is None:
             if record.error_code == "INVALID_INPUT":  # the model's own slip: in the trace, but no gap in the data
                 self.inv.evidence.notes.pop()  # the failure note call_tool has just added

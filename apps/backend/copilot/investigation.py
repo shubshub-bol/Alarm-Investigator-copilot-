@@ -617,7 +617,7 @@ class Investigation:
         if not alarms:
             level = "/".join(u.severities) + " " if u.severities else ""
             names = ", ".join(c["name"] for c in candidates[:5]) + (", ..." if len(candidates) > 5 else "")
-            kind = u.asset_type.replace("_", " ")
+            kind = u.asset_type.replace("_", " ") if u.asset_type else "these"
             self.evidence.missing.append(f"There are no active {level}alarms on {kind} assets ({names}).")
             return
         await self.explain_active(alarms)
