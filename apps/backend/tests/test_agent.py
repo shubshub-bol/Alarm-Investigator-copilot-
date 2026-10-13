@@ -1145,4 +1145,176 @@ async def test_cannot_answer_needs_no_evidence(mcp, retriever):
 
 
 def test_the_instructions_say_an_answer_rests_on_results():
-    assert "with no results, the only answer is cannot_answer" in AGENT_SYSTEM
+    text = " ".join(AGENT_SYSTEM.split())  # the rule wraps over two lines
+    assert (
+        "Every answer rests on results: look something up first. With nothing looked up, the only answer is "
+        "cannot_answer. A lookup that found 0 is a result: state it with its key."
+    ) in text
+    assert "with no results" not in text  # a lookup that found 0 is a result, not "no results"
+
+
+def test_the_instructions_keep_gaps_for_what_could_not_be_looked_up():
+    assert "gaps: what could not be looked up or failed (not what a lookup found none of)." in AGENT_SYSTEM
+    assert "what is missing or uncertain" not in AGENT_SYSTEM
+
+
+# ---- a rejected answer still states what the lookups found, including nothing
+async def test_a_rejected_answer_names_every_lookup_and_states_the_one_that_found_nothing(mcp, retriever):
+    question = "Are any boiler alarms active?"
+    result, llm = await run_agent(
+        question,
+        tool("search_assets", query="boiler", asset_type="boiler"),
+        tool("get_alarms", asset_id="AST-BLR-201", status="active"),
+        done("There are 731 active boiler alarms [T2].", "count"),  # 731 is nowhere in the evidence: rejected
+        mcp=mcp,
+        retriever=retriever,
+    )
+    answer = compose_agent_answer(question, result, llm)
+    assert answer.grounding.summary_source == "template"
+    assert answer.summary == (
+        "Looked up with search_assets, get_alarms; what was found is below [T1]. "
+        'get_alarms(asset_id="AST-BLR-201", status="active") found 0 alarms [T2].'
+    )
+
+
+async def test_a_rejected_answer_after_only_an_empty_tool_result_states_it_without_the_data(mcp, retriever):
+    question = "Are any boiler alarms active?"
+    result, llm = await run_agent(
+        question,
+        tool("get_alarms", asset_id="AST-BLR-201", status="active"),
+        done("There are 731 active boiler alarms [T1].", "count"),
+        mcp=mcp,
+        retriever=retriever,
+    )
+    answer = compose_agent_answer(question, result, llm)
+    assert answer.grounding.summary_source == "template"
+    assert answer.summary == 'get_alarms(asset_id="AST-BLR-201", status="active") found 0 alarms [T1].'
+    assert "{" in result.facts[0].statement  # the fact keeps its data; only the summary leaves it out
+
+
+# ---- a cannot_answer with nothing behind it shows only the direct answer
+def cannot_answer(analysis=(), gaps=()):
+    final = {
+        "answer_type": "cannot_answer",
+        "direct_answer": "I cannot answer general questions; I help with plant alarms.",
+        "analysis": [{"text": text, "citations": keys} for text, keys in analysis],
+        "gaps": list(gaps),
+    }
+    return {"action": "done", "final": final}
+
+
+async def test_a_cannot_answer_with_nothing_looked_up_drops_the_analysis_and_gaps(mcp, retriever):
+    question = "What is the capital of France?"
+    result, llm = await run_agent(
+        question,
+        cannot_answer(
+            analysis=[("The capital of France is Paris, a city in Europe.", [])],
+            gaps=["The capital was not looked up."],
+        ),
+        mcp=mcp,
+        retriever=retriever,
+    )
+    answer = compose_agent_answer(question, result, llm)
+    assert answer.summary == "I cannot answer general questions; I help with plant alarms."
+    assert answer.analysis == [] and answer.gaps == []  # the model's memory is not shown as analysis
+    assert "Analysis" not in answer.markdown and "Gaps" not in answer.markdown
+
+
+async def test_a_cannot_answer_after_a_lookup_keeps_its_analysis_and_gaps(mcp, retriever):
+    question = "What does the safety instruction say about cake?"
+    result, llm = await run_agent(
+        question,
+        search("lockout and isolation before inspecting a pump", doc_types=["safety_instruction"]),
+        cannot_answer(
+            analysis=[("The safety instruction covers lockout, not cake [S1].", ["S1"])],
+            gaps=["The documents do not cover cake."],
+        ),
+        mcp=mcp,
+        retriever=retriever,
+    )
+    answer = compose_agent_answer(question, result, llm)
+    assert [s.text for s in answer.analysis] == ["The safety instruction covers lockout, not cake."]
+    assert answer.gaps == ["The documents do not cover cake."]
+
+
+# ---- a page past the end is not "found 0"
+async def test_a_page_past_the_end_is_returned_not_found_nothing(mcp, retriever):
+    result, llm = await run_agent(
+        "How many alarms did Boiler B-201 have?",
+        tool("get_alarms", asset_id="AST-BLR-201", page=9),  # the asset has 24 alarms in all: this page is empty
+        done("Boiler B-201 has 24 alarms [T1].", "count"),
+        mcp=mcp,
+        retriever=retriever,
+    )
+    fact = result.facts[0]
+    assert not fact.negative
+    assert fact.statement.startswith('get_alarms(asset_id="AST-BLR-201", page=9) returned {')
+    assert '"alarms":[]' in fact.statement and '"total_items":24' in fact.statement
+    assert "found 0" not in llm.prompts[1]
+    assert result.run.evidence.negatives == []
+
+
+async def test_an_empty_list_with_no_total_is_still_found_nothing(mcp, retriever):
+    result, _ = await run_agent(
+        "Any active alarms on Boiler B-201?",
+        tool("get_alarms", asset_id="AST-BLR-201", status="active"),  # total_items is 0
+        done("Boiler B-201 has 0 active alarms [T1].", "count"),
+        mcp=mcp,
+        retriever=retriever,
+    )
+    assert result.facts[0].negative and ' found 0 alarms: {"alarms":[]' in result.facts[0].statement
+
+
+# ---- a recipe says why it has nothing, whatever the agent's own lookups found before it
+async def test_a_recipe_without_a_subject_says_so_after_an_agent_search_found_nothing(mcp, retriever):
+    result, _ = await run_agent(
+        "Which alarms are active?",
+        search("chocolate cake recipe"),  # a finding of the agent's own step 1
+        recipe("active_alarms"),  # no asset, site or unit: its own gap to state
+        done("Nothing can be listed [T1].", "cannot_answer"),
+        mcp=mcp,
+        retriever=retriever,
+    )
+    assert "Name an asset, site or unit to list its active alarms." in result.run.evidence.missing
+
+
+async def test_a_recipe_without_an_alarm_says_so_after_an_agent_search_found_nothing(mcp, retriever):
+    result, _ = await run_agent(
+        "Which alarm do the API actions belong to?",
+        search("chocolate cake recipe"),
+        recipe("recommendation_check"),
+        done("Nothing can be checked [T1].", "cannot_answer"),
+        mcp=mcp,
+        retriever=retriever,
+    )
+    assert "No alarm in context; ask about a specific asset or alarm first." in result.run.evidence.missing
+
+
+async def test_a_recipes_own_finding_still_stands_in_for_the_reason(mcp, retriever):
+    result, _ = await run_agent(
+        "Which alarms are active?",  # the asset is the recipe's input, so the question names none to look up first
+        search("chocolate cake recipe"),
+        recipe("active_alarms", asset="Boiler Feed Pump 999"),  # its own finding: "No asset matches ..."
+        done("There is no such asset [T2].", "cannot_answer"),
+        mcp=mcp,
+        retriever=retriever,
+    )
+    own = [n.text for n in result.run.evidence.negatives if n.step > 1]
+    assert own and own[0].startswith("No asset matches")
+    assert (
+        "Name an asset, site or unit to list its active alarms." not in result.run.evidence.missing
+    )  # no second reason
+
+
+# ---- an empty document search states the document types it was limited to
+async def test_an_empty_search_in_one_document_type_states_the_type(mcp, retriever):
+    result, _ = await run_agent(
+        "Do the safety instructions cover chocolate cake?",
+        search("chocolate cake recipe", doc_types=["safety_instruction"]),
+        done("They do not [T1].", "cannot_answer"),
+        mcp=mcp,
+        retriever=retriever,
+    )
+    assert result.facts[0].statement == (
+        "The document search for 'chocolate cake recipe' in safety instruction documents found 0 relevant passages."
+    )

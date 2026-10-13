@@ -11,7 +11,7 @@ from copilot.facts import build_facts
 from copilot.investigation import ConversationState, investigate
 from copilot.mcp_client import McpToolClient, http_connector, in_memory_connector
 from copilot.understanding import understand_with_rules
-from copilot_test_helpers import simulator_transport
+from copilot_test_helpers import EditedResults, simulator_transport
 from mcp_test_helpers import make_server
 
 ACCEPTANCE = (
@@ -183,6 +183,23 @@ async def test_plain_summary_says_when_nothing_is_active(mcp, retriever):
     question = "Are there active alarms on Boiler Feed Pump 101 right now?"
     answer = await answer_offline(mcp, retriever, ACCEPTANCE, question)
     assert re.fullmatch(r"There are 0 active alarms on Boiler Feed Pump 101 \[T\d+\]\.", answer.summary)
+
+
+async def test_the_highest_priority_summary_states_the_asset_it_checked(mcp, retriever):
+    """The lookup was filtered to the asset; the plant has 11 active alarms, so "in the plant" would be false."""
+    answer = await answer_offline(mcp, retriever, "Which is the highest priority alarm on Boiler Feed Pump 101?")
+    assert re.fullmatch(r"There are 0 active alarms on Boiler Feed Pump 101 \[T\d+\]\.", answer.summary)
+    assert "There are 0 active alarms on Boiler Feed Pump 101." in [f.statement for f in answer.facts if f.negative]
+
+
+async def test_a_capped_alarm_list_is_a_gap_note_not_a_zero(mcp, retriever):
+    question = "Are any boiler alarms active?"
+    capped = EditedResults(mcp, "get_alarms", truncated=True)  # the plant's list stopped at its cap
+    run = await investigate(understand_with_rules(question), capped, retriever, ConversationState(), trace_id="t")
+    answer = compose_answer(question, run)
+    assert not any(f.negative for f in answer.facts)
+    assert "0 active alarms" not in answer.summary
+    assert "The active-alarm list was capped at 200; the boiler assets may have alarms beyond it." in answer.gaps
 
 
 async def test_plain_summary_says_when_no_procedure_applies(mcp, retriever):
@@ -526,7 +543,7 @@ async def test_a_negative_finding_is_a_cited_fact(mcp, retriever):
 async def test_a_correlation_that_found_no_factor_is_not_a_likely_cause(mcp, retriever):
     answer = await answer_offline(mcp, retriever, "Investigate Motor M-101")
     none = next(f for f in answer.facts if f.negative and f.tool == "correlate_alarms")
-    assert none.statement.startswith("No alarm consistently preceded")
+    assert "consistently preceded the main alarm" in none.statement
     assert not any(none.key in s.citations for s in answer.likely_causes)  # a cause is something that was found
     assert any(s.citations == [none.key] for s in answer.findings)  # but the finding is still shown
 

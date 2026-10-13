@@ -50,6 +50,7 @@ MAIN_LISTS = {  # the list a tool's result is about: empty means the lookup foun
     "analyze_alarm_floods": ("flood_windows", "alarm floods"),
     "find_rationalization_candidates": ("candidates", "candidates"),
 }
+PAGED_TOTALS = ("total_items", "total")  # how many matched, in results that come a page at a time
 NAME_MAX, WHY_MAX = 60, 300  # a step's name and purpose
 ANSWER_MAX = 1200  # characters in the final direct answer (the answer checks shorten it further)
 STEP_LIMIT_GAP = f"The question could not be fully answered within {MAX_STEPS} steps."
@@ -99,10 +100,11 @@ In "done", write final:
   number, the action, a verdict against the documents (consistent, conflict or not_covered), document_guidance
   (what the documents say), citation_keys (the passages it rests on) and a short explanation. If an action
   conflicts with an approved operating procedure, the procedure governs.
-- gaps: what is missing or uncertain.
+- gaps: what could not be looked up or failed (not what a lookup found none of).
 Rules:
 - Use only numbers, codes and names that appear in the results. Never invent data.
-- Every answer rests on results: look something up first; with no results, the only answer is cannot_answer.
+- Every answer rests on results: look something up first. With nothing looked up, the only answer is cannot_answer.
+  A lookup that found 0 is a result: state it with its key.
 - Keep the evidence's own terms: an alarm is not a failure or a trip unless a fact says so.
 - Never recommend an API action that conflicts with a document.
 - When the question names an asset, look up its data before answering.
@@ -466,7 +468,10 @@ class Agent:
                 self.inv.evidence.notes.pop()  # the failure note call_tool has just added
             return f"Failed: [{record.error_code}] {record.error_message}"
         field, noun = MAIN_LISTS.get(step.name, ("", ""))
-        empty = bool(field) and result.get(field) == []
+        # An empty list with a total above 0 is a page past the end (or a cut list): the lookup found alarms, so it
+        # is stated as returned, not as 0.
+        paged = any(isinstance(result.get(k), int) and result[k] > 0 for k in PAGED_TOTALS)
+        empty = bool(field) and result.get(field) == [] and not paged
         verb = f"found 0 {noun}:" if empty else "returned"
         statement = f"{step.name}({_inputs(args)}) {verb} {result_text(result)}"
         fact = Fact(
@@ -551,7 +556,8 @@ class Agent:
             )
         if lines:
             return "\n".join(lines)
-        text = f"The document search for '{query}' found 0 relevant passages."
+        only = f" in {' / '.join(t.replace('_', ' ') for t in doc_types)} documents" if doc_types else ""
+        text = f"The document search for '{query}'{only} found 0 relevant passages."
         fact = Fact(
             key=f"T{len(self.facts) + 1}", step=record.step, tool="search_documents", statement=text, negative=True
         )

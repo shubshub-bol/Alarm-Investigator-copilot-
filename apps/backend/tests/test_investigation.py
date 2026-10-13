@@ -6,7 +6,7 @@ import pytest
 from copilot.investigation import WEAK_PASSAGES, ConversationState, Investigation, investigate
 from copilot.mcp_client import McpToolClient, http_connector, in_memory_connector
 from copilot.understanding import QueryUnderstanding, understand_with_rules
-from copilot_test_helpers import simulator_transport
+from copilot_test_helpers import EditedResults, simulator_transport
 from mcp_test_helpers import make_server
 
 ACCEPTANCE = (
@@ -409,3 +409,81 @@ async def test_negative_findings_are_tied_to_the_lookup_that_found_nothing(mcp, 
     step = next(s for s in run.steps if s.step == negative.step)
     assert (negative.tool, step.tool) == ("get_alarms", "get_alarms")
     assert run.evidence.missing == []  # nothing failed: it is a fact, not a gap
+
+
+# ------------------------------------------------- a negative finding states the scope its lookup checked
+
+
+async def negatives_of(question, mcp, retriever) -> list[str]:
+    run = await investigate(understand_with_rules(question), mcp, retriever, ConversationState(), trace_id="t")
+    return [n.text for n in run.evidence.negatives]
+
+
+async def test_the_highest_priority_negative_names_the_asset_it_checked(mcp, retriever):
+    """The lookup was filtered to the asset; the plant has 11 active alarms, so "in the plant" would be false."""
+    question = "Which is the highest priority alarm on Boiler Feed Pump 101?"
+    assert await negatives_of(question, mcp, retriever) == ["There are 0 active alarms on Boiler Feed Pump 101."]
+
+
+async def test_the_highest_priority_negative_names_the_site_or_the_plant(mcp, retriever):
+    none = EditedResults(mcp, "get_alarms", alarms=[], total_items=0)
+    site = await negatives_of("Which alarm has the highest priority in NorthPlant Unit 1?", none, retriever)
+    assert site == ["There are 0 active alarms in NorthPlant Unit 1."]
+    plant = await negatives_of("What is the highest priority alarm right now?", none, retriever)
+    assert plant == ["There are 0 active alarms in the plant."]
+
+
+async def test_the_topic_pick_negative_names_the_severity_and_the_assets_it_checked(mcp, retriever):
+    question = "Why do boilers keep raising critical vibration alarms?"
+    assert await negatives_of(question, mcp, retriever) == [
+        "There are 0 critical 'vibration' alarms on boiler assets (Boiler B-201) in the last 90 days."
+    ]
+    plain = await negatives_of("Why does the boiler keep raising vibration alarms?", mcp, retriever)
+    assert plain == ["There are 0 'vibration' alarms on boiler assets (Boiler B-201) in the last 90 days."]  # no level
+
+
+async def test_a_capped_alarm_list_does_not_establish_zero_active_alarms(mcp, retriever):
+    """The list stopped at its cap: boiler alarms may be beyond it, so there is a note and no "0 active alarms"."""
+    capped = EditedResults(mcp, "get_alarms", truncated=True)
+    run = await investigate(
+        understand_with_rules("Are any boiler alarms active?"), capped, retriever, ConversationState(), trace_id="t"
+    )
+    assert run.evidence.negatives == []
+    assert run.evidence.notes == [
+        "The active-alarm list was capped at 200; the boiler assets may have alarms beyond it."
+    ]
+
+
+async def test_an_uncapped_empty_alarm_list_still_establishes_zero_active_alarms(mcp, retriever):
+    complete = EditedResults(mcp, "get_alarms", truncated=False)
+    assert await negatives_of("Are any boiler alarms active?", complete, retriever) == [
+        "There are 0 active alarms on boiler assets (Boiler B-201)."
+    ]
+
+
+async def test_a_correlation_that_found_no_factor_says_which_assets_it_checked(mcp, retriever):
+    run = await investigate(
+        understand_with_rules("Investigate Motor M-101"), mcp, retriever, ConversationState(), trace_id="t"
+    )
+    texts = [n.text for n in run.evidence.negatives if n.tool == "correlate_alarms"]
+    assert texts == [
+        "No alarm on Motor M-101 (BFP 101 Drive) or its related assets consistently preceded the main alarm "
+        "(no clear contributing factor)."
+    ]
+
+
+async def test_an_active_alarms_negative_names_its_asset_even_when_the_details_failed(retriever):
+    """The asset came from the previous answer (no search), and its details call fails: the name is still known."""
+    healthy = simulator_transport()
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/assets/AST-BFP-101/metadata":
+            return httpx.Response(503, json={"error": {"code": "unavailable", "message": "down"}})
+        return await healthy.handle_async_request(request)
+
+    async with McpToolClient(in_memory_connector(make_server(httpx.MockTransport(handler), max_retries=0))) as mcp:
+        await mcp.discover()
+        pump = {"asset_id": "AST-BFP-101", "name": "Boiler Feed Pump 101", "asset_type": "pump"}
+        u = understand_with_rules("Are there active alarms on this pump right now?")
+        run = await investigate(u, mcp, retriever, ConversationState(last_asset=pump), trace_id="t")
+    assert [n.text for n in run.evidence.negatives] == ["There are 0 active alarms on Boiler Feed Pump 101."]

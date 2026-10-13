@@ -198,6 +198,12 @@ def _negative(by_tool: dict[str, list[Fact]], tool: str | None = None, prefix: s
     return min(found, key=lambda f: int(f.key[1:]), default=None)
 
 
+def _stated(fact: Fact) -> str:
+    """A negative fact in its words, without the data after them: an agent's 'get_alarms(...) found 0 alarms: {...}'
+    is stated as 'get_alarms(...) found 0 alarms'."""
+    return fact.statement.split(": {", 1)[0]
+
+
 def _cited(sentence: str, *keys: str) -> str:
     """A sentence with its citation keys before the full stop: 'It is rising [T2].'"""
     return f"{sentence.rstrip().rstrip('.')} " + " ".join(f"[{k}]" for k in keys) + "."
@@ -266,8 +272,10 @@ def _plain_summary(
         p, sentence = _closest_sentence(ev.passages, question)
         parts.append(_cited(f"{p.citation.label} ({p.citation.title}): {sentence}", p.citation.key))
     elif ev.intent == "agent" and found:
-        tools = list(found)
-        parts.append(_cited(f"Looked up with {', '.join(tools)}; what was found is below", found[tools[0]][0].key))
+        tools = ", ".join(by_tool)  # every tool that ran, the ones that found nothing too
+        parts.append(_cited(f"Looked up with {tools}; what was found is below", next(iter(found.values()))[0].key))
+        nothing = sorted((f for fs in by_tool.values() for f in fs if f.negative), key=lambda f: int(f.key[1:]))
+        parts += [_cited(_stated(f), f.key) for f in nothing]  # and what a lookup found nothing of, in its words
     elif ev.ranked_alarms:
         best = ev.ranked_alarms[0]
         rank_fact = next((f for f in by_tool.get("score_alarm_priority", []) if best["alarm_id"] in f.statement), None)
@@ -304,7 +312,7 @@ def _plain_summary(
         )
     if not parts:
         if none := _negative(by_tool):  # a lookup that found nothing answers the question honestly, cited
-            parts.append(_cited(none.statement, none.key))
+            parts.append(_cited(_stated(none), none.key))
         elif ev.missing:
             parts.append(ev.missing[0])
         elif ev.passages:
@@ -341,7 +349,7 @@ def template_answer(
     findings = [Statement(text=_fit(f.statement), citations=[f.key]) for f in facts if f is not rec_fact]
 
     # likely causes
-    causes = [  # what was found; "no alarm consistently preceded" is a finding, shown under the facts, not a cause
+    causes = [  # what was found; "no alarm ... consistently preceded" is a finding, shown under the facts, not a cause
         Statement(text=_fit(f.statement), citations=[f.key])
         for f in by_tool.get("correlate_alarms", [])
         if not f.negative
@@ -542,6 +550,11 @@ def _apply_reply(
         body.summary = _one_key_each(summary)
         grounding.summary_keys_added, grounding.summary_shortened = added, shortened
         grounding.summary_source = "llm"
+    if allow_no_evidence and not valid:
+        # A "cannot answer" with nothing looked up shows only that honest direct answer: any analysis or caveat would
+        # come from the model's memory, with nothing to check it against.
+        grounding.unknown_citations = sorted(unknown)
+        return
     for s in reply.analysis[:ANALYSIS_ITEMS]:
         text, inline = _split_citations(_bracket_citations(s.text))
         keys = list(dict.fromkeys(_read_keys(s.citations) + inline))

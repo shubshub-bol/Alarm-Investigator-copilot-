@@ -168,10 +168,11 @@ class EvalReport:
 
 
 def _shows(fact: str, text: str) -> bool:
-    """Whether the text shows the fact; digits alone must be a whole number, not part of an id, a year or a time."""
+    """Whether the text shows the fact; digits alone must be a whole number, not part of an id, a year or a time. Other
+    facts match ignoring case, as the gaps they moved from did."""
     if fact.isdigit():
         return re.search(rf"(?<![\w:-])(?<!\d\.){re.escape(fact)}(?![\w:-])(?!\.\d)", text) is not None
-    return fact in text
+    return fact.lower() in text.lower()
 
 
 def check(case: Case, response: ChatResponse) -> list[str]:

@@ -258,6 +258,27 @@ async def test_a_24_in_the_direct_answer_counts_as_shown(service, summary):
     assert fact_problems(golden(B201), changed) == []
 
 
+FAN = "Investigate Forced Draft Fan F-201"
+
+
+@pytest.mark.parametrize(
+    "summary",
+    ["The documents have No procedure for fan alarms [T1].", "There is NO PROCEDURE FOR FAN ALARMS in the documents."],
+)
+async def test_a_negative_fact_matches_ignoring_case(service, summary):
+    """The honest negatives moved from gaps (matched ignoring case) and now also match a model's direct answer."""
+    response = (await evaluate(service, [golden(FAN)])).rows[0].response
+    changed = shown(response, "Failure count since 2026-04-02", summary)
+    assert fact_problems(golden(FAN), changed) == []
+
+
+async def test_a_negative_fact_that_is_absent_is_still_reported(service):
+    response = (await evaluate(service, [golden(FAN)])).rows[0].response
+    changed = shown(response, "Failure count since 2026-04-02", "Procedures exist for fans [T1].")
+    expected = ["facts: no procedure for fan alarms not in the findings or the direct answer"]
+    assert fact_problems(golden(FAN), changed) == expected
+
+
 async def test_the_count_is_found_in_the_offline_findings(service):
     response = (await evaluate(service, [golden(B201)])).rows[0].response
     assert fact_problems(golden(B201), response) == []
