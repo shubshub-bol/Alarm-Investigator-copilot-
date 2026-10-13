@@ -12,25 +12,38 @@
 
 **Copilot**
 
-- Eight question types (intents) have playbooks. Other questions fall back to a document search. Flood analysis,
-  rationalization and KPI tools exist on the MCP server but no playbook uses them yet.
+- Eight question types (intents) have playbooks. With a model, 6 of them are the agent's recipes, and the agent
+  combines the 13 MCP tools for other questions, including flood analysis, rationalization and KPIs, which no
+  playbook covers yet. Without a model, a question no playbook covers falls back to a document search.
+- The agent takes at most 6 steps and runs one recipe per question. A question that needs more is answered from
+  what was found, with the gap "The question could not be fully answered within 6 steps." and the status
+  `partial`. A comparison of two assets is done with the small tools, so its details are plainer than a recipe's.
+- Questions only the agent can answer ("How many refineries do we have?") need a model. Offline they get "This
+  question needs the language model."
 - Without a language model, intent detection uses keyword rules and the answer uses templates. Unusual phrasing
   can get the wrong intent, and the wording is plainer. The rules do not read the chat's earlier messages, only
   its last asset, alarm, site and unit, so a follow-up such as "and over the last 30 days?" needs the model.
 - The chat context sent to the model holds the last 10 turns (each answer cut to 800 characters) and 20 lines about
-  older turns. A question that needs more of an old answer than that, or that compares two assets, is not
-  supported.
-- Free OpenRouter models allow 20 requests a minute and 50 a day (1000 a day after buying credits). A question
-  uses about three model calls and takes 10 to 25 seconds with a model, under a second without one.
+  older turns. A question that needs more of an old answer than that is not supported.
+- Free OpenRouter models allow 20 requests a minute and 50 a day (1000 a day after buying credits). A question a
+  recipe covers uses about 2 model calls (one more for the title of a new chat); other questions use 3 to 7. Each
+  step is a model call, so a question with several steps is slower; without a model it takes under a second.
 - The Alarm API's recommendations are checked against the documents with a rule-based check and the model. A
   conflict phrased very differently from the procedure could be missed by the rule-based part.
 - The model's text is checked for valid citations and for numbers and codes found in the evidence, not for
   meaning: a real number put in the wrong place, or a weak argument, can pass. The risk is small because code
-  writes every factual section, the model writes only the summary and the analysis, and every statement shows
-  its sources so the operator can check it.
-- The answer-quality set (`python -m copilot.evaluate`, 34 questions) checks the intent, the asset, the use of
-  live data, the sources, key facts, the first step, the procedure and the citations, not the model's wording. In CI it runs offline; with the model
-  it is run by hand, a few questions at a time, because of the free plan's daily limit.
+  writes every factual section, the model writes only the direct answer and the analysis, and every statement
+  shows its sources so the operator can check it.
+- With the agent, the model also chooses the steps, so an answer can rest on the wrong tool or on an incomplete
+  list (a long result is shown to the model cut to 10 items, with the total). The checks do not see that. The
+  answer depends on the model's choices, which is why the evaluation has questions only the agent can answer.
+- The answer-quality set (`python -m copilot.evaluate`) has 34 questions that run offline and 4 that only the agent
+  can answer, which are skipped offline. It checks the intent, the asset, the use of live data, the sources, key
+  facts, the first step, the procedure and the citations, not the model's wording. The 4 model-only questions
+  check the answer type and the whole numbers in the direct answer, and pass only on a model-written direct
+  answer. In CI the 34 run offline; with the model the set is run by hand, a few questions at a time, because of
+  the free plan's daily limit. The free Gemini tier's daily limit bounds how often the model-only questions can
+  be evaluated.
 
 **Security and operations**
 
@@ -66,8 +79,8 @@
 
 - Connect to a real alarm system: point `ALARM_API_BASE_URL` and the token at it. The connector and MCP server
   need no code change if the API follows the same contract.
-- Add playbooks for floods, alarm rationalization and KPIs. Or let the model plan with tools under guardrails
-  for open questions, keeping playbooks for the core flows.
+- Add recipes for floods, alarm rationalization and KPIs. The agent can already use their tools, but without a
+  tested order of steps.
 - Add a second MCP server for maintenance work orders or ticketing, with write tools behind explicit
   confirmation.
 - Add user sign-in (OIDC), per-user chats and role-based access to tools.

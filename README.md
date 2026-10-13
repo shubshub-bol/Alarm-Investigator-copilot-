@@ -23,11 +23,15 @@ every statement cites its evidence, with the full tool trace one click away.
 
 ## Main capabilities
 
-- **Natural-language investigation.** Ask about an asset, a site or an alarm; the copilot detects the intent
-  (8 types) and the details (asset, site, unit, time window, severity).
+- **Natural-language investigation.** Ask about an asset, a site or an alarm. With a language model, an agent
+  answers by choosing one step at a time (at most 6): a proven investigation (6 recipes), a read-only MCP tool or
+  a document search. The direct answer comes first: a number for "how many", a side-by-side for "compare", the
+  first step for "what should I do". Without a model, keyword rules pick one of 8 playbooks and the details
+  (asset, site, unit, time window, severity).
 - **MCP tool chaining.** The copilot discovers the MCP server's 13 tools and chains them, each call using the
   last one's result: asset search, metadata and related assets, alarm summary and trend, correlation, latest
-  alarm, priority score, the Alarm API's recommendations.
+  alarm, priority score, the Alarm API's recommendations. The agent can also combine the small tools for
+  questions no playbook covers.
 - **Document RAG in the same workflow.** Searches built from the MCP results find the right procedure, the
   troubleshooting guidance for the contributing factor, and the safety rules, using hybrid keyword and vector
   search.
@@ -123,16 +127,16 @@ case has no ticketing system.
 | Smoke test a running stack | `make smoke` | `uv run python scripts/smoke_stack.py` |
 | Install dependencies | `make install` | `uv sync --locked` and `npm --prefix apps/frontend ci` |
 | Build the document index | `make ingest` | `uv run python -m rag.ingestion` |
-| Python tests (485) | `make test-python` | `uv run pytest` |
-| GUI tests (72) | `make test-gui` | `npm --prefix apps/frontend run test` |
+| Python tests (541) | `make test-python` | `uv run pytest` |
+| GUI tests (82) | `make test-gui` | `npm --prefix apps/frontend run test` |
 | Coverage report | `make coverage` | see [docs/coverage.md](docs/coverage.md) |
 | Formatting, lint, types | `make lint` | `uv run ruff format --check .`, `uv run ruff check .`, `uv run mypy`, `npm --prefix apps/frontend run typecheck` |
 | Retrieval quality | | `uv run python -m rag.evaluate` |
-| Answer quality (34 questions) | | `uv run python -m copilot.evaluate` (add `--llm --limit 10 --report FILE` to use the model) |
+| Answer quality (34 questions, 4 more with a model) | | `uv run python -m copilot.evaluate` (add `--llm --limit 10 --report FILE` to use the model) |
 | Dependency audit | `make audit` | see the `Makefile` |
 
 The Python tests include unit, MCP server, MCP client, RAG, orchestration, API, error-path and end-to-end tests;
-the end-to-end test starts three real servers over HTTP and runs the acceptance question. Coverage is 94%.
+the end-to-end test starts three real servers over HTTP and runs the acceptance question. Coverage is 95%.
 
 GitHub Actions ([ci.yml](.github/workflows/ci.yml)) runs on every push and pull request: formatting, lint
 (including security rules), mypy, all Python tests with coverage, the GUI's type check, tests and production
@@ -173,7 +177,7 @@ short chain (token from `MCP_AUTH_TOKEN` in the environment or `.env`; Docker wi
 | `list_kpi_definitions` | `GET /analytics/kpi-definitions` | The KPIs on offer |
 
 The copilot's playbooks use the first seven and `score_alarm_priority` and `get_operator_recommendations`; the
-other four complete the API for any MCP client.
+other four complete the API for any MCP client. The agent can call all 13.
 
 ## Document RAG
 
@@ -195,7 +199,7 @@ Details: [RAG design](docs/rag-design.md) and [real retrieval examples](docs/rag
 ## Sample interactions
 
 These are real answers in offline mode (no language model), as an evaluator without an API key sees them. With
-a model, the summary and an analysis section are the model's (checked against the evidence); every other
+a model, the direct answer and an analysis section are the model's (checked against the evidence); every other
 section is the same.
 
 **The acceptance question.** *"Investigate recurring high-severity alarms for Boiler Feed Pump 101 over the last
@@ -252,12 +256,15 @@ documents, the status is `degraded`, the GUI shows "Alarm data unavailable", and
 ![Architecture diagram](docs/architecture-diagram.png)
 
 1. The GUI sends the question; the backend streams progress back (Server-Sent Events).
-2. The orchestrator detects the intent and details (language model as JSON, keyword rules as fallback).
-3. The MCP client discovers the tools and the intent's playbook chains MCP calls; the MCP server calls the Alarm
-   API through a typed connector with auth, retries and trace headers.
-4. The playbook searches the documents with queries built from the MCP results.
+2. Keyword rules recognise small talk. With a language model, the agent (`agent.py`) chooses the steps: a recipe
+   (one of 6 playbooks), MCP tools or document searches, at most 6 steps, all read-only. Without a model, the
+   rules choose a playbook.
+3. The MCP client discovers the tools, and the steps chain MCP calls; the MCP server calls the Alarm API through a
+   typed connector with auth, retries and trace headers.
+4. A playbook searches the documents with queries built from the MCP results; the agent can also search on its
+   own.
 5. Tool facts and passages become cited evidence; the Alarm API's advice is checked against the procedures; the
-   facts part is built from the evidence, and the model's summary and analysis are checked against it.
+   facts part is built from the evidence, and the model's direct answer and analysis are checked against it.
 6. The chat is saved (SQLite); the answer is shown with its evidence and trace.
 
 The copilot reaches alarm data only through MCP. Full request flow, trust boundaries, observability, failure
@@ -310,8 +317,10 @@ from the copilot, because it stands in for the external source system.
 - Synthetic data and documents; a simulator instead of a live alarm system.
 - No user sign-in or per-user chats.
 - Eight question types have playbooks; floods, rationalization and KPIs are available as MCP tools but not in a
-  playbook yet.
-- Free language model plans are rate-limited; a question uses about three model calls.
+  playbook yet. With a model, the agent can still use those tools.
+- The agent takes at most 6 steps and runs one recipe per question. Questions only the agent can answer need a
+  model; without one they get "This question needs the language model."
+- Free language model plans are rate-limited; a question a recipe covers uses about 2 model calls, others 3 to 7.
 - Logs and the in-GUI trace, but no metrics or tracing backend.
 
 The full list, including small deferred review items, and the planned improvements are in

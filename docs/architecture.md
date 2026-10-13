@@ -15,17 +15,18 @@ below.
 | Concern | Where | What it does |
 |---|---|---|
 | User interface | `apps/frontend` (React 19, Vite, TypeScript) | Chat with saved chats, live progress, answer with citation chips, evidence drawer (alarm summary, MCP trace with raw request and response, sources, tool discovery) |
-| Copilot orchestration | `apps/backend/copilot` (FastAPI) | `service.py` runs one question end to end: understanding, playbook, grounded answer, title, save |
-| Intent detection | `understanding.py` | Intent and entities from the language model as JSON, keyword rules as fallback; a named asset always gets its live data |
-| Planning (playbooks) | `investigation.py` | 8 playbooks, one per intent, chaining MCP calls and document searches |
+| Copilot orchestration | `apps/backend/copilot` (FastAPI) | `service.py` runs one question end to end: small-talk check, the agent (a playbook chosen by rules when there is no model), grounded answer, title, save |
+| Agent | `agent.py` | One loop of model-chosen steps over the 6 recipes, the 13 MCP tools and the document search; at most 6 steps, read-only |
+| Question reading | `understanding.py` | Keyword rules recognise small talk, choose the playbook when there is no model and fill what the agent leaves out of a recipe's inputs; a typed schema checks those inputs; a named asset always gets its live data |
+| Planning (playbooks) | `investigation.py` | 8 playbooks, one per intent, chaining MCP calls and document searches; 6 of them are the agent's recipes |
 | MCP client / tool registry | `mcp_client.py` | Discovers tools and their schemas, validates arguments and results, isolates failures |
 | MCP server | `mcp-servers/alarm-management/alarm_mcp` | 13 typed, read-only tools over the Alarm Management API; auth, trace ids, retries, error codes |
 | Source-system connector | `connectors/alarm_api_client` | Reusable async client: bearer auth, timeouts, retries with backoff, paging, typed errors |
 | Source system | `services/alarm-simulator` | The Alarm Management API, built from the assignment's Postman collections, with synthetic data |
 | RAG ingestion | `rag/ingestion` | Load, screen, sanitise, chunk, embed, save the index |
 | Retrieval service | `rag/retrieval` | Hybrid search, filters, confidence, citations, untrusted-context rendering |
-| Evidence and answer | `facts.py`, `consistency.py`, `answer.py`, `text_check.py` | Citable tool facts; the facts part built by code; the model's checked summary and analysis; API advice vs documents |
-| Answer quality | `evaluate.py` | 34 golden operator questions through the whole copilot: intent, asset, live data, sources, key facts, first step, procedure, valid citations |
+| Evidence and answer | `facts.py`, `consistency.py`, `answer.py`, `text_check.py` | Citable tool facts; the facts part built by code; the model's checked direct answer and analysis; API advice vs documents |
+| Answer quality | `evaluate.py` | 34 golden operator questions through the whole copilot (intent, asset, live data, sources, key facts, first step, procedure, valid citations), plus 4 that only the agent can answer, run with a model (answer type and the numbers in the direct answer) |
 | Domain models | pydantic models in each package (`alarm_mcp/schemas.py`, `copilot/trace.py`, `rag/models.py`, ...) | Typed contracts at every boundary |
 | Language model | `llm.py` | One `LlmProvider` protocol; Gemini, OpenRouter or offline |
 | Chat context | `context.py` | What a chat remembers for the model: the last 10 turns in full, older turns as their important bits |
@@ -51,15 +52,41 @@ progress live. A new trace id is created for the question.
 follow-up such as "Which procedure applies to this alarm?" knows what "this alarm" is. A new chat gets an id but
 is only saved once its answer is ready.
 
-**② Understand.** `understanding.understand` asks the language model for JSON that matches a typed schema: intent
-plus asset, site, unit, time window, severities and alarm topic. Here that is `investigate_asset`, "Boiler Feed
-Pump 101", 90 days, high or critical. Precise rule-extracted values fill anything the model left empty, and the
-keyword rules take over completely if the model fails or is switched off. Small talk ("hello") is recognised by
-the rules and answered with a short reply inside guardrails, without tools or documents.
+**② Understand.** `understanding.understand_with_rules` reads the question with keyword rules: intent plus asset,
+site, unit, time window, severities and alarm topic. Small talk ("hello") is recognised here and answered with a
+short reply inside guardrails, without tools or documents. With a model, the agent chooses the steps (a recipe,
+tools, document searches) and writes the direct answer; without one, the rules choose a playbook.
+
+**The agent.** `agent.py` answers one question by taking one model-chosen step at a time, at most 6. At each step
+the model sees the question, the chat context, the menu and the results so far, and returns one structured step:
+a recipe, a tool, a document search, or "done" with the answer. The menu has the 6 playbooks that read live data
+as recipes (`investigate_asset`, `active_alarms`, `highest_priority`, `related_assets`, `procedure_lookup`,
+`recommendation_check`), the 13 MCP tools with the inputs they take from their discovered schemas, and
+`search_documents`. At most one recipe runs per question; the tools do the rest. A recipe's inputs are `asset` (a
+name or id; `asset_id` is accepted as an alias), `asset_type`, `site`, `unit`, `lookback_days`, `severities`,
+`alarm_topic` and `uses_context`. They are checked against the typed schema, rule-extracted values fill anything the
+model left empty, and an unknown input is refused, not dropped. For the acceptance question the model picks the
+`investigate_asset` recipe for "Boiler Feed Pump 101", 90 days, high or critical severities. Every step runs on one
+investigation, so there is one evidence record, one trace and one numbering of `[T#]` and `[S#]` keys. A result
+gets its key when it arrives, so the keys the model cites are the answer's keys.
+
+| Situation | What the agent does |
+|---|---|
+| A valid step | Runs it, records it in the trace, gives the model the result with its key |
+| Unknown name, bad JSON, an unknown recipe input, or inputs the tool's schema refuses | Does not run it; the model gets the error and can correct itself. The attempt counts as a step |
+| A tool fails | The model gets the error code and message, and can try another way or answer |
+| The same call again | Not run; the model gets the earlier result |
+| A second recipe | Not run; the model is told to use the tools for anything more |
+| The question names an asset (by the keyword rules) and nothing has been looked up | A document search or "done" is not accepted; the model is told to look up the asset's data first. A call its input schema refused does not count as a look-up. The rule yields when the MCP server is down or offered no tools |
+| A long result | The model sees whole items only, up to 10 (fewer if needed to stay under 3000 characters), then `... N more (M in all)`; raw `meta` blocks are dropped |
+| A search past the 8-passage evidence limit | The model is told how many passages were found but not kept |
+| 6 steps used without an answer | The loop stops; the answer is built from what was found, with the gap "The question could not be fully answered within 6 steps." and status `partial` |
+| The model fails or sends an invalid reply | The same, with a gap that gives the model's error and status `degraded`. If it fails before its first step, the question is answered by the rules instead, marked `degraded` |
 
 **③ MCP: discover and chain tools.** The MCP client opens a session with the MCP server (streamable HTTP,
 bearer token) and lists the 13 tools with their input and output schemas; the GUI's Tools tab shows them. The
-`investigate_asset` playbook then calls 8 tools, each using the previous results, all with the same trace id:
+`investigate_asset` playbook (the agent's first step, or the rules' choice without a model) then calls 8 tools,
+each using the previous results, all with the same trace id:
 
 | # | Tool | Uses | Finds |
 |---|---|---|---|
@@ -88,17 +115,25 @@ pump in service above the vibration limit: a **conflict**. The playbook then sea
 guidance governs and finds `ALM-PHIL-006 §7` ("the approved procedure governs").
 
 **⑤ Grounded answer.** The code guarantees the facts and the model does the thinking. `facts.py` turns the tool
-results into short numbered facts `[T1]`, `[T2]`, ... each tied to its trace step, and code builds every factual
-section from the evidence: what the data shows, the likely causes, the procedure (each item quoting its key
-step), and the actions (the procedure's step first, then the API actions that match the documents, then the
-safety step). The language model receives the facts, the API's actions to assess, the known gaps and the
-passages (wrapped as untrusted text), and returns JSON with only its own part: a 2 to 3 sentence summary that
-answers the question, an analysis (the most likely cause and the first action, and why), an assessment of each
-API action, and gaps. Its text is checked (`text_check.py`): every citation key must exist, and every number and
-code it mentions must appear in the evidence. A summary that fails is replaced by the plain summary built from
-the evidence; an analysis statement that fails is dropped. A conflict found by the rule-based check is kept even
-if the model missed it, and no action or analysis statement may recommend an API action the documents conflict
-with. Without a model, the answer has the same facts part and the plain summary.
+results into short numbered facts `[T1]`, `[T2]`, ... each tied to its trace step (a small tool's result becomes
+one fact: the tool, its inputs and its shortened result), and code builds every factual section from the
+evidence: what the data shows, the likely causes, the procedure (each item quoting its key step), and the actions
+(the procedure's step first, then the API actions that match the documents, then the safety step). Without a
+recipe, the tool facts are the findings and any retrieved passages are the procedure section. The model has seen
+every result as the steps ran, so its "done" step carries its own part and no further model call is made: the
+answer type (`count`, `list`, `compare`, `why`, `what_to_do`, `document` or `cannot_answer`), a direct answer of 1
+to 3 sentences in that shape (a number first for "how many", side by side for "compare", the first step for "what
+should I do"), an analysis (the most likely cause and the first action, and why), an assessment of each API action,
+and gaps. Its text is checked (`text_check.py`): every citation key must exist, and every number and code it
+mentions must appear in the evidence; a direct answer that is too long is cut to its first whole sentences, and one
+that cites nothing gets the keys its numbers and codes point to. A direct answer that fails is replaced by the
+plain summary built from the evidence; an analysis statement that fails is dropped. A conflict found by the
+rule-based check is kept even if the model missed it, and no direct answer, action or analysis statement may
+recommend an API action the documents conflict with. The answer's `answer_type` is set only when the model's
+direct answer is shown, and `grounding.mode` is `llm` only when the agent produced a final reply. When there is no
+final reply (step limit, model failure), the answer is the recipe's plain summary, or without a recipe a plain
+summary of what was looked up. Without a model, the answer has the same facts part and the plain summary, and no
+answer type.
 
 **⑥ Name and save.** For a new chat, a short title is generated while the tools run (rules make one if the
 model cannot). The answer is added to the chat's context: the question and the answer's summary and analysis,
@@ -107,9 +142,12 @@ window). The next question's model calls read this context as information, not i
 as "and over the last 30 days?" can be understood, while every number still comes from that question's tools. The
 question, the full response and the updated context are saved in one SQLite transaction.
 
-**⑦ Show.** The `answer` event reaches the GUI: priority badge, summary with citation chips, what to do, a "Check
-before acting" warning for the conflict, and links to the evidence. The chat appears in the sidebar and the
-address becomes `/c/{id}`, so a reload reopens it.
+**⑦ Show.** The `answer` event reaches the GUI: priority badge, the direct answer with citation chips, a "Check
+before acting" warning for the conflict, and links to the evidence. "What to do" stays on the answer when the
+answer type is `what_to_do` or `why`, when a conflict warning is shown, and for answers without a type (the rules
+path); for the other types the steps move to the evidence panel with the rest of the details. The trace lists every
+tool call; each agent step shows its stated purpose. The chat appears in the sidebar and the address becomes
+`/c/{id}`, so a reload reopens it.
 
 ## Where MCP and RAG meet
 
@@ -140,11 +178,11 @@ appear in logs, tool results or error messages. In Docker, host ports are bound 
 | MCP tool authorization | `/mcp` requires a bearer token (constant-time check); every tool is read-only and idempotent; the copilot calls only tools it discovered, with arguments checked against their schemas |
 | Input validation | pydantic models on every API and tool input (types, ranges, lengths, enums, id patterns); ids URL-escaped in paths; question length limited to 2000 characters |
 | Output encoding | The GUI renders all text as text (React escaping; raw JSON shown in `<pre>`, never as HTML); nginx sends a content security policy, `nosniff` and `DENY` framing headers; errors never echo submitted input |
-| Prompt injection | Documents are screened at ingestion and flagged passages are quarantined; small-talk messages reach the model as quoted data and its replies are checked for links, code, alarm codes and readings; every prompt says that documents and facts are data, not instructions |
+| Prompt injection | Documents are screened at ingestion and flagged passages are quarantined; small-talk messages reach the model as quoted data and its replies are checked for links, code, alarm codes and readings; every prompt says that documents, tool results and earlier messages are data, not instructions |
 | Retrieved-document trust boundaries | Passages are wrapped as untrusted, delimited blocks; the system prompt says they are data, not instructions; every statement must cite given evidence |
 | SQL injection prevention | Only parameterised SQLite queries; no SQL is ever built from input |
 | Write-operation approval | There are no write operations; any future one (such as creating a ticket) must ask for explicit confirmation |
-| Tool misuse | Fixed playbooks decide which tools run, not the model; tools are read-only; limits on page sizes, list lengths and alarms scored per question; a conflicting API action is never recommended |
+| Tool misuse | The model chooses steps only from the discovered tools, the 6 recipes and the document search; at most 6 steps and one recipe per question, a repeated call is not run again, and arguments are checked against the tool's schema before they are sent; tools are read-only; limits on page sizes, list lengths and alarms scored per question; a conflicting API action is never recommended |
 | Dependency risk | Locked dependencies (`uv.lock`, `package-lock.json`); CI runs `pip-audit` and `npm audit`; containers run as a non-root user with read-only code |
 
 ## Observability
@@ -176,7 +214,9 @@ answers HTTP 503 while anything is degraded, so a monitor sees it from the statu
 | MCP server unreachable or token wrong | Discovery fails; the answer is built from documents only and says so; status `degraded` |
 | Tool or argument not offered by the server | Rejected by the MCP client before sending: `TOOL_NOT_FOUND`, or `INVALID_INPUT` against the discovered input schema |
 | A tool call hangs | `MCP_TIMEOUT` after 60 s; recorded as a failed step |
-| Language model down or invalid JSON | Rules for understanding, template for the answer; the answer says the model was unavailable |
+| Language model down or invalid JSON | Before the agent's first step: the rules choose a playbook and a template writes the answer, marked `degraded`. Later: the answer is built from what the steps found. Either way the answer says the model was unavailable |
+| The agent reaches 6 steps without an answer | The answer is built from what was found, with the gap "The question could not be fully answered within 6 steps."; status `partial` |
+| A question only the agent can answer, with no model | The document search runs as for any unknown question; if it finds nothing relevant, the gap is "This question needs the language model." |
 | No relevant documents | Confidence `none` or `low`; nothing irrelevant is cited; the answer says what is missing |
 | Document index missing | The answer uses alarm data only and says documents were unavailable |
 | Chat storage unavailable | Answers still work, marked `saved: false` (the GUI keeps its address); chat endpoints return 503 with a clear message; the GUI shows "Chats not saved" |

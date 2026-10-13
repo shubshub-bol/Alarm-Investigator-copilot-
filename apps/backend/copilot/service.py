@@ -1,4 +1,7 @@
-"""One copilot request end to end: understand -> MCP session (discover, playbook) -> grounded answer."""
+"""One copilot request end to end: small talk is answered at once; any other question opens an MCP session
+(discover the tools), then the agent chooses the steps when a model is configured (agent.py) and a playbook chosen by
+the keyword rules runs otherwise (also when the model fails before its first step, marked degraded) -> grounded
+answer."""
 
 import asyncio
 import logging

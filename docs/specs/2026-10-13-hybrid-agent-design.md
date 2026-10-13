@@ -1,6 +1,6 @@
 # Hybrid agent: design
 
-Date: 2026-10-13. Status: agreed in review, not yet built. Clarified while planning: 6 recipes (not 8), the fallback
+Date: 2026-10-13. Status: built on 2026-10-13. Clarified while planning: 6 recipes (not 8), the fallback
 when the model fails at once, and the named-asset rule in the loop.
 
 ## Goal

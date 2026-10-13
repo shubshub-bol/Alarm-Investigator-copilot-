@@ -49,6 +49,10 @@ and use follow-up context ("this alarm"). Eight intents cover the use case.
 *Cost:* a new kind of question needs a new playbook. *Instead of:* letting the model choose tools in a loop,
 which is flexible but harder to test, slower, and can skip steps such as the safety search.
 
+*Later change:* [decision 19](#19-one-agent-with-the-playbooks-as-recipes) lets the model choose between these
+playbooks (as recipes) and the small tools. The playbooks themselves are unchanged, and they are still what runs
+without a model.
+
 ## 6. A swappable language model, and a copilot that works without one
 
 The copilot depends only on an `LlmProvider` protocol (structured JSON and plain text). Gemini and OpenRouter
@@ -143,6 +147,8 @@ to show the procedure are not reasoning; weighing the evidence is.
 *Cost:* the facts part reads plainer than a model would write it, and the analysis exists only with a model.
 *Instead of:* more guards around a model-written answer, which is reactive (each new mistake needs a new guard),
 or letting the model plan its own tool calls, which is the least predictable and uses more requests.
+[Decision 19](#19-one-agent-with-the-playbooks-as-recipes) later added a bounded agent, but the principle holds:
+code still builds the facts, and the model's text is still checked.
 
 ## 18. A healthy chat context
 
@@ -155,3 +161,30 @@ tools; the summary check enforces it by rejecting numbers that only the old chat
 *Cost:* a few hundred to a few thousand extra tokens per question, and follow-ups depend on the model (the rules
 use only the last asset, alarm, site and unit). *Instead of:* sending the whole chat, which grows without limit
 and invites reusing stale alarm data, or sending nothing, which made "and over the last 30 days?" impossible.
+
+## 19. One agent with the playbooks as recipes
+
+With a model, one agent answers every question. At each step the model picks one action: a recipe, one of the 13
+read-only MCP tools, a document search, or "done" with the answer. A recipe is one of the 6 playbooks that read
+live data (investigate an asset, active alarms, highest priority, related assets, procedure lookup, recommendation
+check), so a common question is one step. An unusual one combines small tools: "compare pump 101 and 102" asks for
+each pump's alarm summary. The limits are in code: at most 6 steps, one recipe per question, read-only tools,
+arguments checked against each tool's schema, and a repeated call is not run again. The model names the answer
+type (count, list, compare, why, what to do, document, cannot answer) and writes a direct answer, which leads the
+answer. Code still builds the details and runs the checks of decisions 7 and 17. Without a model the keyword
+rules choose a playbook, as before.
+
+*Why:* a question outside the 8 playbooks fell through to a document search ("how many refineries do we have?",
+"which motor alarmed most?"), and every new kind of question needed new code. The playbooks stay as recipes
+because they are tested and chain the right tools in the right order, safety search included, so the model does
+not have to rediscover that for each question.
+
+*Cost:* about 2 model calls for a question a recipe covers (choose the recipe, then answer; the chat title is one
+more for a new chat), and 3 to 7 for the rest, so the worst case is bounded by the step limit. What the answer
+says now depends on the model's choices of steps, which no unit test can fix in advance; the evaluation measures
+it (4 questions that only the agent can answer, run with the model). Answers built from small tools have plainer
+details than a recipe's.
+
+*Instead of:* a router in front of an agent, which makes two paths and a router that can choose wrong, and the
+wrong choice is silent. Or plan-then-execute, where the model writes the whole plan first and so cannot use one
+step's result in the next ("the busiest motor" must be found before its alarms can be read).
