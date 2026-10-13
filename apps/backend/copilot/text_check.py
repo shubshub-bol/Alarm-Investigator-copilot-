@@ -24,7 +24,21 @@ def unsupported(text: str, evidence: str) -> str | None:
             return f"code {code}"
     values = [float(n) for n in _ANY_NUMBER.findall(evidence)]
     for raw in _NUMBER.findall(_CODE.sub(" ", text)):
-        decimals = len(raw.split(".")[1]) if "." in raw else 0
-        if not any(round(v, decimals) == float(raw) for v in values):
+        if not _in(raw, values):
             return f"number {raw}"
     return None
+
+
+def support(text: str, source: str) -> int:
+    """How many of the codes and numbers in `text` also appear in `source`, compared as `unsupported` does."""
+    text, source = _DASHES.sub("-", text), _DASHES.sub("-", source)
+    known = source.lower()
+    values = [float(n) for n in _ANY_NUMBER.findall(source)]
+    codes = sum(code.lower() in known for code in _CODE.findall(text))
+    return codes + sum(_in(raw, values) for raw in _NUMBER.findall(_CODE.sub(" ", text)))
+
+
+def _in(raw: str, values: list[float]) -> bool:
+    """Whether a written number is one of the values, rounded as written: 11.1 matches 11.07."""
+    decimals = len(raw.split(".")[1]) if "." in raw else 0
+    return any(round(v, decimals) == float(raw) for v in values)

@@ -2,7 +2,7 @@
 
 import pytest
 
-from copilot.text_check import unsupported
+from copilot.text_check import support, unsupported
 
 EVIDENCE = (
     "Boiler Feed Pump 101 (AST-BFP-101) had 24 alarms; the most frequent was High Vibration (PMP-VIB-HI). "
@@ -36,3 +36,10 @@ def test_text_drawn_from_the_evidence_passes(text):
 )
 def test_an_invented_number_or_code_is_named(text, problem):
     assert unsupported(text, EVIDENCE) == problem
+
+
+def test_support_counts_the_numbers_and_codes_a_source_holds():
+    fact = "In the last 90 days Boiler Feed Pump 101 had 37 alarms; the most frequent was High Vibration (PMP-VIB-HI)"
+    assert support("24 alarms in 90 days", fact) == 1  # 90 is there, 24 is not
+    assert support("Pump 101 had 37 PMP-VIB-HI alarms in 90 days", fact) == 4
+    assert support("no numbers or codes", fact) == 0

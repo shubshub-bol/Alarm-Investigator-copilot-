@@ -274,6 +274,7 @@ async def test_a_model_summary_that_passes_the_check_is_shown(acceptance_run, su
     ("summary", "reason"),
     [
         ("Boiler Feed Pump 101 had 31 alarms [T2].", "number 31"),
+        ("Boiler Feed Pump 101 had 31 alarms.", "number 31"),  # keys added by code never excuse a wrong number
         ("PMP-XYZ-HI alarms are rising [T2].", "code PMP-XYZ-HI"),
         ("Vibration is rising.", "no citation"),
         ("Vibration is rising [T99].", "unknown citation T99"),
@@ -287,6 +288,24 @@ async def test_a_model_summary_that_fails_the_check_is_replaced(acceptance_run, 
     assert answer.grounding.summary_source == "template"
     assert reason in answer.grounding.summary_rejected
     assert answer.grounding.rejected_summary == summary[:300]  # kept for review
+
+
+async def test_a_correct_summary_without_keys_gets_them_from_the_evidence(acceptance_run):
+    """Seen with an OpenRouter model: correct summaries, every number right, but not a single key."""
+    summary = "Boiler Feed Pump 101 had 24 High Vibration alarms in 90 days. They rose from 1.5 to 2.1 a week."
+    answer = await compose_answer(ACCEPTANCE, acceptance_run, llm=FakeLlm(reply={"summary": summary}))
+    assert answer.summary == (
+        "Boiler Feed Pump 101 had 24 High Vibration alarms in 90 days [T2]. They rose from 1.5 to 2.1 a week [T3]."
+    )
+    assert answer.grounding.summary_source == "llm"
+    assert answer.grounding.summary_keys_added is True
+
+
+async def test_an_analysis_statement_without_keys_gets_them_from_the_evidence(acceptance_run):
+    cause = "Motor M-101's bearing heats up a median 12 min before the vibration in 79% of cases."
+    reply = {"summary": "Vibration is rising [T3].", "analysis": [{"text": cause, "citations": []}]}
+    answer = await compose_answer(ACCEPTANCE, acceptance_run, llm=FakeLlm(reply=reply))
+    assert [(s.text, s.citations) for s in answer.analysis] == [(cause, ["T4"])]
 
 
 async def test_each_analysis_statement_is_checked_on_its_own(acceptance_run):

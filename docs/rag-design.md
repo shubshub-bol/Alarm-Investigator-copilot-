@@ -207,7 +207,9 @@ Every returned passage becomes a citation with a key, a readable label and where
 - Code builds every cited section from the evidence. The model writes only the summary and the analysis, and
   its text is checked (`copilot/answer.py`, `copilot/text_check.py`): every key must exist, every number and
   code must appear in the evidence, and a key written with extra words, such as `S1 step 6` or `(T2)`, is read
-  as `S1` or `[T2]`. A summary that fails is replaced by the plain summary; an analysis statement is dropped.
+  as `S1` or `[T2]`. When the model cites nothing, code gives each sentence the key of the fact or passage that
+  holds its numbers and codes. A summary that fails is replaced by the plain summary; an analysis statement is
+  dropped.
 - In the GUI, `[S#]` chips open the passage; the Sources tab lists every passage and why it was searched for.
 
 ## 12. Low-confidence handling

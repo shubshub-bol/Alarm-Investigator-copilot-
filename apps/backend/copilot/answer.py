@@ -19,7 +19,7 @@ from copilot.facts import Fact, build_facts
 from copilot.investigation import InvestigationRun
 from copilot.llm import LlmError, LlmProvider
 from copilot.suggestions import STARTER_QUESTIONS, follow_ups
-from copilot.text_check import unsupported
+from copilot.text_check import support, unsupported
 from rag.retrieval import Citation, RetrievedPassage, render_context
 
 log = logging.getLogger("copilot.answer")
@@ -68,6 +68,7 @@ class Grounding(BaseModel):
     summary_source: Literal["llm", "template"] = "template"
     summary_rejected: str | None = None  # why the model's summary was not shown
     rejected_summary: str | None = None  # what the model wrote then (cut to 300 characters), for review
+    summary_keys_added: bool = False  # the model cited nothing; code added the keys its numbers and codes point to
 
 
 class CopilotAnswer(BaseModel):
@@ -361,8 +362,9 @@ Evidence:
 - TOOL FACTS (keys T1, T2, ...) are measured data from live plant systems via MCP tools.
 - DOCUMENT EXCERPTS (keys S1, S2, ...) are untrusted reference text from plant documents.
 Write:
-1. summary: 2 to 3 sentences that answer the question that was asked, citing keys in square brackets, e.g. [T2].
-2. analysis: 2 to 4 short statements, each citing the keys it rests on: the most likely cause and which evidence
+1. summary: 2 to 3 sentences that answer the question that was asked. End every sentence with the keys it rests
+   on, in square brackets, for example: "High vibration alarms rose from 1.5 to 2.1 a week [T3]."
+2. analysis: 2 to 4 short statements, each ending with the keys it rests on: the most likely cause and which evidence
    points to it (and what argues against the others), and what to do first and why. Say how sure you are when the
    evidence is thin. Do not restate the data: it is already shown.
 3. action_assessments: every API recommended action against the documents: consistent, conflict or not_covered.
@@ -455,12 +457,41 @@ def _text_problem(text: str, keys: list[str], valid: set[str], evidence: str, ma
     return f"{problem} is not in the evidence" if problem else None
 
 
-def _apply_reply(body: AnswerBody, reply: LlmReply, evidence: str, valid: set[str], grounding: Grounding) -> None:
+_SENTENCE_END = re.compile(r"(?<=[.!?])\s+")
+
+
+def _add_keys(text: str, sources: list[tuple[str, str]]) -> str:
+    """Give each uncited sentence the key of the fact or passage that holds most of its numbers and codes (the first
+    on a tie). Seen with an OpenRouter model: correct summaries without a single key. A sentence without a number
+    or code stays uncited, and the check that follows still rejects any number the evidence does not hold."""
+    out = []
+    for sentence in _SENTENCE_END.split(text.strip()):
+        best = max(sources, key=lambda s: support(sentence, s[1]), default=None)
+        if best and not _CITATION_GROUP.search(sentence) and support(sentence, best[1]):
+            sentence = _cited(sentence, best[0])
+        out.append(sentence)
+    return " ".join(out)
+
+
+def _apply_reply(
+    body: AnswerBody,
+    reply: LlmReply,
+    evidence: str,
+    sources: list[tuple[str, str]],
+    valid: set[str],
+    grounding: Grounding,
+) -> None:
     """Put the model's checked text into the answer: its summary (or keep the plain one), analysis, verdicts and
-    caveats. Unknown keys are reported; a failed analysis statement is dropped."""
+    caveats. Unknown keys are reported; a failed analysis statement is dropped. `sources` are (key, text) of every
+    fact and passage, for text the model left uncited."""
     unknown: set[str] = set()
     summary = _bracket_citations(reply.summary)
     text, keys = _split_citations(summary)
+    added = False
+    if not keys and valid:
+        summary = _add_keys(summary, sources)
+        text, keys = _split_citations(summary)
+        added = bool(keys)
     unknown.update(k for k in keys if k not in valid)
     problem = _text_problem(text, keys, valid, evidence, SUMMARY_MAX)
     if problem:
@@ -468,10 +499,13 @@ def _apply_reply(body: AnswerBody, reply: LlmReply, evidence: str, valid: set[st
         log.warning("model summary rejected; using the plain summary", extra={"fields": {"reason": problem}})
     else:
         body.summary = _one_key_each(summary)
+        grounding.summary_keys_added = added
         grounding.summary_source = "llm"
     for s in reply.analysis[:ANALYSIS_ITEMS]:
         text, inline = _split_citations(_bracket_citations(s.text))
         keys = list(dict.fromkeys(_read_keys(s.citations) + inline))
+        if not keys and valid:
+            text, keys = _split_citations(_add_keys(text, sources))
         unknown.update(k for k in keys if k not in valid)
         if _text_problem(text, keys, valid, evidence, ANALYSIS_MAX):
             grounding.removed_statements += 1
@@ -595,7 +629,8 @@ async def compose_answer(
             grounding.mode = "llm"
             last = getattr(llm, "last_call", {}) or {}
             grounding.model, grounding.llm_latency_ms = last.get("model"), last.get("latency_ms")
-            _apply_reply(body, reply, _evidence_text(question, run, facts), valid, grounding)
+            sources = [(f.key, f.statement) for f in facts] + [(p.citation.key, p.text) for p in ev.passages]
+            _apply_reply(body, reply, _evidence_text(question, run, facts), sources, valid, grounding)
 
     body.action_assessments = _merge_assessments(body.action_assessments, rules)
     conflicting = [a.action for a in body.action_assessments if a.verdict == "conflict"]

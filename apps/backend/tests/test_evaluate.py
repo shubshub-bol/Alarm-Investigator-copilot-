@@ -84,3 +84,12 @@ async def test_the_evaluation_does_not_start_when_the_mcp_server_is_unreachable(
 
 async def test_the_evaluation_starts_when_the_services_are_up(service):
     assert await services_down(service) is None
+
+
+async def test_the_report_counts_summaries_whose_keys_code_added(service, tmp_path):
+    report = await evaluate(service, GOLDEN[:1])
+    report.rows[0].response.answer.grounding.summary_keys_added = True
+    write_report(report, tmp_path / "run.md", "LLM")
+    text = (tmp_path / "run.md").read_text(encoding="utf-8")
+    assert "| summaries whose keys code added | 1 |" in text
+    assert "keys added by code" in text
