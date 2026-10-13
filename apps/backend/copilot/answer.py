@@ -186,9 +186,15 @@ def _closest_sentence(passages: list[RetrievedPassage], question: str) -> tuple[
     return best[1], best[2]
 
 
-def _negative(by_tool: dict[str, list[Fact]], tool: str | None = None) -> Fact | None:
-    """The first lookup (of `tool`, when given) that found nothing."""
-    found = [f for name, fs in by_tool.items() if tool in (None, name) for f in fs if f.negative]
+def _negative(by_tool: dict[str, list[Fact]], tool: str | None = None, prefix: str = "") -> Fact | None:
+    """The first lookup (of `tool`, when given; its statement starting with `prefix`) that found nothing."""
+    found = [
+        f
+        for name, fs in by_tool.items()
+        if tool in (None, name)
+        for f in fs
+        if f.negative and f.statement.startswith(prefix)
+    ]
     return min(found, key=lambda f: int(f.key[1:]), default=None)
 
 
@@ -229,6 +235,8 @@ def _plain_summary(
     facts of the advice in the record (see _advice_facts)."""
     ev = run.evidence
     rec_facts = rec_facts or []
+    # what the tools found; lookups that found nothing are not "something looked up" for the forms below
+    found = {tool: kept for tool, fs in by_tool.items() if (kept := [f for f in fs if not f.negative])}
     parts: list[str] = []
     main = _main_procedure(run)
     related = _related_with_alarms(ev.recommendations)
@@ -236,7 +244,9 @@ def _plain_summary(
         passage, step = main
         c = passage.citation
         parts.append(_cited(f"{c.label} ({c.title}) applies: {step}", c.key))
-    elif ev.intent == "procedure_lookup" and (none := _negative(by_tool, "search_documents")):
+    elif ev.intent == "procedure_lookup" and (
+        none := _negative(by_tool, "search_documents", "The documents have no")
+    ):  # no document for this kind of alarm; any other negative (an unknown asset) is the fallback's
         parts.append(_cited(none.statement, none.key))
     elif ev.intent == "recommendation_check" and assessments and rec_facts:
         n = Counter(a.verdict for a in assessments)
@@ -252,12 +262,12 @@ def _plain_summary(
         parts.append(_cited(f"Related assets with recent alarms: {', '.join(related)}", *keys))
         for p in _passages_for(run, "Which related equipment")[:1]:
             parts.append(_cited(f"{p.citation.label} lists what to inspect: {_first_sentence(p)}", p.citation.key))
-    elif ev.intent in ("knowledge_question", "agent") and ev.passages and not by_tool:
+    elif ev.intent in ("knowledge_question", "agent") and ev.passages and not found:
         p, sentence = _closest_sentence(ev.passages, question)
         parts.append(_cited(f"{p.citation.label} ({p.citation.title}): {sentence}", p.citation.key))
-    elif ev.intent == "agent" and by_tool:
-        tools = list(by_tool)
-        parts.append(_cited(f"Looked up with {', '.join(tools)}; what was found is below", by_tool[tools[0]][0].key))
+    elif ev.intent == "agent" and found:
+        tools = list(found)
+        parts.append(_cited(f"Looked up with {', '.join(tools)}; what was found is below", found[tools[0]][0].key))
     elif ev.ranked_alarms:
         best = ev.ranked_alarms[0]
         rank_fact = next((f for f in by_tool.get("score_alarm_priority", []) if best["alarm_id"] in f.statement), None)
@@ -331,7 +341,11 @@ def template_answer(
     findings = [Statement(text=_fit(f.statement), citations=[f.key]) for f in facts if f is not rec_fact]
 
     # likely causes
-    causes = [Statement(text=_fit(f.statement), citations=[f.key]) for f in by_tool.get("correlate_alarms", [])]
+    causes = [  # what was found; "no alarm consistently preceded" is a finding, shown under the facts, not a cause
+        Statement(text=_fit(f.statement), citations=[f.key])
+        for f in by_tool.get("correlate_alarms", [])
+        if not f.negative
+    ]
     for p in _passages_for(run, "Guidance on contributing factor")[:1]:
         text = _key_sentence(p, ("misalignment", "sign", "cause", "points to", "typical"))
         causes.append(Statement(text=f"Documented pattern: {text}", citations=[p.citation.key]))

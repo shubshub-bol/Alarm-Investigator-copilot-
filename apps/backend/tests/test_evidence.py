@@ -1,6 +1,6 @@
 """The evidence record: what each tool result writes into it, whoever made the call."""
 
-from copilot.evidence import Evidence, clear_subject, record_result
+from copilot.evidence import Evidence, NegativeFinding, clear_subject, record_result
 
 PUMP = {
     "asset_id": "AST-BFP-101",
@@ -204,11 +204,13 @@ def test_clearing_the_subject_keeps_what_was_found_about_the_plant():
     record_result(ev, "get_alarm_details", {"alarm_id": "ALM-1"}, {"alarm_id": "ALM-1", "asset_id": "AST-BFP-101"}, 4)
     ev.notes.append("a note")
     ev.missing.append("a gap")
+    ev.negatives.append(NegativeFinding(text="No asset matches 'X'.", step=1, tool="search_assets"))
     clear_subject(ev)
     cleared = ("asset", "focus_alarm", "priority", "recommendations", "recommendations_step", "alarm_summary", "trend")
     assert all(getattr(ev, name) is None for name in cleared)
     assert (ev.related_assets, ev.focused_asset_ids, ev.advised_alarm_ids, ev.active_alarms) == ([], [], [], [])
     assert set(ev.known_assets) == {"AST-BFP-101"} and ev.notes == ["a note"] and ev.missing == ["a gap"]
+    assert [n.text for n in ev.negatives] == ["No asset matches 'X'."]  # what was found about the plant stays
 
 
 def test_a_saved_chat_from_before_still_loads():

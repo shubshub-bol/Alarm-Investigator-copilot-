@@ -33,6 +33,7 @@ _SEVERITY_ORDER = {"low": 1, "medium": 2, "high": 3, "critical": 4}
 PROCEDURE_DOC_TYPES = ["operating_procedure", "maintenance_manual", "troubleshooting_guide", "knowledge_article"]
 GUIDANCE_DOC_TYPES = ["maintenance_manual", "troubleshooting_guide", "knowledge_article"]
 NO_PASSAGES = "No relevant passages were found in the document corpus for this question."
+WEAK_PASSAGES = "The passages found for this question are weak matches."
 
 
 class ChatTurn(BaseModel):
@@ -134,7 +135,7 @@ class Investigation:
         no_documents: str | None = None,
     ) -> list[RetrievedPassage]:
         """Search the documents. `main` marks a search that answers the question: the answer's confidence is the
-        weakest main search's. `no_documents` is the gap to report when the search finds nothing at all."""
+        weakest main search's. `no_documents` is the finding to record when the search finds nothing at all."""
         filters = filters or RetrievalFilters()
         started, started_at = time.perf_counter(), datetime.now(UTC)
         common = {
@@ -210,7 +211,7 @@ class Investigation:
         if not result.passages and (no_documents or main):  # the search ran and found nothing: a fact
             self._found_nothing(no_documents or NO_PASSAGES, "search_documents")
         elif main and result.confidence in ("low", "none"):  # weak passages: a warning, not a finding
-            self._gap(NO_PASSAGES)
+            self._gap(WEAK_PASSAGES)
         return kept
 
     def _set_main_confidence(self, confidence: str) -> None:
@@ -225,19 +226,20 @@ class Investigation:
             self.evidence.missing.append(text)
 
     def _found_nothing(self, text: str, tool: str) -> None:
-        """A lookup that worked and found nothing: a fact tied to the step that established it (the latest
-        successful step of `tool`), not a gap. Without such a step it was not established, so it stays a gap."""
+        """A lookup that worked and found nothing: a fact tied to the step that established it, the latest successful
+        step of `tool` among the running playbook's own steps (an agent's earlier steps are not its own). When there
+        is none the lookup failed or never ran: nothing was established, and call_tool has already noted the failure,
+        so nothing is recorded. A finding is stated once per playbook, and again by one that starts later."""
         step = next(
             (
                 s
-                for s in reversed(self.steps)
+                for s in reversed(self.steps[self.playbook_start :])
                 if s.status == "ok" and (s.tool if isinstance(s, ToolCallRecord) else "search_documents") == tool
             ),
             None,
         )
-        if step is None:
-            self._gap(text)
-        elif all(n.text != text for n in self.evidence.negatives):
+        first_step = self.playbook_start + 1  # the number of the playbook's first step
+        if step is not None and all(n.text != text or n.step < first_step for n in self.evidence.negatives):
             self.evidence.negatives.append(NegativeFinding(text=text, step=step.step, tool=tool))
 
     def _types(self, *extra: str | None) -> list[str] | None:
@@ -287,7 +289,7 @@ class Investigation:
         return None
 
     async def assets_of_type(self) -> list[dict] | None:
-        """The assets of the mentioned type; None when the search failed, [] (with a gap) when there are none."""
+        """The assets of the mentioned type; None when the search failed, [] (with a negative finding) when none."""
         u = self.u
         found = await self.tool(
             "search_assets",

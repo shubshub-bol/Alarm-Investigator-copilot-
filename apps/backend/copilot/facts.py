@@ -109,7 +109,7 @@ def build_facts(run: InvestigationRun) -> list[Fact]:
             f"and recommends: {actions}",
         )
         for related in recs.get("related_assets") or []:
-            active = ", ".join(a["alarm_name"] for a in related["active_alarms"]) or "no active alarms"
+            active = ", ".join(a["alarm_name"] for a in related["active_alarms"]) or "0 active alarms"
             add(
                 rec_step,
                 f"Related asset {related['name']}: {active}; {related['alarms_prior_7_days']} alarm(s) in the "

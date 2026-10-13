@@ -341,7 +341,7 @@ async def test_a_search_past_the_evidence_limit_says_so(mcp, retriever):
     )
     assert len(result.run.evidence.passages) == MAX_PASSAGES  # the limit was reached
     assert "not kept" in llm.prompts[-1] and f"the evidence limit ({MAX_PASSAGES} passages)" in llm.prompts[-1]
-    assert "No relevant passages." not in llm.prompts[-1]  # passages were found: only the limit stopped them
+    assert "found 0 relevant passages" not in llm.prompts[-1]  # passages were found: only the limit stopped them
 
 
 async def test_the_menu_lines_are_whole_sentences_on_one_line(mcp):
@@ -772,7 +772,7 @@ async def test_a_search_without_an_index_says_so(mcp):  # R4
         retriever=None,
     )
     assert "Failed: the document index is not available" in llm.prompts[1]
-    assert "No relevant passages." not in llm.prompts[1]
+    assert "found 0 relevant passages" not in llm.prompts[1]  # a search that could not run found nothing out
 
 
 async def test_a_failed_search_says_so(mcp):  # R4
@@ -788,6 +788,7 @@ async def test_a_failed_search_says_so(mcp):  # R4
         retriever=BrokenRetriever(),
     )
     assert "Failed: the document search failed (RuntimeError: index file is corrupt)" in llm.prompts[1]
+    assert "found 0 relevant passages" not in llm.prompts[1]  # a search that failed found nothing out
 
 
 # ---------------------------------------------------------------- the service
@@ -1011,6 +1012,52 @@ async def test_a_recipe_loads_its_focus_assets_metadata_even_when_the_agent_load
     assert [s.step for s in loads][0] == 1 and len(loads) == 2  # the recipe loaded it for itself
     assert ev.asset["asset_id"] == "AST-BFP-102"
     assert "AST-MTR-102" in {a["asset_id"] for a in ev.related_assets}
+
+
+async def test_a_rejected_answer_after_an_empty_search_still_quotes_the_documents(mcp, retriever):
+    question = "What must be done before inspecting a pump?"
+    result, llm = await run_agent(
+        question,
+        search("chocolate cake recipe"),  # finds nothing: a negative fact, T1
+        search("lockout and isolation before inspecting a pump", doc_types=["safety_instruction"]),
+        done("Wait 731 minutes first [S1].", "document"),
+        mcp=mcp,
+        retriever=retriever,
+    )
+    assert result.facts[0].negative and result.run.evidence.passages
+    answer = compose_agent_answer(question, result, llm)
+    assert answer.grounding.summary_source == "template"
+    assert answer.summary.startswith("SAF-") and answer.summary.endswith("[S1].")  # not "Looked up with ..."
+
+
+async def test_a_rejected_answer_after_only_an_empty_search_cites_the_negative(mcp, retriever):
+    question = "Do the documents cover chocolate cake?"
+    result, llm = await run_agent(
+        question,
+        search("chocolate cake recipe"),
+        done("The documents hold 731 recipes [T1].", "cannot_answer"),
+        mcp=mcp,
+        retriever=retriever,
+    )
+    answer = compose_agent_answer(question, result, llm)
+    assert answer.grounding.summary_source == "template"
+    assert answer.summary == "The document search for 'chocolate cake recipe' found 0 relevant passages [T1]."
+
+
+async def test_a_recipes_own_empty_search_is_its_own_fact_after_the_agents_search(mcp, retriever):
+    question = "chocolate cake recipe"
+    result, _ = await run_agent(
+        question,
+        search("chocolate cake recipe"),  # the agent's own search finds nothing: T1
+        recipe("procedure_lookup"),  # its main search for the question finds nothing too, as a fact of its own
+        done("The documents do not cover it [T1].", "cannot_answer"),
+        mcp=mcp,
+        retriever=retriever,
+    )
+    own = [f for f in result.facts if f.negative and f.key in (result.recipe_keys or [])]
+    assert [f.tool for f in own] == ["search_documents"]
+    step = result.run.steps[own[0].step - 1]
+    assert step.kind == "rag_retrieval" and own[0].step > result.facts[0].step  # the recipe's search, not the agent's
 
 
 async def test_an_empty_tool_result_is_stated_as_a_count(mcp, retriever):

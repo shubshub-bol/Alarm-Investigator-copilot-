@@ -3,7 +3,7 @@
 import httpx
 import pytest
 
-from copilot.investigation import ConversationState, Investigation, investigate
+from copilot.investigation import WEAK_PASSAGES, ConversationState, Investigation, investigate
 from copilot.mcp_client import McpToolClient, http_connector, in_memory_connector
 from copilot.understanding import QueryUnderstanding, understand_with_rules
 from copilot_test_helpers import simulator_transport
@@ -352,7 +352,53 @@ async def test_a_failed_summary_is_not_a_finding(retriever):
         u = understand_with_rules("Why are compressor discharge pressure alarms repeatedly occurring?")
         run = await investigate(u, mcp, retriever, ConversationState(), trace_id="t")
     assert not any("alarms on compressor assets" in n.text for n in run.evidence.negatives)
+    assert not any("alarms on compressor assets" in m for m in run.evidence.missing)  # nor a gap worded as a finding
     assert any("summarize_alarms" in n for n in run.evidence.notes)
+
+
+def test_a_finding_without_a_successful_step_is_recorded_nowhere():
+    inv = Investigation(understand_with_rules("x"), None, None, ConversationState(), "t")  # type: ignore[arg-type]
+    inv._found_nothing("There are 0 active alarms on X.", "get_alarms")  # no lookup ran: nothing was established
+    assert inv.evidence.negatives == [] and inv.evidence.missing == []
+
+
+async def test_a_playbook_ties_a_finding_only_to_its_own_steps(mcp):
+    inv = Investigation(understand_with_rules("x"), mcp, None, ConversationState(), "t")
+    await inv.tool("get_alarms", "The agent's own look", asset_id="AST-BLR-201", status="active")
+    inv.begin_playbook()  # the playbook's own get_alarms call has not happened (or failed): that one is not its own
+    inv._found_nothing("There are 0 active alarms on X.", "get_alarms")
+    assert inv.evidence.negatives == [] and inv.evidence.missing == []
+    await inv.tool("get_alarms", "The playbook's look", asset_id="AST-BLR-201", status="active")
+    inv._found_nothing("There are 0 active alarms on X.", "get_alarms")
+    assert [(n.step, n.tool) for n in inv.evidence.negatives] == [(2, "get_alarms")]
+
+
+async def test_a_finding_is_stated_again_by_a_playbook_that_started_later(mcp):
+    inv = Investigation(understand_with_rules("x"), mcp, None, ConversationState(), "t")
+    await inv.tool("get_alarms", "The agent's own look", asset_id="AST-BLR-201", status="active")
+    inv._found_nothing("There are 0 active alarms on X.", "get_alarms")
+    inv.begin_playbook()
+    await inv.tool("get_alarms", "The playbook's look", asset_id="AST-BLR-201", status="active")
+    inv._found_nothing("There are 0 active alarms on X.", "get_alarms")
+    inv._found_nothing("There are 0 active alarms on X.", "get_alarms")  # the same step twice is stated once
+    assert [n.step for n in inv.evidence.negatives] == [1, 2]
+
+
+class WeakRetriever:
+    """The real retriever, with its confidence lowered: its passages are found, but weak matches."""
+
+    def __init__(self, real):
+        self.real = real
+
+    def search(self, query, k, filters):
+        return self.real.search(query, k=k, filters=filters).model_copy(update={"confidence": "low"})
+
+
+async def test_weak_passages_are_a_warning_not_a_finding(mcp, retriever):
+    u = understand_with_rules("What does the safety instruction say about lockout?")
+    run = await investigate(u, mcp, WeakRetriever(retriever), ConversationState(), trace_id="t")  # type: ignore[arg-type]
+    assert run.evidence.passages and run.evidence.negatives == []  # the search found passages
+    assert run.evidence.missing == [WEAK_PASSAGES]  # and says they are weak, not that none were found
 
 
 async def test_negative_findings_are_tied_to_the_lookup_that_found_nothing(mcp, retriever):

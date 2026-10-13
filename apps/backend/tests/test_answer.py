@@ -7,6 +7,7 @@ import pytest
 
 from copilot.answer import LlmReply, compose_answer
 from copilot.consistency import assess_actions, sentences
+from copilot.facts import build_facts
 from copilot.investigation import ConversationState, investigate
 from copilot.mcp_client import McpToolClient, http_connector, in_memory_connector
 from copilot.understanding import understand_with_rules
@@ -212,7 +213,7 @@ async def test_a_document_question_gets_no_invented_step(mcp, retriever):
     assert answer.recommended_actions == []  # before: "Follow ALM-PHIL-006 §6.", a step no procedure gave
 
 
-async def test_weak_documents_are_flagged_when_the_alarm_data_is_unavailable(retriever):
+async def test_a_search_that_finds_nothing_is_a_fact_when_the_alarm_data_is_unavailable(retriever):
     question = "Investigate Fired Heater H-401"
     async with McpToolClient(http_connector("http://127.0.0.1:9/mcp", token="x", timeout_seconds=2)) as mcp:
         run = await investigate(understand_with_rules(question), mcp, retriever, ConversationState(), trace_id="t")
@@ -520,3 +521,29 @@ async def test_a_negative_finding_is_a_cited_fact(mcp, retriever):
     assert answer.summary == f"There are 0 active alarms on boiler assets (Boiler B-201) [{fact.key}]."
     assert any(s.citations == [fact.key] for s in answer.findings)
     assert answer.gaps == []
+
+
+async def test_a_correlation_that_found_no_factor_is_not_a_likely_cause(mcp, retriever):
+    answer = await answer_offline(mcp, retriever, "Investigate Motor M-101")
+    none = next(f for f in answer.facts if f.negative and f.tool == "correlate_alarms")
+    assert none.statement.startswith("No alarm consistently preceded")
+    assert not any(none.key in s.citations for s in answer.likely_causes)  # a cause is something that was found
+    assert any(s.citations == [none.key] for s in answer.findings)  # but the finding is still shown
+
+
+async def test_an_unknown_assets_procedure_summary_is_the_first_negative_finding(mcp, retriever):
+    question = "Which procedure applies to Zorblax Pump 999 chocolate cake?"
+    assert understand_with_rules(question).intent == "procedure_lookup"
+    answer = await answer_offline(mcp, retriever, question)
+    negatives = [f for f in answer.facts if f.negative]
+    assert [f.tool for f in negatives] == ["search_assets", "search_documents"]  # the asset is unknown, so is the topic
+    assert answer.summary == f"{negatives[0].statement.rstrip('.')} [{negatives[0].key}]."  # the asset, not the search
+    assert answer.summary.startswith("No asset matches 'Pump 999'")
+
+
+async def test_a_related_asset_without_active_alarms_is_stated_with_the_count(acceptance_run):
+    related = acceptance_run.evidence.recommendations["related_assets"]
+    related[0]["active_alarms"] = []
+    facts = build_facts(acceptance_run)
+    assert any(f.statement.startswith(f"Related asset {related[0]['name']}: 0 active alarms;") for f in facts)
+    assert not any("no active alarms" in f.statement for f in facts)
