@@ -87,6 +87,7 @@ step number, for the model to assess; document passages reach the model at up to
 | A recipe or tool named under the wrong action (`search_documents` or a recipe asked for as a tool, a tool asked for as a recipe) | Not run; the model is told which action to use |
 | A tool the server does not mark read-only | Not on the menu, and not run if asked for |
 | A loosely formed step (inputs given as an object instead of a string, a purpose over 300 characters, a null field) | Repaired, not rejected: the inputs become their JSON text, the purpose is cut, a null field takes its default |
+| A loosely formed final answer (a direct answer over 1,200 characters, an analysis statement over 800, an assessment it cannot read) | Kept: the direct answer and statements are cut to their limits (the answer checks then keep whole sentences), a verdict written "not covered" is read as `not_covered`, and an item that still cannot be read is dropped, so one bad part never throws away the model's answer |
 | A document search fails, or there is no index | The model is told so, not that nothing relevant was found |
 | A tool fails | The model gets the error code and message, and can try another way or answer |
 | The same call again | Not run; the model gets the earlier result |

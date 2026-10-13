@@ -12,7 +12,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field, ValidationError, ValidationInfo, field_validator
 
-from copilot.answer import CopilotAnswer, LlmReply, Statement, compose_answer
+from copilot.answer import STATEMENT_MAX, CopilotAnswer, LlmReply, Statement, compose_answer
 from copilot.consistency import ActionAssessment
 from copilot.facts import Fact, build_facts
 from copilot.investigation import (
@@ -43,6 +43,7 @@ LIST_ITEMS = 10  # a list in a tool result is cut to this many items for the mod
 RESULT_CHARS = 3000  # one tool result as the model sees it
 PASSAGE_CHARS = 600  # one document passage as the model sees it
 NAME_MAX, WHY_MAX = 60, 300  # a step's name and purpose
+ANSWER_MAX = 1200  # characters in the final direct answer (the answer checks shorten it further)
 STEP_LIMIT_GAP = f"The question could not be fully answered within {MAX_STEPS} steps."
 RECIPES = {
     name: INTENT_HELP[name]
@@ -110,10 +111,40 @@ Rules:
 
 class AgentFinal(BaseModel):
     answer_type: AnswerType
-    direct_answer: str = Field(max_length=1200)
+    direct_answer: str = Field(max_length=ANSWER_MAX)
     analysis: list[Statement] = []
     action_assessments: list[ActionAssessment] = []
     gaps: list[str] = []
+
+    # As with AgentStep: one part the model wrote loosely must not throw away the whole final answer, which would
+    # leave the operator a template answer after every step was taken. The schema itself is unchanged.
+    @field_validator("direct_answer", mode="before")
+    @classmethod
+    def _cut_answer(cls, value: Any) -> Any:
+        """An over-long direct answer is cut to its limit; the answer checks then keep whole sentences."""
+        return value[:ANSWER_MAX] if isinstance(value, str) else value
+
+    @field_validator("analysis", "action_assessments", "gaps", mode="before")
+    @classmethod
+    def _readable_items(cls, value: Any, info: ValidationInfo) -> Any:
+        """Items that cannot be read are dropped, an over-long statement is cut, and a verdict written 'not covered'
+        is read as not_covered; null (or anything that is not a list) means none."""
+        if not isinstance(value, list):
+            return []
+        if info.field_name == "gaps":
+            return [g for g in value if isinstance(g, str)]
+        model = Statement if info.field_name == "analysis" else ActionAssessment
+        kept = []
+        for item in value:
+            if isinstance(item, dict) and isinstance(item.get("text"), str):
+                item = {**item, "text": item["text"][:STATEMENT_MAX]}
+            if isinstance(item, dict) and isinstance(item.get("verdict"), str):
+                item = {**item, "verdict": re.sub(r"[\s-]+", "_", item["verdict"].strip().lower())}
+            try:
+                kept.append(model.model_validate(item))
+            except ValidationError:
+                log.warning("unreadable item in the final answer dropped", extra={"fields": {"part": info.field_name}})
+        return kept
 
 
 class AgentStep(BaseModel):

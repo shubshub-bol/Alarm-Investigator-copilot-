@@ -700,6 +700,34 @@ def test_the_instructions_show_the_inputs_as_a_string_and_say_what_why_is():  # 
     assert "why: one short sentence, shown to the operator as the step's purpose" in AGENT_SYSTEM
 
 
+async def test_a_loosely_formed_final_answer_keeps_what_can_be_read(mcp, retriever):
+    """One unreadable part (a sloppy assessment, an over-long answer) must not throw away the whole final answer."""
+    final = {
+        "answer_type": "what_to_do",
+        "direct_answer": "Check the boiler first [T1]. " * 60,  # about 1,700 characters
+        "analysis": [{"text": "x" * 900, "citations": ["T1"]}, "not a statement"],
+        "action_assessments": [
+            {"step": 1, "action": "Inspect the boiler", "verdict": "not covered"},
+            {"step": 2},  # no action, no verdict
+        ],
+        "gaps": None,
+    }
+    result, llm = await run_agent(
+        "How many boilers do we have?",
+        tool("search_assets", query="boiler", asset_type="boiler"),
+        {"action": "done", "final": final},
+        mcp=mcp,
+        retriever=retriever,
+    )
+    assert result.model_error is None and result.final is not None
+    assert len(result.final.direct_answer) <= 1200
+    assert [len(s.text) for s in result.final.analysis] == [800]
+    assert [(a.step, a.verdict) for a in result.final.action_assessments] == [(1, "not_covered")]
+    assert result.final.gaps == []
+    answer = await compose_agent_answer("How many boilers do we have?", result, llm)
+    assert (answer.grounding.summary_source, answer.answer_type) == ("llm", "what_to_do")
+
+
 async def test_a_tool_that_is_not_read_only_is_not_offered_or_run(mcp, retriever):  # R1
     tools = [t.model_copy(update={"read_only": False}) if t.name == "get_alarms" else t for t in await mcp.discover()]
     llm = ScriptedLlm(tool("get_alarms", status="active"), done("Nothing was looked up.", "cannot_answer"))
