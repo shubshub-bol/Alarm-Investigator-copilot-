@@ -51,7 +51,8 @@ which is flexible but harder to test, slower, and can skip steps such as the saf
 
 *Later change:* [decision 19](#19-one-agent-with-the-playbooks-as-recipes) lets the model choose between these
 playbooks (as recipes) and the small tools. The playbooks themselves are unchanged, and they are still what runs
-without a model.
+without a model. The separate model calls that read the question and wrote the answer were then removed: the
+agent's steps and its final reply replace them.
 
 ## 6. A swappable language model, and a copilot that works without one
 

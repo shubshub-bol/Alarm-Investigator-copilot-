@@ -458,7 +458,7 @@ class Agent:
         if unknown:  # not dropped: a misspelt input would quietly change what the recipe investigates
             return f"Not run: unknown recipe input(s) {', '.join(unknown)}; inputs: {', '.join(RECIPE_INPUTS)}."
         fields = {("asset_query" if k == "asset" else k): v for k, v in args.items() if k in RECIPE_INPUTS}
-        try:  # the same checks as the understanding call: types, lengths, severities, a 1-365 day window
+        try:  # the model-facing checks: types, lengths, severities, a 1-365 day window
             parsed = LlmUnderstanding(intent=step.name, rationale=step.why, **fields)
         except ValidationError as exc:
             error = exc.errors()[0]
@@ -533,9 +533,7 @@ class Agent:
         state.last_unit = self.u.unit or state.last_unit
 
 
-async def compose_agent_answer(
-    question: str, agent_run: AgentRun, llm: LlmProvider | None, context: str = ""
-) -> CopilotAnswer:
+def compose_agent_answer(question: str, agent_run: AgentRun, llm: LlmProvider | None) -> CopilotAnswer:
     """The answer from an agent run: its final reply checked like any model text, the details built from what its
     steps found, and how the run ended (step limit, model failure) in the gaps."""
     final = agent_run.final
@@ -549,11 +547,9 @@ async def compose_agent_answer(
         if final
         else None
     )
-    answer = await compose_answer(
+    answer = compose_answer(
         question,
         agent_run.run,
-        None,
-        context,
         facts=agent_run.facts,
         reply=reply,
         degraded_reason=agent_run.model_error,

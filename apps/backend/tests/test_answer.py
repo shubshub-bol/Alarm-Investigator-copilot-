@@ -6,7 +6,6 @@ import pytest
 from copilot.answer import LlmReply, compose_answer
 from copilot.consistency import assess_actions, sentences
 from copilot.investigation import ConversationState, investigate
-from copilot.llm import LlmError
 from copilot.mcp_client import McpToolClient, http_connector, in_memory_connector
 from copilot.understanding import understand_with_rules
 from copilot_test_helpers import simulator_transport
@@ -53,7 +52,7 @@ async def test_conflict_pulls_in_the_governance_rule(acceptance_run):
 
 
 async def test_template_answer_is_grounded_and_structured(acceptance_run):
-    answer = await compose_answer(ACCEPTANCE, acceptance_run, llm=None)
+    answer = compose_answer(ACCEPTANCE, acceptance_run)
     assert answer.grounding.mode == "template"
     assert answer.summary
     for statement in all_statements(answer):
@@ -66,7 +65,7 @@ async def test_template_answer_is_grounded_and_structured(acceptance_run):
 
 
 async def test_template_actions_put_the_procedure_first_and_include_safety(acceptance_run):
-    answer = await compose_answer(ACCEPTANCE, acceptance_run, llm=None)
+    answer = compose_answer(ACCEPTANCE, acceptance_run)
     first = answer.recommended_actions[0]
     assert key_for(answer, "SOP-BFP-001 §4.1") in first.citations
     assert "Continue operation" not in first.text or "instead of" in first.text
@@ -77,14 +76,14 @@ async def test_template_actions_put_the_procedure_first_and_include_safety(accep
 
 
 async def test_markdown_shows_both_citation_kinds_and_the_conflict(acceptance_run):
-    md = (await compose_answer(ACCEPTANCE, acceptance_run, llm=None)).markdown
+    md = (compose_answer(ACCEPTANCE, acceptance_run)).markdown
     assert "[T" in md and "[S" in md
     assert "conflict" in md.lower()
     assert "### Recommended actions" in md
 
 
 async def test_facts_point_at_successful_trace_steps(acceptance_run):
-    answer = await compose_answer(ACCEPTANCE, acceptance_run, llm=None)
+    answer = compose_answer(ACCEPTANCE, acceptance_run)
     steps = {s.step: s for s in acceptance_run.steps}
     for fact in answer.facts:
         assert steps[fact.step].status == "ok"
@@ -92,7 +91,7 @@ async def test_facts_point_at_successful_trace_steps(acceptance_run):
 
 
 async def test_asset_fact_lists_the_related_assets_that_were_looked_up(acceptance_run):
-    answer = await compose_answer(ACCEPTANCE, acceptance_run, llm=None)
+    answer = compose_answer(ACCEPTANCE, acceptance_run)
     asset_fact = next(f for f in answer.facts if f.tool == "get_asset_metadata")
     assert "Related assets: Motor M-101 (BFP 101 Drive)" in asset_fact.statement
 
@@ -105,7 +104,7 @@ async def test_follow_up_does_not_claim_related_assets_it_never_looked_up(mcp, r
     run = await investigate(understand_with_rules(question), mcp, retriever, state, trace_id="t2")
     assert "get_asset_metadata" not in {s.tool for s in run.steps if s.kind == "mcp_tool"}  # never looked up
 
-    answer = await compose_answer(question, run, llm=None)
+    answer = compose_answer(question, run)
     asset_fact = next((f for f in answer.facts if f.statement.startswith("Boiler Feed Pump 101 (AST-BFP-101)")), None)
     assert asset_fact is not None  # the asset is still described
     assert "none recorded" not in asset_fact.statement
@@ -116,14 +115,14 @@ async def answer_offline(mcp, retriever, *questions):
     state = ConversationState()
     for question in questions:
         run = await investigate(understand_with_rules(question), mcp, retriever, state, trace_id="t")
-    return await compose_answer(questions[-1], run, llm=None)
+    return compose_answer(questions[-1], run)
 
 
 COMPRESSOR_PROCEDURE = "Which procedure applies to Gas Compressor C-301 discharge pressure alarms?"
 
 
 async def test_procedure_items_quote_the_step_to_take(acceptance_run):
-    answer = await compose_answer(ACCEPTANCE, acceptance_run, llm=None)
+    answer = compose_answer(ACCEPTANCE, acceptance_run)
     steps = [s.text for s in answer.procedure if s.text.startswith("SOP-BFP-001 §4.1")]
     assert any("start the standby feed pump, transfer the load to it, and stop the affected pump" in s for s in steps)
 
@@ -215,42 +214,28 @@ async def test_weak_documents_are_flagged_when_the_alarm_data_is_unavailable(ret
     question = "Investigate Fired Heater H-401"
     async with McpToolClient(http_connector("http://127.0.0.1:9/mcp", token="x", timeout_seconds=2)) as mcp:
         run = await investigate(understand_with_rules(question), mcp, retriever, ConversationState(), trace_id="t")
-    answer = await compose_answer(question, run, llm=None)
+    answer = compose_answer(question, run)
     assert any("no relevant passages" in g.lower() for g in answer.gaps)
 
 
-# ------------------------------------------------------------------- LLM answers
-
-
-class FakeLlm:
-    name = "fake"
-
-    def __init__(self, reply=None, error=None):
-        self.reply, self.error = reply, error
-
-    async def generate_json(self, system, prompt, schema):
-        if self.error:
-            raise self.error
-        self.prompt = prompt
-        return schema.model_validate(self.reply)
+# ------------------------------------------------------- the model's reply, checked
+# The agent's final reply reaches compose_answer as `reply`; these tests check how it is validated.
 
 
 KEEP_RUNNING = "Continue operation and monitor vibration trend for 24 hours"
 
 
 async def test_model_mode_shows_the_same_facts_as_offline_mode(acceptance_run):
-    offline = await compose_answer(ACCEPTANCE, acceptance_run, llm=None)
+    offline = compose_answer(ACCEPTANCE, acceptance_run)
     reply = {
         "summary": "Vibration on Boiler Feed Pump 101 is rising [T3].",
         "recommended_actions": [{"text": KEEP_RUNNING, "citations": ["T7"]}],  # not in the schema: ignored
     }
-    llm = FakeLlm(reply=reply)
-    answer = await compose_answer(ACCEPTANCE, acceptance_run, llm=llm)
+    answer = compose_answer(ACCEPTANCE, acceptance_run, reply=LlmReply.model_validate(reply))
     assert answer.grounding.mode == "llm"
     assert answer.summary == "Vibration on Boiler Feed Pump 101 is rising [T3]."
     for section in ("findings", "likely_causes", "procedure", "recommended_actions"):
         assert getattr(answer, section) == getattr(offline, section)
-    assert "untrusted" in llm.prompt.lower()  # documents are passed as untrusted data
 
 
 @pytest.mark.parametrize(
@@ -264,7 +249,7 @@ async def test_model_mode_shows_the_same_facts_as_offline_mode(acceptance_run):
     ],
 )
 async def test_a_model_summary_that_passes_the_check_is_shown(acceptance_run, summary, shown):
-    answer = await compose_answer(ACCEPTANCE, acceptance_run, llm=FakeLlm(reply={"summary": summary}))
+    answer = compose_answer(ACCEPTANCE, acceptance_run, reply=LlmReply.model_validate({"summary": summary}))
     assert answer.summary == (shown or summary)
     assert answer.grounding.summary_source == "llm"
     assert answer.grounding.summary_rejected is None
@@ -282,8 +267,8 @@ async def test_a_model_summary_that_passes_the_check_is_shown(acceptance_run, su
     ],
 )
 async def test_a_model_summary_that_fails_the_check_is_replaced(acceptance_run, summary, reason):
-    offline = await compose_answer(ACCEPTANCE, acceptance_run, llm=None)
-    answer = await compose_answer(ACCEPTANCE, acceptance_run, llm=FakeLlm(reply={"summary": summary}))
+    offline = compose_answer(ACCEPTANCE, acceptance_run)
+    answer = compose_answer(ACCEPTANCE, acceptance_run, reply=LlmReply.model_validate({"summary": summary}))
     assert answer.summary == offline.summary
     assert answer.grounding.summary_source == "template"
     assert reason in answer.grounding.summary_rejected
@@ -293,7 +278,7 @@ async def test_a_model_summary_that_fails_the_check_is_replaced(acceptance_run, 
 async def test_a_correct_summary_without_keys_gets_them_from_the_evidence(acceptance_run):
     """Seen with an OpenRouter model: correct summaries, every number right, but not a single key."""
     summary = "Boiler Feed Pump 101 had 24 High Vibration alarms in 90 days. They rose from 1.5 to 2.1 a week."
-    answer = await compose_answer(ACCEPTANCE, acceptance_run, llm=FakeLlm(reply={"summary": summary}))
+    answer = compose_answer(ACCEPTANCE, acceptance_run, reply=LlmReply.model_validate({"summary": summary}))
     assert answer.summary == (
         "Boiler Feed Pump 101 had 24 High Vibration alarms in 90 days [T2]. They rose from 1.5 to 2.1 a week [T3]."
     )
@@ -304,7 +289,7 @@ async def test_a_correct_summary_without_keys_gets_them_from_the_evidence(accept
 async def test_an_analysis_statement_without_keys_gets_them_from_the_evidence(acceptance_run):
     cause = "Motor M-101's bearing heats up a median 12 min before the vibration in 79% of cases."
     reply = {"summary": "Vibration is rising [T3].", "analysis": [{"text": cause, "citations": []}]}
-    answer = await compose_answer(ACCEPTANCE, acceptance_run, llm=FakeLlm(reply=reply))
+    answer = compose_answer(ACCEPTANCE, acceptance_run, reply=LlmReply.model_validate(reply))
     assert [(s.text, s.citations) for s in answer.analysis] == [(cause, ["T4"])]
 
 
@@ -313,8 +298,8 @@ async def test_a_long_model_summary_keeps_its_first_whole_sentences(acceptance_r
     first = "Boiler Feed Pump 101 had 24 High Vibration alarms in 90 days [T2]."
     second = "They rose from 1.5 to 2.1 a week [T3]."
     steps = " ".join(["The procedure says to change over to the standby pump [S1]."] * 12)
-    answer = await compose_answer(
-        ACCEPTANCE, acceptance_run, llm=FakeLlm(reply={"summary": f"{first} {second} {steps}"})
+    answer = compose_answer(
+        ACCEPTANCE, acceptance_run, reply=LlmReply.model_validate({"summary": f"{first} {second} {steps}"})
     )
     assert answer.summary.startswith(f"{first} {second}")
     assert answer.summary.endswith("[S1].")  # whole sentences only
@@ -335,7 +320,7 @@ async def test_each_analysis_statement_is_checked_on_its_own(acceptance_run):
             {"text": f"{first[:-1]} [S2].", "citations": []},  # cited inline only
         ],
     }
-    answer = await compose_answer(ACCEPTANCE, acceptance_run, llm=FakeLlm(reply=reply))
+    answer = compose_answer(ACCEPTANCE, acceptance_run, reply=LlmReply.model_validate(reply))
     assert [(s.text, s.citations) for s in answer.analysis] == [(cause, ["T4", "S4"]), (first, ["S2"])]
     assert answer.grounding.removed_statements == 2
     assert "S99" in answer.grounding.unknown_citations
@@ -351,7 +336,7 @@ async def test_analysis_citations_with_extra_words_keep_their_statement(acceptan
             {"text": "An invented step.", "citations": ["S99 step 2"]},
         ],
     }
-    answer = await compose_answer(ACCEPTANCE, acceptance_run, llm=FakeLlm(reply=reply))
+    answer = compose_answer(ACCEPTANCE, acceptance_run, reply=LlmReply.model_validate(reply))
     assert [(s.text, s.citations) for s in answer.analysis] == [
         ("The procedure requires a change-over above 7.1 mm/s.", ["S1"])
     ]
@@ -369,7 +354,7 @@ async def test_assessment_citations_with_extra_words_are_read(acceptance_run):
         "explanation": "the troubleshooting guide says the same",
     }
     reply = {"summary": "s", "action_assessments": [assessment]}
-    answer = await compose_answer(ACCEPTANCE, acceptance_run, llm=FakeLlm(reply=reply))
+    answer = compose_answer(ACCEPTANCE, acceptance_run, reply=LlmReply.model_validate(reply))
     assert next(a for a in answer.action_assessments if a.step == 2).citation_keys == ["S5"]
 
 
@@ -387,7 +372,7 @@ async def test_missing_llm_assessments_are_filled_and_conflicts_kept(acceptance_
             }
         ],
     }
-    answer = await compose_answer(ACCEPTANCE, acceptance_run, llm=FakeLlm(reply=reply))
+    answer = compose_answer(ACCEPTANCE, acceptance_run, reply=LlmReply.model_validate(reply))
     verdicts = {a.step: a.verdict for a in answer.action_assessments}
     assert verdicts[1] == "conflict"  # rule-based check found a conflict: the conservative verdict wins
     assert set(verdicts) == {1, 2, 3}  # actions the LLM skipped are filled in
@@ -408,7 +393,7 @@ async def test_llm_conflict_without_document_text_keeps_the_rule_checks_quote(ac
             }
         ],
     }
-    answer = await compose_answer(ACCEPTANCE, acceptance_run, llm=FakeLlm(reply=reply))
+    answer = compose_answer(ACCEPTANCE, acceptance_run, reply=LlmReply.model_validate(reply))
     conflict = next(a for a in answer.action_assessments if a.step == 1)
     assert conflict.verdict == "conflict"
     assert conflict.explanation == "the procedure says to change over"  # the model's own reasoning is kept
@@ -429,7 +414,7 @@ async def test_analysis_never_endorses_an_action_the_documents_conflict_with(acc
             {"text": unrelated, "citations": ["S2"]},
         ],
     }
-    answer = await compose_answer(ACCEPTANCE, acceptance_run, llm=FakeLlm(reply=reply))
+    answer = compose_answer(ACCEPTANCE, acceptance_run, reply=LlmReply.model_validate(reply))
     assert [s.text for s in answer.analysis] == [rejects, unrelated]
     assert answer.grounding.removed_statements == 1
 
@@ -445,37 +430,36 @@ async def test_an_action_the_model_finds_in_conflict_is_not_recommended(acceptan
         "explanation": "the model reads the procedure differently",
     }
     reply = {"summary": "Vibration is rising [T3].", "action_assessments": [verdict]}
-    answer = await compose_answer(ACCEPTANCE, acceptance_run, llm=FakeLlm(reply=reply))
+    answer = compose_answer(ACCEPTANCE, acceptance_run, reply=LlmReply.model_validate(reply))
     assert not any(s.text.startswith(check_bearing) for s in answer.recommended_actions)
     assert answer.grounding.removed_statements == 1
 
 
 async def test_a_model_summary_that_endorses_a_conflicting_action_is_replaced(acceptance_run):
-    offline = await compose_answer(ACCEPTANCE, acceptance_run, llm=None)
+    offline = compose_answer(ACCEPTANCE, acceptance_run)
     summary = f"{KEEP_RUNNING}, as the Alarm API advises [T7]."
-    answer = await compose_answer(ACCEPTANCE, acceptance_run, llm=FakeLlm(reply={"summary": summary}))
+    answer = compose_answer(ACCEPTANCE, acceptance_run, reply=LlmReply.model_validate({"summary": summary}))
     assert answer.summary == offline.summary
     assert answer.grounding.summary_source == "template"
     assert "conflict" in answer.grounding.summary_rejected
 
 
-async def test_earlier_messages_are_shown_to_the_model_but_numbers_come_from_this_question(acceptance_run):
-    llm = FakeLlm(reply={"summary": "As before, vibration is at 31 mm/s [T5]."})
-    context = "\n".join(["User: How bad is it?", "Copilot: Vibration was 31 mm/s."])
-    answer = await compose_answer(ACCEPTANCE, acceptance_run, llm=llm, context=context)
-    assert "Copilot: Vibration was 31 mm/s." in llm.prompt
-    assert answer.grounding.summary_source == "template"  # 31 is only in the old chat, not in this evidence
+async def test_a_number_from_an_earlier_answer_is_not_evidence(acceptance_run):
+    """The model sees the chat so far, but every number must come from this question's evidence."""
+    reply = LlmReply(summary="As before, vibration is at 31 mm/s [T5].")  # 31 was only in an earlier answer
+    answer = compose_answer(ACCEPTANCE, acceptance_run, reply=reply)
+    assert answer.grounding.summary_source == "template"
     assert "number 31" in answer.grounding.summary_rejected
 
 
 async def test_offline_answers_have_no_analysis(acceptance_run):
-    answer = await compose_answer(ACCEPTANCE, acceptance_run, llm=None)
+    answer = compose_answer(ACCEPTANCE, acceptance_run)
     assert answer.analysis == []
     assert "Analysis" not in answer.markdown
 
 
 async def test_llm_failure_degrades_to_template(acceptance_run):
-    answer = await compose_answer(ACCEPTANCE, acceptance_run, llm=FakeLlm(error=LlmError("timeout")))
+    answer = compose_answer(ACCEPTANCE, acceptance_run, degraded_reason="timeout")
     assert answer.grounding.mode == "template"
     assert answer.grounding.degraded is True
     assert "timeout" in answer.grounding.degraded_reason
@@ -494,7 +478,7 @@ def test_llm_reply_schema_rejects_garbage():
 async def test_unrelated_question_admits_there_is_no_evidence(mcp, retriever):
     u = understand_with_rules("chocolate cake recipe")
     run = await investigate(u, mcp, retriever, ConversationState(), trace_id="t")
-    answer = await compose_answer("chocolate cake recipe", run, llm=None)
+    answer = compose_answer("chocolate cake recipe", run)
     assert answer.citations == []
     assert answer.procedure == []
     assert any("no relevant" in g.lower() for g in answer.gaps)
@@ -505,7 +489,7 @@ async def test_no_document_gap_when_no_document_search_ran(mcp, retriever):
     await investigate(understand_with_rules(ACCEPTANCE), mcp, retriever, state, trace_id="t1")
     question = "Are there active alarms on Boiler Feed Pump 101 right now?"
     run = await investigate(understand_with_rules(question), mcp, retriever, state, trace_id="t2")
-    answer = await compose_answer(question, run, llm=None)
+    answer = compose_answer(question, run)
     assert "There are no active alarms on Boiler Feed Pump 101." in answer.gaps
     assert not any("no relevant passages" in g.lower() for g in answer.gaps)  # nothing was searched
 
@@ -521,6 +505,6 @@ async def test_partial_failure_is_reported_in_gaps(retriever):
     async with McpToolClient(in_memory_connector(make_server(httpx.MockTransport(handler), max_retries=0))) as mcp:
         await mcp.discover()
         run = await investigate(understand_with_rules(ACCEPTANCE), mcp, retriever, ConversationState(), trace_id="t")
-    answer = await compose_answer(ACCEPTANCE, run, llm=None)
+    answer = compose_answer(ACCEPTANCE, run)
     assert any("correlate_alarms" in g for g in answer.gaps)
     assert answer.recommended_actions  # still useful

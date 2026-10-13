@@ -21,7 +21,7 @@ from copilot.llm import LlmProvider
 from copilot.mcp_client import Connector, McpToolClient
 from copilot.titles import llm_title, rule_title
 from copilot.trace import RetrievalRecord, ToolCallRecord, ToolSpec
-from copilot.understanding import QueryUnderstanding, understand
+from copilot.understanding import QueryUnderstanding, understand_with_rules
 from rag.retrieval import Retriever
 
 log = logging.getLogger("copilot.service")
@@ -112,7 +112,7 @@ class CopilotService:
 
         t0 = time.perf_counter()
         chat = render(conv.state)  # the chat so far, for the model: recent turns in full, older ones in short
-        u = await understand(question, None)  # keyword rules: small talk, and the reading used without a model
+        u = understand_with_rules(question)  # small talk, and the reading used without a model
         understanding_ms = _ms(t0)
         await emit("understanding", u.model_dump(mode="json"))
         if u.intent == "conversation":
@@ -149,14 +149,14 @@ class CopilotService:
             t0 = time.perf_counter()
             if agent_run is not None and not agent_run.failed_at_once:
                 u = agent_run.understanding
-                answer = await compose_agent_answer(question, agent_run, self.llm, chat)
+                answer = compose_agent_answer(question, agent_run, self.llm)
             else:
                 reason = agent_run.model_error if agent_run else None
                 if reason:
                     u = u.model_copy(update={"fallback_reason": reason})
                 uncovered = u.intent == "knowledge_question" and run.evidence.retrieval_confidence in ("low", "none")
                 extra = [NEEDS_MODEL] if self.llm is None and uncovered else None
-                answer = await compose_answer(question, run, None, chat, degraded_reason=reason, extra_gaps=extra)
+                answer = compose_answer(question, run, degraded_reason=reason, extra_gaps=extra)
             answer_ms = _ms(t0)
             title = await self._title(title_task, u, run.evidence, answer) if conv.needs_title else None
         finally:

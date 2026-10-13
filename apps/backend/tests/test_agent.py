@@ -369,7 +369,7 @@ async def test_an_agent_answer_leads_with_the_direct_answer(mcp, retriever):
         mcp=mcp,
         retriever=retriever,
     )
-    answer = await compose_agent_answer("How many boilers do we have?", result, llm)
+    answer = compose_agent_answer("How many boilers do we have?", result, llm)
     assert answer.summary == "Boiler B-201 is the only boiler [T1]."
     assert answer.answer_type == "count"
     assert any(s.citations == ["T1"] and "Boiler B-201" in s.text for s in answer.findings)
@@ -379,7 +379,7 @@ async def test_an_agent_answer_leads_with_the_direct_answer(mcp, retriever):
 async def test_an_agent_answer_without_a_final_reply_says_what_was_looked_up(mcp, retriever):
     steps = [tool("search_assets", query=f"pump {n}") for n in range(MAX_STEPS)]
     result, llm = await run_agent("Find every pump", *steps, mcp=mcp, retriever=retriever)
-    answer = await compose_agent_answer("Find every pump", result, llm)
+    answer = compose_agent_answer("Find every pump", result, llm)
     assert answer.summary.startswith("Looked up with search_assets")
     assert "The question could not be fully answered within 6 steps." in answer.gaps
     assert answer.answer_type is None and answer.grounding.agent_hit_limit is True
@@ -395,7 +395,7 @@ async def test_a_long_tool_result_is_cut_in_the_findings_but_whole_in_the_facts(
         mcp=mcp,
         retriever=retriever,
     )
-    answer = await compose_agent_answer(question, result, llm)
+    answer = compose_agent_answer(question, result, llm)
     assert len(answer.facts[0].statement) > 800  # the fact keeps its whole statement
     assert [len(s.text) for s in answer.findings] == [800] and answer.findings[0].text.endswith("...")
 
@@ -411,7 +411,7 @@ async def test_a_direct_recommendations_lookup_stays_in_the_details(mcp, retriev
         mcp=mcp,
         retriever=retriever,
     )
-    answer = await compose_agent_answer(question, result, llm)
+    answer = compose_agent_answer(question, result, llm)
     assert result.run.evidence.recommendations is None  # only a recipe sets them: nothing else shows this fact
     assert any(s.citations == ["T1"] and "get_operator_recommendations" in s.text for s in answer.findings)
 
@@ -424,7 +424,7 @@ async def test_a_recipe_answer_keeps_the_recipe_details(mcp, retriever):
         mcp=mcp,
         retriever=retriever,
     )
-    answer = await compose_agent_answer("Investigate Boiler Feed Pump 101", result, llm)
+    answer = compose_agent_answer("Investigate Boiler Feed Pump 101", result, llm)
     sop = next(c.key for c in answer.citations if c.label == "SOP-BFP-001 §4.1")
     assert answer.procedure and sop in answer.recommended_actions[0].citations
     assert answer.answer_type == "why"
@@ -438,7 +438,7 @@ async def test_a_model_failure_midway_is_degraded_but_keeps_the_data(mcp, retrie
         mcp=mcp,
         retriever=retriever,
     )
-    answer = await compose_agent_answer("How many boilers do we have?", result, llm)
+    answer = compose_agent_answer("How many boilers do we have?", result, llm)
     assert answer.grounding.degraded and "timeout" in answer.grounding.degraded_reason
     assert answer.findings
     assert answer.grounding.mode == "template" and answer.grounding.agent_steps == 1
@@ -452,7 +452,7 @@ async def test_an_invented_number_in_the_direct_answer_is_rejected(mcp, retrieve
         mcp=mcp,
         retriever=retriever,
     )
-    answer = await compose_agent_answer("How many boilers do we have?", result, llm)
+    answer = compose_agent_answer("How many boilers do we have?", result, llm)
     assert answer.grounding.summary_source == "template" and "number 731" in answer.grounding.summary_rejected
     assert answer.answer_type is None  # the direct answer is not shown, so its type is not either
 
@@ -466,7 +466,7 @@ async def test_a_rejected_answer_after_a_document_search_falls_back_to_the_docum
         mcp=mcp,
         retriever=retriever,
     )
-    answer = await compose_agent_answer(question, result, llm)
+    answer = compose_agent_answer(question, result, llm)
     assert answer.grounding.summary_source == "template"
     assert answer.summary.startswith("SAF-")  # the closest sentence of the best safety instruction, cited
     assert answer.answer_type is None
@@ -510,7 +510,7 @@ async def test_after_the_agents_own_calls_the_plain_summary_cites_the_recipes_fa
         mcp=mcp,
         retriever=retriever,
     )
-    answer = await compose_agent_answer(question, result, llm)
+    answer = compose_agent_answer(question, result, llm)
     own = next(f.key for f in result.facts if f.tool == "summarize_alarms" and "Boiler Feed Pump 101" in f.statement)
     assert answer.grounding.summary_source == "template"
     assert answer.summary.startswith("Boiler Feed Pump 101 had") and f"[{own}]" in answer.summary
@@ -529,7 +529,7 @@ async def test_after_the_agents_own_recommendations_lookup_the_actions_cite_the_
         mcp=mcp,
         retriever=retriever,
     )
-    answer = await compose_agent_answer(question, result, llm)
+    answer = compose_agent_answer(question, result, llm)
     recipes = next(f.key for f in result.facts[1:] if f.tool == "get_operator_recommendations")
     api = [s for s in answer.recommended_actions if "API" in s.text]
     assert api and all(recipes in s.citations and "T1" not in s.citations for s in api)
@@ -611,7 +611,7 @@ async def test_the_models_action_assessments_are_merged_into_the_answer(mcp, ret
         mcp=mcp,
         retriever=retriever,
     )
-    answer = await compose_agent_answer(question, result, llm)
+    answer = compose_agent_answer(question, result, llm)
     assert any(a.explanation == "The model's own reading." for a in answer.action_assessments)
 
 
@@ -634,7 +634,7 @@ async def test_the_agents_own_searches_leave_the_recipe_its_full_passage_limit(m
         mcp=mcp,
         retriever=retriever,
     )
-    answer = await compose_agent_answer(question, result, llm)
+    answer = compose_agent_answer(question, result, llm)
     assert any(p.citation.label.startswith("SAF-005") for p in result.run.evidence.passages)
     assert any("lockout and isolation" in s.text for s in answer.recommended_actions)
 
@@ -650,7 +650,7 @@ async def test_a_passage_the_agent_found_first_still_serves_the_recipe(mcp, retr
         mcp=mcp,
         retriever=retriever,
     )
-    answer = await compose_agent_answer(question, result, llm)
+    answer = compose_agent_answer(question, result, llm)
     ev = result.run.evidence
     safety = next(p.citation.key for p in ev.passages if p.citation.label == "SAF-005 §2")
     assert ev.passage_purposes[safety].startswith("Safety requirements")  # the recipe's search found it again
@@ -724,7 +724,7 @@ async def test_a_loosely_formed_final_answer_keeps_what_can_be_read(mcp, retriev
     assert [len(s.text) for s in result.final.analysis] == [800]
     assert [(a.step, a.verdict) for a in result.final.action_assessments] == [(1, "not_covered")]
     assert result.final.gaps == []
-    answer = await compose_agent_answer("How many boilers do we have?", result, llm)
+    answer = compose_agent_answer("How many boilers do we have?", result, llm)
     assert (answer.grounding.summary_source, answer.answer_type) == ("llm", "what_to_do")
 
 

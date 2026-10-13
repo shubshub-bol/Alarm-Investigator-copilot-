@@ -1,14 +1,12 @@
-"""Intent and entity extraction: rule-based understanding, and the LLM path with fallback."""
+"""Intent and entity extraction by the keyword rules, and how a model's reading is merged with them."""
 
 import pytest
 from pydantic import ValidationError
 
-from copilot.llm import LlmError
 from copilot.understanding import (
     LlmUnderstanding,
     QueryUnderstanding,
     merge_with_rules,
-    understand,
     understand_with_rules,
 )
 
@@ -129,13 +127,6 @@ def test_small_talk_words_do_not_hide_a_real_question(text):
     assert understand_with_rules(text).intent != "conversation"
 
 
-async def test_small_talk_skips_the_llm():
-    llm = FakeLlm(error=AssertionError("the LLM must not be called for a greeting"))
-    u = await understand("hello", llm)
-    assert u.intent == "conversation"
-    assert llm.calls == 0
-
-
 def test_general_document_question_needs_no_tools():
     u = understand_with_rules("What does the safety instruction say about lockout?")
     assert u.intent == "knowledge_question"
@@ -146,47 +137,28 @@ def test_named_asset_alone_defaults_to_investigation():
     assert understand_with_rules("Boiler Feed Pump 101").intent == "investigate_asset"
 
 
-# ------------------------------------------------------------------------ LLM path
+# ------------------------------------------------- a model's reading, merged with the rules
+# The agent's recipes are the model's reading of the question; merge_with_rules checks and completes each one.
 
 
-class FakeLlm:
-    name = "fake"
-
-    def __init__(self, reply=None, error=None):
-        self.reply, self.error, self.calls = reply, error, 0
-
-    async def generate_json(self, system, prompt, schema):
-        self.calls += 1
-        self.prompt = prompt
-        if self.error:
-            raise self.error
-        return schema.model_validate(self.reply)
-
-    async def generate_text(self, system, prompt):  # pragma: no cover - not used here
-        raise NotImplementedError
+def merged(question, **reply):
+    return merge_with_rules(LlmUnderstanding(**reply), understand_with_rules(question), question)
 
 
-async def test_llm_understanding_is_used_when_valid():
-    reply = {
-        "intent": "investigate_asset",
-        "asset_query": "Boiler Feed Pump 101",
-        "lookback_days": 90,
-        "severities": ["high", "critical"],
-        "rationale": "asks why alarms recur",
-    }
-    llm = FakeLlm(reply=reply)
-    u = await understand(ACCEPTANCE, llm)
-    assert u.method == "llm"
-    assert u.asset_query == "Boiler Feed Pump 101"
-    assert llm.calls == 1
+def test_the_models_reading_is_kept():
+    u = merged(ACCEPTANCE, intent="investigate_asset", asset_query="Boiler Feed Pump 101", rationale="why it recurs")
+    assert (u.method, u.intent, u.asset_query, u.question) == (
+        "llm",
+        "investigate_asset",
+        "Boiler Feed Pump 101",
+        ACCEPTANCE,
+    )
 
 
-async def test_rules_fill_entities_the_llm_left_empty():
+def test_rules_fill_entities_the_model_left_empty():
     """Seen with Gemini: it classified the intent right but dropped asset_type and narrowed severity."""
     question = "What related assets should be inspected for this high-severity motor trip alarm?"
-    llm = FakeLlm(reply={"intent": "related_assets", "alarm_topic": "motor trip", "severities": ["high"]})
-    u = await understand(question, llm)
-    assert u.method == "llm"
+    u = merged(question, intent="related_assets", alarm_topic="motor trip", severities=["high"])
     assert u.intent == "related_assets"
     assert u.asset_type == "motor"  # filled from rules
     assert u.severities == ["high", "critical"]  # 'high' means high or worse
@@ -201,27 +173,25 @@ async def test_rules_fill_entities_the_llm_left_empty():
         {"intent": "conversation", "asset_query": "Boiler B-201"},
     ],
 )
-async def test_a_named_asset_always_gets_its_live_data(reply):
-    u = await understand("Boiler B-201 how many times it failed in past ?", FakeLlm(reply=reply))
+def test_a_named_asset_always_gets_its_live_data(reply):
+    u = merged("Boiler B-201 how many times it failed in past ?", **reply)
     assert u.intent == "investigate_asset"
     assert u.asset_query == "Boiler B-201"
 
 
-async def test_a_document_question_without_an_asset_stays_a_document_question():
-    llm = FakeLlm(reply={"intent": "knowledge_question"})
-    u = await understand("What does the safety instruction say about lockout?", llm)
+def test_a_document_question_without_an_asset_stays_a_document_question():
+    u = merged("What does the safety instruction say about lockout?", intent="knowledge_question")
     assert u.intent == "knowledge_question"
 
 
-async def test_the_rules_intent_is_recorded_when_the_model_decides():
-    llm = FakeLlm(reply={"intent": "related_assets"})
-    u = await understand("Boiler Feed Pump 101 vibration, what should I check?", llm)
+def test_the_rules_intent_is_recorded_when_the_model_decides():
+    u = merged("Boiler Feed Pump 101 vibration, what should I check?", intent="related_assets")
     assert u.intent == "related_assets"  # the model decides
     assert u.rules_intent == "investigate_asset"  # and the disagreement stays visible
 
 
-async def test_rules_only_understanding_has_no_second_intent():
-    assert (await understand("Boiler Feed Pump 101", None)).rules_intent is None
+def test_rules_only_understanding_has_no_second_intent():
+    assert understand_with_rules("Boiler Feed Pump 101").rules_intent is None
 
 
 @pytest.mark.parametrize(
@@ -242,50 +212,24 @@ def test_the_asset_type_is_the_equipment_word_a_phrase_ends_with(text, asset_typ
     [
         {"intent": "active_alarms", "asset_query": "boiler", "asset_type": "boiler"},  # seen with an OpenRouter model
         {"intent": "active_alarms", "asset_query": "boilers"},
+        {"intent": "active_alarms", "asset_query": "Boilers"},
     ],
 )
-async def test_a_type_word_is_not_an_asset_name(reply):
-    u = await understand("any boiler alarma are active", FakeLlm(reply=reply))
+def test_a_type_word_is_not_an_asset_name(reply):
+    u = merged("any boiler alarma are active", **reply)
     assert u.asset_query is None  # 'boiler' names no single asset: three asset names contain the word
     assert u.asset_type == "boiler"
 
 
-async def test_the_model_sees_the_earlier_messages():
-    llm = FakeLlm(reply={"intent": "investigate_asset", "asset_query": "Boiler Feed Pump 101", "lookback_days": 30})
-    context = "\n".join(
-        ["Earlier in this chat, oldest first.", "User: Investigate Boiler Feed Pump 101", "Copilot: It vibrates."]
-    )
-    u = await understand("And over the last 30 days?", llm, context)
-    assert "User: Investigate Boiler Feed Pump 101" in llm.prompt
-    assert llm.prompt.endswith("Question: And over the last 30 days?")
-    assert (u.asset_query, u.lookback_days) == ("Boiler Feed Pump 101", 30)
-
-
-def test_a_merged_reading_takes_a_type_word_as_a_type():
-    question = "any boiler alarms active"
-    u = merge_with_rules(
-        LlmUnderstanding(intent="active_alarms", asset_query="Boilers"), understand_with_rules(question), question
-    )
-    assert (u.asset_query, u.asset_type, u.method, u.question) == (None, "boiler", "llm", question)
-
-
-def test_a_merged_reading_gives_a_named_asset_its_live_data():
-    question = "Boiler B-201 how many times it failed in past ?"
-    u = merge_with_rules(LlmUnderstanding(intent="knowledge_question"), understand_with_rules(question), question)
-    assert (u.intent, u.asset_query) == ("investigate_asset", "Boiler B-201")
-
-
 def test_a_merged_reading_widens_severities_and_fills_gaps_from_the_rules():
     question = "Investigate Boiler Feed Pump 101 over the last 30 days"
-    parsed = LlmUnderstanding(intent="investigate_asset", asset_query="Boiler Feed Pump 101", severities=["high"])
-    u = merge_with_rules(parsed, understand_with_rules(question), question)
+    u = merged(question, intent="investigate_asset", asset_query="Boiler Feed Pump 101", severities=["high"])
     assert (u.severities, u.lookback_days) == (["high", "critical"], 30)
 
 
 @pytest.mark.parametrize("site", ["East Refinery", " east  refinery ", "EastRefinery"])
 def test_a_merged_reading_writes_the_site_without_spaces(site):
-    question = "Are there active alarms at the east refinery right now?"
-    u = merge_with_rules(LlmUnderstanding(intent="active_alarms", site=site), understand_with_rules(question), question)
+    u = merged("Are there active alarms at the east refinery right now?", intent="active_alarms", site=site)
     assert u.site.lower() == "eastrefinery" and " " not in u.site  # the Alarm API ignores case, not spaces
 
 
@@ -298,21 +242,9 @@ def test_the_model_cannot_choose_the_agent_intent():
         LlmUnderstanding(intent="agent")
 
 
-async def test_llm_failure_falls_back_to_rules():
-    u = await understand(ACCEPTANCE, FakeLlm(error=LlmError("quota exceeded")))
-    assert u.method == "rules"
-    assert u.intent == "investigate_asset"
-    assert "quota exceeded" in u.fallback_reason
-
-
-async def test_llm_out_of_range_values_are_rejected_then_rules_used():
-    u = await understand(ACCEPTANCE, FakeLlm(reply={"intent": "investigate_asset", "lookback_days": 5000}))
-    assert u.method == "rules"
-    assert u.lookback_days == 90
-
-
-async def test_no_llm_means_rules():
-    assert (await understand("Boiler Feed Pump 101", None)).method == "rules"
+def test_a_models_out_of_range_values_are_rejected():
+    with pytest.raises(ValidationError):
+        LlmUnderstanding(intent="investigate_asset", lookback_days=5000)
 
 
 def test_understanding_schema_is_strict():
