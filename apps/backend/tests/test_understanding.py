@@ -3,7 +3,13 @@
 import pytest
 
 from copilot.llm import LlmError
-from copilot.understanding import QueryUnderstanding, understand, understand_with_rules
+from copilot.understanding import (
+    LlmUnderstanding,
+    QueryUnderstanding,
+    merge_with_rules,
+    understand,
+    understand_with_rules,
+)
 
 ACCEPTANCE = (
     "Investigate recurring high-severity alarms for Boiler Feed Pump 101 over the last 90 days, identify likely "
@@ -252,6 +258,31 @@ async def test_the_model_sees_the_earlier_messages():
     assert "User: Investigate Boiler Feed Pump 101" in llm.prompt
     assert llm.prompt.endswith("Question: And over the last 30 days?")
     assert (u.asset_query, u.lookback_days) == ("Boiler Feed Pump 101", 30)
+
+
+def test_a_merged_reading_takes_a_type_word_as_a_type():
+    question = "any boiler alarms active"
+    u = merge_with_rules(
+        LlmUnderstanding(intent="active_alarms", asset_query="Boilers"), understand_with_rules(question), question
+    )
+    assert (u.asset_query, u.asset_type, u.method, u.question) == (None, "boiler", "llm", question)
+
+
+def test_a_merged_reading_gives_a_named_asset_its_live_data():
+    question = "Boiler B-201 how many times it failed in past ?"
+    u = merge_with_rules(LlmUnderstanding(intent="knowledge_question"), understand_with_rules(question), question)
+    assert (u.intent, u.asset_query) == ("investigate_asset", "Boiler B-201")
+
+
+def test_a_merged_reading_widens_severities_and_fills_gaps_from_the_rules():
+    question = "Investigate Boiler Feed Pump 101 over the last 30 days"
+    parsed = LlmUnderstanding(intent="investigate_asset", asset_query="Boiler Feed Pump 101", severities=["high"])
+    u = merge_with_rules(parsed, understand_with_rules(question), question)
+    assert (u.severities, u.lookback_days) == (["high", "critical"], 30)
+
+
+def test_agent_is_an_intent():
+    assert QueryUnderstanding(intent="agent").intent == "agent"
 
 
 async def test_llm_failure_falls_back_to_rules():

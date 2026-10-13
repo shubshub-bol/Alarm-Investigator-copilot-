@@ -23,6 +23,7 @@ Intent = Literal[
     "recommendation_check",  # do the API recommendations agree with the documents
     "knowledge_question",  # general documentation question, no plant data needed
     "conversation",  # greetings, thanks, "what can you do": no tools, no documents
+    "agent",  # answered by the agent's own tool steps rather than one playbook
 ]
 Severity = Literal["low", "medium", "high", "critical"]
 
@@ -216,7 +217,19 @@ async def understand(question: str, llm: LlmProvider | None, context: str = "") 
         log.warning("llm understanding failed; using rules", extra={"fields": {"reason": reason}})
         return rules.model_copy(update={"fallback_reason": reason})
 
-    # The LLM decides the intent; precise rule-extracted entities fill anything it left empty.
+    return merge_with_rules(parsed, rules, question)
+
+
+def _type_name(word: str) -> str:
+    """'Boilers' -> 'boiler', 'heat exchangers' -> 'heat_exchanger': the form asset types are stored in."""
+    word = "_".join(word.lower().split())
+    return word[:-1] if word.endswith("s") and not word.endswith("ss") else word
+
+
+def merge_with_rules(parsed: LlmUnderstanding, rules: QueryUnderstanding, question: str) -> QueryUnderstanding:
+    """A model's reading of the question, completed and checked by the keyword rules. Used for the understanding call
+    and for every recipe the agent runs, so both read a question the same way."""
+    # The model decides the intent; precise rule-extracted entities fill anything it left empty.
     merged = parsed.model_dump()
     for name in _GAP_FILL_FIELDS:
         if merged[name] in (None, []) and getattr(rules, name) not in (None, []):
@@ -236,12 +249,6 @@ async def understand(question: str, llm: LlmProvider | None, context: str = "") 
     if merged["intent"] in _NO_DATA_INTENTS and asset_query:
         merged.update(intent="investigate_asset", asset_query=asset_query)
     return QueryUnderstanding(**merged, question=question, method="llm", rules_intent=rules.intent)
-
-
-def _type_name(word: str) -> str:
-    """'Boilers' -> 'boiler', 'heat exchangers' -> 'heat_exchanger': the form asset types are stored in."""
-    word = "_".join(word.lower().split())
-    return word[:-1] if word.endswith("s") and not word.endswith("ss") else word
 
 
 _GAP_FILL_FIELDS = ("asset_type", "site", "unit", "lookback_days", "severities", "alarm_topic", "status")
