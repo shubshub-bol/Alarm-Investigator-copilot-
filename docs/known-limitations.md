@@ -62,7 +62,11 @@
   bounds how often the model-only questions can be evaluated.
 - The question's asset is set only when the calls clearly focus on one asset. Calls about two assets (a comparison)
   or about no single asset (a site-wide list, a search with several results) set none, so after such an answer a
-  follow-up such as "this pump" has nothing new to refer back to; name the asset.
+  follow-up such as "this pump" has nothing new to refer back to; name the asset. A call about one asset followed by
+  a call about several (a comparison made with the small tools) still leaves the first asset as the question's asset,
+  because only a call about exactly one asset counts; the answer's own text names both.
+- The one query for every active alarm of an asset type stops at 200 alarms. When it stops and none of the type's
+  assets is among them, the answer says so in a note instead of claiming "0 active alarms"; it cannot say more.
 
 **Security and operations**
 

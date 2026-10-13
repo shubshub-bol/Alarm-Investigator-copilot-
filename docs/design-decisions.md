@@ -211,9 +211,11 @@ Three rules follow, one for each cause:
    only when the calls clearly focus on one asset; two assets (a comparison) leave it open. Advice is "the advice"
    only while it was fetched for one alarm.
 2. **No holes, and no claim without evidence.** A lookup that works and finds nothing is a fact with its own key,
-   tied to its trace step. Gaps are only what could not be looked up or failed. With nothing looked up, the only
-   valid answer is `cannot_answer`: the agent refuses "done" once, and the answer checks reject an evidence-free
-   claim with the reason `no evidence was looked up`.
+   tied to its trace step, and it states exactly the scope the lookup checked (the asset, the severity, the assets
+   covered), so citing it cannot widen it; a list cut at its cap establishes nothing. Gaps are only what could not
+   be looked up or failed. With nothing looked up, the only valid answer is `cannot_answer`: the agent refuses
+   "done" once, and the answer checks reject an evidence-free claim with the reason `no evidence was looked up`; a
+   `cannot_answer` with nothing behind it shows only its direct answer.
 3. **The exam judges outcomes.** The intent is checked only on the rules path, where routing is what is tested.
    With a model, every other expectation is something the operator sees: the asset, live data used or not, the
    values in the findings or the direct answer (as whole numbers), the sources, the first step, the procedure, the

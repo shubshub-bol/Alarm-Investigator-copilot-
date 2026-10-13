@@ -94,8 +94,8 @@ step number, for the model to assess; document passages reach the model at up to
 | A second recipe | Not run; the model is told to use the tools for anything more |
 | The question names an asset (by the keyword rules) and nothing has been looked up | A document search or "done" is not accepted; the model is told to look up the asset's data first. A call its input schema refused does not count as a look-up. The rule yields when the MCP server is down or offered no tools |
 | "done" with an answer type other than `cannot_answer`, and nothing has been looked up (no tool call that reached the server, no document search) | Not accepted, once: "nothing has been looked up yet: search the documents or call a tool, or answer cannot_answer." The named-asset rule above is the stricter case. The refusal is skipped when nothing can be looked up (no index, and the MCP server down or without tools); the answer checks then decide |
-| A tool succeeds and its main list is empty (assets, alarms, alarm groups, trend points, alarm pairs, floods or candidates) | The model is told what was found in words, with the count, before the shortened data (`found 0 alarms: {...}`), and the result becomes a negative fact with its own key |
-| A document search runs and finds nothing relevant | The model gets a negative fact with a key it can cite ("The document search for '...' found 0 relevant passages."), not a bare "nothing" |
+| A tool succeeds and its main list is empty (assets, alarms, alarm groups, trend points, alarm pairs, floods or candidates) | The model is told what was found in words, with the count, before the shortened data (`found 0 alarms: {...}`), and the result becomes a negative fact with its own key. An empty list whose total is above 0 (a page past the end) is not "found 0": it is stated as returned, with the total in the data |
+| A document search runs and finds nothing relevant | The model gets a negative fact with a key it can cite ("The document search for '...' found 0 relevant passages."; with a document type filter, "... in safety instruction documents found 0 ..."), not a bare "nothing" |
 | A long result | The model sees whole items only, up to 10 (fewer if needed to stay under 3000 characters), then `... N more (M in all)`; raw `meta` blocks are dropped |
 | A search past the 8-passage evidence limit | The model is told how many passages were found but not kept. The agent's own searches do not use up a recipe's limit: before a recipe runs, the limit is raised by the passages they kept, so the recipe still gets its procedure, safety and governance passages. A passage the agent's search kept and the recipe finds again takes the recipe's purpose, so it still gives the answer its procedure or safety step |
 | The last step | The model is told it must be "done" with the final answer |
@@ -131,7 +131,7 @@ asset and alarms, and a follow-up such as "this boiler" has an asset to refer to
 
 | Tool | What the recorder writes |
 |---|---|
-| `search_assets` | Every asset found, as a known asset (`known_assets`, by asset id). Never the question's asset |
+| `search_assets` | Every asset found, as a known asset (`known_assets`, by asset id). A search never chooses the question's asset on its own, but it can make known an asset that a single-asset call then focuses on |
 | `get_asset_metadata` | The asset (the fields the asset fact uses) and its related assets; the call is about that asset |
 | `get_alarm_details` | The alarm (the first one stays) and its asset as known; the call is about that asset |
 | `get_alarms` | With `status=active`: the active alarms. Filtered to one asset id: the call is about that asset |
@@ -159,7 +159,7 @@ Only a lookup that succeeded can establish it: a failed call is a failed step wi
 
 | Where | What becomes a fact |
 |---|---|
-| A playbook | Each negative finding it writes after a lookup (`_found_nothing`), tied to the latest successful step of that tool among the playbook's own steps: "There are 0 active alarms on boiler assets (Boiler B-201).", "No asset matches 'Boiler Feed Pump 999'.", "There are 0 high/critical alarms on X in the last 90 days.", "No alarm consistently preceded the main alarm (no clear contributing factor)." |
+| A playbook | Each negative finding it writes after a lookup (`_found_nothing`), tied to the latest successful step of that tool among the playbook's own steps: "There are 0 active alarms on boiler assets (Boiler B-201).", "No asset matches 'Boiler Feed Pump 999'.", "There are 0 high/critical alarms on X in the last 90 days.", "No alarm on X or its related assets consistently preceded the main alarm (no clear contributing factor)." |
 | The agent's tool calls | A successful result whose main list is empty (see the situation table above), worded with the count |
 | A document search | A search that runs and finds nothing: "The documents have no procedure for boiler alarms." in a playbook, "No relevant passages were found in the document corpus for this question." for a main search without a more precise wording, "The document search for '...' found 0 relevant passages." for the agent. A search that could not run (no index, an error) stays a gap |
 
@@ -167,7 +167,18 @@ Findings about alarms state the count as the number 0, not "no", so a model's "0
 number check. Every such fact is marked `negative`. In a playbook's facts the negative ones follow the positive ones,
 in the order the lookups ran; the agent's tool facts keep the order of its calls. A plain summary does not count a
 negative fact as "something looked up": it cites one when there is nothing else to say (or, for a procedure question,
-when the documents have no procedure).
+when the documents have no procedure). For a run of the agent without a recipe, whose model text was rejected, the
+plain summary names every tool that ran, the ones that found nothing too, and states each negative fact in its words
+without the data behind them ("get_alarms(...) found 0 alarms [T2]").
+
+A negative fact states exactly the scope its lookup checked, so a model that cites it cannot widen it: the asset's
+name when the query was filtered to one asset (else the site and unit, else "the plant"), the severities and the
+alarm topic the question asked for, and for a search by asset type the assets it covered, named
+("0 critical 'vibration' alarms on boiler assets (Boiler B-201)"). A lookup that was cut short establishes nothing:
+when the one query for every active alarm stops at its cap of 200 and none of the type's assets is among them, the
+answer gets a note ("The active-alarm list was capped at 200; the boiler assets may have alarms beyond it.") and no
+"0 active alarms". A playbook that says why it has nothing to show ("Name an asset, site or unit ...", "No alarm in
+context ...") counts only the findings of its own steps, so an earlier finding of the agent does not hide the reason.
 
 **Gaps** are now only what could not be looked up or failed: the MCP server down, a tool error, no document index, a
 search error, a missing input such as "Name an asset, site or unit to list its active alarms.", and the step limit.
@@ -206,7 +217,10 @@ alarms, assets or documents is answered `cannot_answer` with what the copilot ca
 mentions must appear in the evidence; a direct answer that is too long is cut to its first whole sentences, and one
 that cites nothing gets the keys its numbers and codes point to. **No evidence, no claim:** when there are no facts
 and no passages at all, any direct answer or analysis statement is rejected with the reason `no evidence was
-looked up`, unless the answer type is `cannot_answer` (an honest "I cannot answer that" needs no key). A direct
+looked up`, unless the answer type is `cannot_answer` (an honest "I cannot answer that" needs no key). A
+`cannot_answer` with no evidence at all shows only its direct answer: the model's analysis and gaps are dropped, as
+they could only come from its memory. The instructions tell the model that a lookup that found 0 is a result to state
+with its key, and that gaps are what could not be looked up or failed, not what a lookup found none of. A direct
 answer that fails is replaced by the plain summary built from the evidence; an analysis statement that fails is
 dropped. A conflict found by the
 rule-based check is kept even if the model missed it, and no direct answer, action or analysis statement may
