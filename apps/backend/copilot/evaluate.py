@@ -14,6 +14,7 @@ in-memory stack (tests/test_evaluate.py).
 
 import argparse
 import asyncio
+import re
 import sys
 from collections.abc import Sequence
 from dataclasses import dataclass
@@ -45,9 +46,9 @@ class Case:
     facts: tuple[str, ...] = ()  # text each of which must appear in the findings
     first_step: str | None = None  # a source label the first recommended action must cite
     procedure: bool | None = None  # the procedure section must be present (True) or absent (False)
-    answer_type: str | None = None  # the agent's expected answer type (checked when the answer has one)
-    answer: tuple[str, ...] = ()  # text the direct answer must contain
-    model_only: bool = False  # needs the model: skipped offline
+    answer_type: str | tuple[str, ...] | None = None  # the agent's acceptable answer type(s), checked when it has one
+    answer: tuple[str, ...] = ()  # regular expressions (ignoring case) that the direct answer must match
+    model_only: bool = False  # needs the model: skipped offline; its answer must be model-written and typed
     history: tuple[str, ...] = ()  # earlier questions in the same chat, for "this alarm"
 
 
@@ -117,12 +118,14 @@ GOLDEN: list[Case] = [
     Case("What is the capital of France?", OFF_TOPIC, uses_data=False, sources=()),
     # no playbook covers these: the agent combines tools (skipped offline)
     Case("How many refineries do we have?", ("agent", "active_alarms"), answer_type="count",
-         answer=("EastRefinery",), model_only=True),
+         answer=(r"\b(1|one)\b", r"East ?Refinery"), model_only=True),
     Case("Compare Boiler Feed Pump 101 and Boiler Feed Pump 102 over the last 90 days", ("agent", "investigate_asset"),
-         answer_type="compare", answer=("42", "20"), model_only=True),
-    Case("Which motor alarmed most in the last 90 days?", ("agent", "investigate_asset"), answer=("Motor M-101",),
+         answer_type="compare", model_only=True,
+         answer=(r"101\D{0,60}?\b42\b|\b42\b\D{0,60}?101", r"102\D{0,60}?\b20\b|\b20\b\D{0,60}?102")),
+    Case("Which motor alarmed most in the last 90 days?", ("agent", "investigate_asset"),
+         answer_type=("list", "compare", "count"), answer=(r"Motor M-101",), model_only=True),
+    Case("How many assets are at EastRefinery?", "agent", answer_type="count", answer=(r"\b(7|seven)\b",),
          model_only=True),
-    Case("How many assets are at EastRefinery?", "agent", answer_type="count", answer=("7",), model_only=True),
 ]  # fmt: skip
 
 
@@ -192,9 +195,13 @@ def check(case: Case, response: ChatResponse) -> list[str]:
             problems.append(f"first step: cites {', '.join(cited) or 'nothing'}, expected {case.first_step}")
     if case.procedure is not None and bool(response.answer.procedure) != case.procedure:
         problems.append("procedure: missing" if case.procedure else "procedure: present, expected none")
-    if case.answer_type and response.answer.answer_type and response.answer.answer_type != case.answer_type:
-        problems.append(f"answer type: {response.answer.answer_type}, expected {case.answer_type}")
-    if missing := [a for a in case.answer if a not in response.answer.summary]:
+    if case.model_only and (response.answer.grounding.summary_source != "llm" or response.answer.answer_type is None):
+        problems.append("agent: no model-written direct answer")
+    if case.answer_type and response.answer.answer_type:
+        types = (case.answer_type,) if isinstance(case.answer_type, str) else case.answer_type
+        if response.answer.answer_type not in types:
+            problems.append(f"answer type: {response.answer.answer_type}, expected {' or '.join(types)}")
+    if missing := [p for p in case.answer if not re.search(p, response.answer.summary, re.IGNORECASE)]:
         problems.append(f"answer: {', '.join(missing)} not in the direct answer")
     if response.answer.grounding.unknown_citations:
         problems.append(f"citations: rejected {', '.join(response.answer.grounding.unknown_citations)}")

@@ -4,7 +4,7 @@ import pytest
 
 from copilot.evaluate import GOLDEN, Case, check, evaluate, facts_part, services_down, write_report
 from copilot.mcp_client import http_connector, in_memory_connector
-from copilot.service import CopilotService
+from copilot.service import ChatResponse, CopilotService
 from copilot_test_helpers import simulator_transport
 from mcp_test_helpers import make_server
 
@@ -114,3 +114,75 @@ async def test_the_answer_type_and_the_direct_answer_are_checked(service):
     response.answer.answer_type = "compare"
     case = Case(GOLDEN[0].question, "investigate_asset", answer_type="count", answer=("999 alarms",))
     assert [p.split(":")[0] for p in check(case, response)] == ["answer type", "answer"]
+
+
+REFINERIES = "How many refineries do we have?"
+COMPARE = "Compare Boiler Feed Pump 101 and Boiler Feed Pump 102 over the last 90 days"
+MOST_ALARMS = "Which motor alarmed most in the last 90 days?"
+ASSETS = "How many assets are at EastRefinery?"
+
+
+def golden(question: str) -> Case:
+    return next(case for case in GOLDEN if case.question == question)
+
+
+def answer_problems(case: Case, response: ChatResponse) -> list[str]:
+    return [p for p in check(case, response) if p.startswith("answer:")]
+
+
+async def test_a_model_only_answer_must_be_written_by_the_model(service):
+    response = (await evaluate(service, GOLDEN[:1])).rows[0].response
+    case = golden(MOST_ALARMS)
+    response.answer.grounding.summary_source = "template"
+    response.answer.answer_type = None
+    assert "agent: no model-written direct answer" in check(case, response)
+    response.answer.grounding.summary_source = "llm"
+    assert "agent: no model-written direct answer" in check(case, response)  # the answer type is still missing
+    response.answer.answer_type = "list"
+    assert "agent: no model-written direct answer" not in check(case, response)
+
+
+async def test_the_refinery_count_needs_the_whole_number_one_and_the_refinery(service):
+    response = (await evaluate(service, GOLDEN[:1])).rows[0].response
+    case = golden(REFINERIES)
+    response.answer.summary = "There are 11 refineries, including EastRefinery [T1]."
+    assert answer_problems(case, response) == [f"answer: {case.answer[0]} not in the direct answer"]
+    response.answer.summary = "There is one refinery: East Refinery [T1]."
+    assert answer_problems(case, response) == []
+
+
+async def test_the_compare_answer_must_tie_each_count_to_its_pump(service):
+    response = (await evaluate(service, GOLDEN[:1])).rows[0].response
+    case = golden(COMPARE)
+    response.answer.grounding.summary_source = "llm"
+    response.answer.answer_type = "compare"
+    response.answer.summary = (
+        "Boiler Feed Pump 101 had 42 alarms and Boiler Feed Pump 102 had 18 since 2026-04-02 [T1]."
+    )
+    assert answer_problems(case, response) == [f"answer: {case.answer[1]} not in the direct answer"]
+    response.answer.summary = "Boiler Feed Pump 101 had 42 alarms and Boiler Feed Pump 102 had 20 [T1]."
+    assert check(case, response) == []
+
+
+async def test_a_count_must_be_a_whole_number(service):
+    response = (await evaluate(service, GOLDEN[:1])).rows[0].response
+    case = golden(ASSETS)
+    response.answer.summary = "17 assets [T7]."
+    assert answer_problems(case, response) == [f"answer: {case.answer[0]} not in the direct answer"]
+    response.answer.summary = "7 assets [T1]."
+    assert answer_problems(case, response) == []
+
+
+async def test_an_answer_type_can_be_one_of_several(service):
+    response = (await evaluate(service, GOLDEN[:1])).rows[0].response
+    case = Case(GOLDEN[0].question, "investigate_asset", answer_type=("list", "compare"))
+    response.answer.answer_type = "compare"
+    assert check(case, response) == []
+    response.answer.answer_type = "why"
+    assert check(case, response) == ["answer type: why, expected list or compare"]
+
+
+async def test_the_direct_answer_patterns_ignore_case(service):
+    response = (await evaluate(service, GOLDEN[:1])).rows[0].response
+    response.answer.summary = "motor m-101 had 24 alarms [T1]."
+    assert answer_problems(golden(MOST_ALARMS), response) == []
