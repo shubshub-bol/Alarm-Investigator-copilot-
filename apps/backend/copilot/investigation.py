@@ -113,6 +113,9 @@ class Investigation:
             await self.on_step(record)
 
     async def tool(self, name: str, purpose: str, **arguments: Any) -> dict | None:
+        return await self.call_tool(name, purpose, arguments)
+
+    async def call_tool(self, name: str, purpose: str, arguments: dict[str, Any]) -> dict | None:
         if self.mcp_down:
             return None
         args = {k: v for k, v in arguments.items() if v is not None}
