@@ -7,6 +7,7 @@ do for a playbook. Results get their keys when they arrive, so the keys the mode
 
 import json
 import logging
+import re
 from typing import Any, Literal
 
 from pydantic import BaseModel, Field, ValidationError
@@ -16,6 +17,7 @@ from copilot.consistency import ActionAssessment
 from copilot.facts import Fact, build_facts
 from copilot.investigation import (
     DEFAULT_LOOKBACK_DAYS,
+    MAX_PASSAGES,
     ConversationState,
     Investigation,
     InvestigationRun,
@@ -23,7 +25,7 @@ from copilot.investigation import (
 )
 from copilot.llm import LlmError, LlmProvider
 from copilot.mcp_client import McpToolClient
-from copilot.trace import ToolCallRecord, ToolSpec
+from copilot.trace import RetrievalRecord, ToolCallRecord, ToolSpec
 from copilot.understanding import (
     INTENT_HELP,
     LlmUnderstanding,
@@ -157,7 +159,10 @@ def tool_line(spec: ToolSpec) -> str:
     props = list((spec.input_schema.get("properties") or {}).keys())
     required = set(spec.input_schema.get("required") or [])
     inputs = ", ".join(f"{p}{' (required)' if p in required else ''}" for p in props) or "none"
-    return f"- {spec.name}: {spec.description.split('.')[0].strip()}. Inputs: {inputs}"
+    # The first sentence on one line. It ends at a period, a space and a capital: "(e.g. 'Pump 101')" and
+    # "grouped e.g. by name" do not end it.
+    sentence = re.split(r"(?<=\.)\s+(?=[A-Z])", " ".join(spec.description.split()), maxsplit=1)[0]
+    return f"- {spec.name}: {sentence if sentence.endswith('.') else sentence + '.'} Inputs: {inputs}"
 
 
 class Agent:
@@ -230,10 +235,13 @@ class Agent:
         )
 
     def _needs_data(self) -> bool:
-        """The question names an asset and no recipe or tool has run yet (a tool that failed has run: the model may
-        then answer with what it has). Not while the MCP server is down: then no data can be looked up at all."""
-        tried = self.recipe is not None or any(isinstance(s, ToolCallRecord) for s in self.inv.steps)
-        return bool(self.rules.asset_query) and not tried and not self.inv.mcp_down
+        """The question names an asset and no recipe or tool has reached the server yet (a tool that failed there has
+        been tried: the model may then answer with what it has; one the schema check rejected has not). Not while no
+        data can be looked up at all: the MCP server is down, or it offered no tools."""
+        tried = self.recipe is not None or any(
+            isinstance(s, ToolCallRecord) and s.error_code != "INVALID_INPUT" for s in self.inv.steps
+        )
+        return bool(self.rules.asset_query) and bool(self.tools) and not tried and not self.inv.mcp_down
 
     def _not_done_yet(self, step: AgentStep) -> str | None:
         if step.final is None:
@@ -285,6 +293,11 @@ class Agent:
             return f"Not run: there is no recipe '{step.name}'. Recipes: {', '.join(RECIPES)}."
         if self.recipe is not None:
             return f"Not run: one recipe per question ({self.recipe} already ran); use the tools for anything more."
+        if "asset_id" in args and "asset" not in args:  # the asset is "a name or id": an id is an asset
+            args = {**args, "asset": args["asset_id"]}
+        unknown = sorted(k for k in args if k not in RECIPE_INPUTS and k != "asset_id")
+        if unknown:  # not dropped: a misspelt input would quietly change what the recipe investigates
+            return f"Not run: unknown recipe input(s) {', '.join(unknown)}; inputs: {', '.join(RECIPE_INPUTS)}."
         fields = {("asset_query" if k == "asset" else k): v for k, v in args.items() if k in RECIPE_INPUTS}
         try:  # the same checks as the understanding call: types, lengths, severities, a 1-365 day window
             parsed = LlmUnderstanding(intent=step.name, rationale=step.why, **fields)
@@ -319,9 +332,16 @@ class Agent:
         # No hidden equipment filter: the model chose the query, and a comparison may need another asset's documents.
         filters = RetrievalFilters(doc_types=doc_types)
         passages = await self.inv.retrieve(query, f"Search the documents: {query}"[:200], filters, k=4, main=True)
-        if not passages:
-            return "No relevant passages."
-        return "\n".join(f"[{p.citation.key}] {p.citation.label}: {_cut(p.text, 500)}" for p in passages)
+        lines = [f"[{p.citation.key}] {p.citation.label}: {_cut(p.text, 500)}" for p in passages]
+        # retrieve returns only the passages it kept; its trace record lists what the search found (key None = not kept)
+        record = self.inv.steps[-1]
+        left_out = sum(r.key is None for r in record.results) if isinstance(record, RetrievalRecord) else 0
+        if left_out:
+            lines.append(
+                f"{left_out} passage(s) found but not kept: the evidence limit ({MAX_PASSAGES} passages) is reached; "
+                "answer with the passages already given."
+            )
+        return "\n".join(lines) or "No relevant passages."
 
     def _update_state(self) -> None:
         """What a follow-up ('this alarm') can refer back to, as Investigation.run records it."""

@@ -5,8 +5,8 @@ import json
 import httpx
 import pytest
 
-from copilot.agent import MAX_STEPS, RESULT_CHARS, Agent
-from copilot.investigation import ConversationState
+from copilot.agent import MAX_STEPS, RESULT_CHARS, Agent, tool_line
+from copilot.investigation import MAX_PASSAGES, ConversationState
 from copilot.llm import LlmError
 from copilot.mcp_client import McpToolClient, in_memory_connector
 from copilot_test_helpers import simulator_transport
@@ -159,6 +159,10 @@ async def test_a_second_recipe_is_not_run(mcp, retriever):
         (recipe("investigate_asset", lookback_days=5000), "Not run: the recipe's inputs are invalid"),
         (tool("get_alarm_details"), "Failed: [INVALID_INPUT]"),  # alarm_id is required
         (search(""), "Not run: search_documents needs a 'query'"),
+        (
+            recipe("investigate_asset", asset_name="Boiler Feed Pump 101"),
+            "Not run: unknown recipe input(s) asset_name; inputs: asset, asset_type, site",
+        ),
     ],
 )
 async def test_bad_steps_are_reported_and_not_run(step, reply, mcp, retriever):
@@ -280,3 +284,75 @@ async def test_done_without_a_final_answer_is_not_accepted(mcp, retriever):
         retriever=retriever,
     )
     assert "'done' needs the final answer" in llm.prompts[1] and result.final is not None
+
+
+# ---------------------------------------------------------------- fix round 1
+async def test_asset_id_is_accepted_as_the_asset_of_a_recipe(mcp, retriever):
+    result, _ = await run_agent(
+        "Investigate Boiler Feed Pump 102",
+        recipe("investigate_asset", asset_id="AST-BFP-102"),
+        done("Boiler Feed Pump 102 was investigated [T1].", "why"),
+        mcp=mcp,
+        retriever=retriever,
+    )
+    assert result.understanding.asset_query == "AST-BFP-102"
+    assert result.run.evidence.asset["asset_id"] == "AST-BFP-102"  # not the pump the topic search would pick
+
+
+async def test_a_recipe_with_unknown_inputs_is_not_run(mcp, retriever):
+    result, llm = await run_agent(
+        "Any alarms?",
+        recipe("active_alarms", site="NorthPlant", zone="A", area="B"),
+        done("Nothing was found.", "cannot_answer"),
+        mcp=mcp,
+        retriever=retriever,
+    )
+    assert "Not run: unknown recipe input(s) area, zone; inputs: " in llm.prompts[1]
+    assert (result.run.steps, result.understanding.intent) == ([], "agent")  # nothing ran, no recipe is used up
+
+
+async def test_a_tool_call_rejected_by_its_schema_is_not_a_lookup(mcp, retriever):
+    result, llm = await run_agent(
+        "Boiler B-201 how many times it failed in past?",
+        tool("get_alarm_details"),  # alarm_id is required: the call never reaches the server
+        done("The data could not be read.", "cannot_answer"),
+        recipe("investigate_asset", asset="Boiler B-201"),
+        done("Boiler B-201 had 24 alarms in the last 90 days [T2].", "count"),
+        mcp=mcp,
+        retriever=retriever,
+    )
+    assert "look up its data first" in llm.prompts[2]
+    assert result.understanding.intent == "investigate_asset" and result.final.answer_type == "count"
+
+
+async def test_a_search_past_the_evidence_limit_says_so(mcp, retriever):
+    result, llm = await run_agent(
+        "Investigate Boiler Feed Pump 101",
+        recipe("investigate_asset", asset="Boiler Feed Pump 101"),
+        search("lockout and isolation before inspecting a pump", doc_types=["safety_instruction"]),
+        search("how alarm priorities are set", doc_types=["alarm_philosophy"]),
+        search("bearing inspection and maintenance", doc_types=["maintenance_manual"]),
+        search("starting and stopping a pump", doc_types=["operating_procedure"]),
+        done("Vibration is rising [T4].", "why"),
+        mcp=mcp,
+        retriever=retriever,
+    )
+    assert len(result.run.evidence.passages) == MAX_PASSAGES  # the limit was reached
+    assert "not kept" in llm.prompts[-1] and f"the evidence limit ({MAX_PASSAGES} passages)" in llm.prompts[-1]
+    assert "No relevant passages." not in llm.prompts[-1]  # passages were found: only the limit stopped them
+
+
+async def test_the_menu_lines_are_whole_sentences_on_one_line(mcp):
+    lines = {t.name: tool_line(t) for t in await mcp.discover()}
+    assert lines and all("\n" not in line for line in lines.values())
+    assert "to asset ids, best match first. Inputs: " in lines["search_assets"]  # not cut at "e.g."
+    assert "grouped e.g. by alarm_name. Inputs: " in lines["summarize_alarms"]
+    assert "ISA-18.2 uses 10 in 10) and the alarm that initiated each flood. Inputs: " in lines["analyze_alarm_floods"]
+
+
+async def test_a_named_asset_does_not_wait_for_a_lookup_that_has_no_tools(mcp, retriever):
+    llm = ScriptedLlm(done("No data could be looked up.", "cannot_answer"), done("Not reached.", "cannot_answer"))
+    question = "Boiler B-201 how many times it failed in past?"
+    agent = Agent(question, "", llm, mcp, [], retriever, ConversationState(), "t")  # no tools were discovered
+    result = await agent.run()
+    assert (result.final.direct_answer, result.steps, len(llm.prompts)) == ("No data could be looked up.", 1, 1)
