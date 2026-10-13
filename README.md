@@ -16,7 +16,9 @@ investigations, so the copilot still works offline.
 
 ![The copilot answering the acceptance question](docs/screenshots/answer.png)
 
-**Demo video (up to 10 minutes):** _link added after recording_
+**Demo video (6 minutes, narrated):** [watch on Google Drive](https://drive.google.com/file/d/1BXwOnMjUBtnicGWQ3C8ii375OabSCgsF/view?usp=sharing):
+a full investigation, the MCP trace and tool discovery, RAG citations, the agent, honest "found nothing" and
+off-topic answers, and the MCP server failing.
 
 | Start here | |
 |---|---|
