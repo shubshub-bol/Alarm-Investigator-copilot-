@@ -1100,3 +1100,49 @@ async def test_a_recipes_negative_finding_can_be_cited(mcp, retriever):
     assert "[T1] There are 0 active alarms on boiler assets (Boiler B-201)." in llm.prompts[1]
     answer = compose_agent_answer(question, result, llm)
     assert answer.grounding.summary_source == "llm" and answer.grounding.unknown_citations == []
+
+
+async def test_an_answer_needs_something_looked_up_first(mcp, retriever):
+    question = "When an AI recommendation disagrees with the operating procedure, which one wins?"
+    result, llm = await run_agent(
+        question,
+        done("The approved procedure always governs.", "document"),
+        search("recommendation conflicts with an approved operating procedure, which one governs"),
+        done("The approved operating procedure governs [S1].", "document"),
+        mcp=mcp,
+        retriever=retriever,
+    )
+    assert "nothing has been looked up yet" in llm.prompts[1]
+    assert result.final.direct_answer == "The approved operating procedure governs [S1]."
+
+
+async def test_a_claim_without_evidence_is_not_shown(mcp, retriever):
+    question = "When an AI recommendation disagrees with the operating procedure, which one wins?"
+    result, llm = await run_agent(
+        question,
+        done("The approved procedure always governs.", "document"),
+        done("The approved procedure always governs.", "document"),  # asked once to look up; it did not
+        mcp=mcp,
+        retriever=retriever,
+    )
+    answer = compose_agent_answer(question, result, llm)
+    assert answer.grounding.summary_source == "template"
+    assert answer.grounding.summary_rejected == "no evidence was looked up"
+    assert answer.answer_type is None
+
+
+async def test_cannot_answer_needs_no_evidence(mcp, retriever):
+    result, llm = await run_agent(
+        "What is the capital of France?",
+        done("I cannot answer general questions; I help with plant alarms.", "cannot_answer"),
+        mcp=mcp,
+        retriever=retriever,
+    )
+    assert len(llm.prompts) == 1  # accepted at once
+    answer = compose_agent_answer("What is the capital of France?", result, llm)
+    assert answer.summary == "I cannot answer general questions; I help with plant alarms."
+    assert answer.answer_type == "cannot_answer"
+
+
+def test_the_instructions_say_an_answer_rests_on_results():
+    assert "with no results, the only answer is cannot_answer" in AGENT_SYSTEM

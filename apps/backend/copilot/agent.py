@@ -102,6 +102,7 @@ In "done", write final:
 - gaps: what is missing or uncertain.
 Rules:
 - Use only numbers, codes and names that appear in the results. Never invent data.
+- Every answer rests on results: look something up first; with no results, the only answer is cannot_answer.
 - Keep the evidence's own terms: an alarm is not a failure or a trip unless a fact says so.
 - Never recommend an API action that conflicts with a document.
 - When the question names an asset, look up its data before answering.
@@ -324,6 +325,7 @@ class Agent:
         self.results: dict[str, str] = {}  # call -> result, so a repeated call is not run again
         self.recipe: str | None = None
         self.recipe_keys: list[str] | None = None
+        self.asked_to_look_up = False
 
     # ------------------------------------------------------------------ loop
     async def run(self) -> AgentRun:
@@ -387,11 +389,26 @@ class Agent:
         )
         return bool(self.rules.asset_query) and bool(self.tools) and not tried and not self.inv.mcp_down
 
+    def _looked_up(self) -> bool:
+        """A lookup has run: a tool call that reached the server, or a document search."""
+        return any(isinstance(s, RetrievalRecord) or s.error_code != "INVALID_INPUT" for s in self.inv.steps)
+
+    def _can_look_up(self) -> bool:
+        return self.inv.retriever is not None or (bool(self.tools) and not self.inv.mcp_down)
+
     def _not_done_yet(self, step: AgentStep) -> str | None:
         if step.final is None:
             return "'done' needs the final answer."
         if self._needs_data():
             return f"this question names an asset ({self.rules.asset_query}): look up its data first."
+        if (
+            step.final.answer_type != "cannot_answer"
+            and not self._looked_up()
+            and self._can_look_up()
+            and not self.asked_to_look_up
+        ):
+            self.asked_to_look_up = True  # once: the answer checks reject a claim that still rests on nothing
+            return "nothing has been looked up yet: search the documents or call a tool, or answer cannot_answer."
         return None
 
     # ----------------------------------------------------------------- steps
@@ -574,6 +591,7 @@ def compose_agent_answer(question: str, agent_run: AgentRun, llm: LlmProvider | 
         degraded_reason=agent_run.model_error,
         extra_gaps=[STEP_LIMIT_GAP] if agent_run.hit_limit else None,
         recipe_keys=agent_run.recipe_keys,
+        answer_type=final.answer_type if final else None,
     )
     # The mode is "llm" only when the final reply was applied; without one, compose_answer left it "template".
     g = answer.grounding

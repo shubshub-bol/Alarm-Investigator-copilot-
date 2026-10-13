@@ -464,8 +464,12 @@ def _evidence_text(question: str, run: InvestigationRun, facts: list[Fact]) -> s
     )
 
 
-def _text_problem(text: str, keys: list[str], valid: set[str], evidence: str, max_chars: int) -> str | None:
+def _text_problem(
+    text: str, keys: list[str], valid: set[str], evidence: str, max_chars: int, allow_no_evidence: bool = False
+) -> str | None:
     """Why text the model wrote cannot be shown, or None. `text` is without its citation groups."""
+    if not valid and not allow_no_evidence:  # nothing was looked up: a claim would rest on the model's memory
+        return "no evidence was looked up"
     unknown = [k for k in keys if k not in valid]
     if unknown:
         return f"unknown citation {unknown[0]}"
@@ -511,10 +515,12 @@ def _apply_reply(
     sources: list[tuple[str, str]],
     valid: set[str],
     grounding: Grounding,
+    allow_no_evidence: bool = False,
 ) -> None:
     """Put the model's checked text into the answer: its summary (or keep the plain one), analysis, verdicts and
     caveats. Unknown keys are reported; a failed analysis statement is dropped. `sources` are (key, text) of every
-    fact and passage, for text the model left uncited."""
+    fact and passage, for text the model left uncited. Text is rejected when there is no evidence at all, unless
+    `allow_no_evidence` (a cannot_answer)."""
     unknown: set[str] = set()
     summary = _bracket_citations(reply.summary)
     text, keys = _split_citations(summary)
@@ -528,7 +534,7 @@ def _apply_reply(
         summary = _first_sentences(summary, SUMMARY_MAX)
         text, keys = _split_citations(summary)
     unknown.update(k for k in keys if k not in valid)
-    problem = _text_problem(text, keys, valid, evidence, SUMMARY_MAX)
+    problem = _text_problem(text, keys, valid, evidence, SUMMARY_MAX, allow_no_evidence)
     if problem:
         grounding.summary_rejected, grounding.rejected_summary = problem, reply.summary[:300]
         log.warning("model summary rejected; using the plain summary", extra={"fields": {"reason": problem}})
@@ -542,7 +548,7 @@ def _apply_reply(
         if not keys and valid:
             text, keys = _split_citations(_add_keys(text, sources))
         unknown.update(k for k in keys if k not in valid)
-        if _text_problem(text, keys, valid, evidence, ANALYSIS_MAX):
+        if _text_problem(text, keys, valid, evidence, ANALYSIS_MAX, allow_no_evidence):
             grounding.removed_statements += 1
         else:
             body.analysis.append(Statement(text=text, citations=keys))
@@ -649,10 +655,12 @@ def compose_answer(
     degraded_reason: str | None = None,
     extra_gaps: list[str] | None = None,
     recipe_keys: list[str] | None = None,
+    answer_type: str | None = None,
 ) -> CopilotAnswer:
     """The answer from the evidence. Without `reply` it is the template answer (the rules path). The agent passes its
     own `facts` (any tool's results, keyed as the model saw them), the keys of its recipe's facts, and its final
-    `reply`, which is checked here; `degraded_reason` and `extra_gaps` report how the run ended."""
+    `reply`, which is checked here; `degraded_reason` and `extra_gaps` report how the run ended. `answer_type` is
+    the agent's answer type: a `cannot_answer` may rest on no evidence, any other reply needs some."""
     ev = run.evidence
     facts = facts if facts is not None else build_facts(run)
     citations = [p.citation for p in ev.passages]
@@ -666,7 +674,15 @@ def compose_answer(
     if reply is not None:
         grounding.mode = "llm"
         sources = [(f.key, f.statement) for f in facts] + [(p.citation.key, p.text) for p in ev.passages]
-        _apply_reply(body, reply, _evidence_text(question, run, facts), sources, valid, grounding)
+        _apply_reply(
+            body,
+            reply,
+            _evidence_text(question, run, facts),
+            sources,
+            valid,
+            grounding,
+            allow_no_evidence=answer_type == "cannot_answer",
+        )
     if degraded_reason:
         grounding.degraded, grounding.degraded_reason = True, degraded_reason
 
