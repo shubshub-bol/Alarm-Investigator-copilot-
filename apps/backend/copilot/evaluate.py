@@ -293,7 +293,14 @@ def write_report(report: EvalReport, path: Path, mode: str) -> None:
             f"{notes(r.response)} |"
             for r in report.rows
         ),
+        "",
+        "## Answers",
     ]
+    for n, r in enumerate(report.rows, 1):  # what was actually said: a real-model run is judged by this too
+        tools = [s.tool for s in r.response.trace if isinstance(s, ToolCallRecord)]
+        lines += ["", f"### {n}. {r.case.question} ({'FAIL' if r.problems else 'pass'})", ""]
+        lines += [f"Tools: {', '.join(tools) or 'none'}", ""]
+        lines += [f"> {line}" for line in r.response.answer.summary.splitlines() or [""]]
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text("\n".join(lines) + "\n", encoding="utf-8", newline="\n")
 

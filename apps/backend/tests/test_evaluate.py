@@ -72,6 +72,16 @@ async def test_the_report_says_how_each_question_was_understood_and_why_a_summar
     assert 'model wrote: "Boiler Feed Pump 101 had 31 alarms / rising"' in text  # a | would break the table
 
 
+async def test_the_report_shows_each_answer_and_the_tools_behind_it(service, tmp_path):
+    """A real-model run is judged by what the model said, not only by the checks' verdicts."""
+    report = await evaluate(service, GOLDEN[:1])
+    write_report(report, tmp_path / "run.md", "offline")
+    text = (tmp_path / "run.md").read_text(encoding="utf-8")
+    assert "## Answers" in text
+    assert f"> {report.rows[0].response.answer.summary}" in text
+    assert "Tools: search_assets, get_asset_metadata, summarize_alarms" in text
+
+
 async def test_the_report_has_unix_line_endings_like_the_rest_of_the_repository(service, tmp_path):
     write_report(await evaluate(service, GOLDEN[:1]), tmp_path / "run.md", "offline")
     assert b"\r\n" not in (tmp_path / "run.md").read_bytes()
