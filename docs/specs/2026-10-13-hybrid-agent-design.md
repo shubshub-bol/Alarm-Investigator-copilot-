@@ -1,6 +1,7 @@
 # Hybrid agent: design
 
-Date: 2026-10-13. Status: agreed in review, not yet built.
+Date: 2026-10-13. Status: agreed in review, not yet built. Clarified while planning: 6 recipes (not 8), the fallback
+when the model fails at once, and the named-asset rule in the loop.
 
 ## Goal
 
@@ -23,7 +24,7 @@ Success:
 
 | Topic | Decision |
 |---|---|
-| Approach | One agent loop. Its menu is the 8 playbooks (as "recipes"), the 13 MCP tools and a document search. A common question is one recipe step; an unusual one combines small tools. |
+| Approach | One agent loop. Its menu is the 6 live-data playbooks (as "recipes"), the 13 MCP tools and a document search (the document playbook). A common question is one recipe step; an unusual one combines small tools. |
 | Step format | Each model call returns one structured step: a recipe, a tool, a document search, or "done" with the answer. Provider-neutral (Gemini and OpenRouter), and a fake model can play it in tests. |
 | Limits | At most 6 steps; read-only tools; at most one recipe per question. |
 | Answer | The model names the answer type (count, list, compare, why, what to do, document, cannot answer) and writes a direct answer plus its analysis. Code builds the details and runs the existing checks. |
@@ -71,12 +72,15 @@ What the code does:
 | A tool fails | The model gets the error code and message; it can try another way or answer |
 | The same call again | Not run; the model gets the earlier result |
 | A second recipe | Not run; the model is told to use the tools for anything more |
+| The question names an asset (by the keyword rules) and no recipe or tool has run yet, but the step is a document search or "done" | Not run; the model is told to look up the asset's data first (the rule "a named asset always gets its live data" carries over) |
 | Result too long | Shortened for the model: lists cut to their first 10 items plus the total count, raw `meta` blocks dropped |
 | 6 steps used, model error or invalid reply | The loop stops; the answer is built from what was found (section 5) |
 
 ## 3. Recipes as tools
 
-The 8 playbooks in `investigation.py` are offered as recipes, each with the inputs it reads from
+The 6 playbooks in `investigation.py` that read live data are offered as recipes (`investigate_asset`,
+`active_alarms`, `highest_priority`, `related_assets`, `procedure_lookup`, `recommendation_check`); the document
+playbook is the `search_documents` action, and small talk keeps its own path. Each recipe has the inputs it reads from
 `QueryUnderstanding`: `asset` (a name or id), `asset_type`, `site`, `unit`, `lookback_days`, `severities`,
 `alarm_topic`, `uses_context`. Running a recipe builds a `QueryUnderstanding` with that intent and those inputs
 and runs the playbook on the agent's `Investigation`; nothing in the playbooks is rewritten.
@@ -119,6 +123,8 @@ answers and for the rules path).
 ## 6. Without a model
 
 `service.py` uses the agent only when a model is configured. Without one, the rules choose a playbook as today.
+If the model fails before any step has run, the question is answered the same way and marked degraded, as a model
+outage is today.
 A question that names nothing the rules recognise falls back to the document search, as today; if that finds
 nothing relevant, the answer adds "This question needs the language model."
 
@@ -137,8 +143,8 @@ for a new chat. This replaces the current understanding call, so the cost is abo
 ## 9. Evaluation
 
 The answer-quality set gains questions no playbook covers, each with an expected answer type and key facts:
-"How many refineries do we have?" (1, EastRefinery), "Compare Boiler Feed Pump 101 and 102" (both alarm counts),
-"Which motor alarmed most in the last 90 days?", "Did anything alarm at SouthPlant yesterday?". They are marked
+"How many refineries do we have?" (1, EastRefinery), "Compare Boiler Feed Pump 101 and 102 over the last 90 days" (42 and 20 alarms),
+"Which motor alarmed most in the last 90 days?" (Motor M-101), "How many assets are at EastRefinery?" (7). They are marked
 `model_only`: skipped offline (CI runs the set offline and must stay at 100%), run with the model in small parts
 because of the free tier's daily limit, and recorded in `docs/evaluation/`. The report counts steps per question
 and stops that hit the step limit.
