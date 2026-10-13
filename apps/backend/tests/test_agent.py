@@ -505,3 +505,15 @@ async def test_hitting_the_step_limit_is_a_partial_answer(retriever):
     llm = ScriptedLlm(*[tool("search_assets", query=f"pump {n}") for n in range(MAX_STEPS)])
     response = await service_with(llm, retriever).ask("Find every pump")
     assert response.status == "partial"
+
+
+async def test_a_models_corrected_input_slip_does_not_make_the_answer_partial(retriever):
+    llm = ScriptedLlm(
+        tool("search_assets"),  # no query: the schema check rejects it
+        tool("search_assets", query="boiler", asset_type="boiler"),
+        done("Boiler B-201 is the only boiler [T1]."),  # the rejected call gave no fact, so the next is T1
+    )
+    response = await service_with(llm, retriever).ask("How many boilers do we have?")
+    assert response.trace[0].status == "invalid_input"
+    assert response.answer.summary == "Boiler B-201 is the only boiler [T1]."  # the model's answer was shown
+    assert response.status == "ok"

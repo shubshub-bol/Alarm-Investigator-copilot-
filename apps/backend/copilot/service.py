@@ -160,7 +160,11 @@ class CopilotService:
             if title_task is not None:
                 title_task.cancel()  # a no-op once it has finished; stops it if this question was cancelled
 
-        failed = any(s.status != "ok" for s in run.steps)
+        agent_answered = agent_run is not None and not agent_run.failed_at_once
+        # An input the schema check rejected is the agent's own slip, which the model saw and could correct: no gap in
+        # the data. On the rules path it would be a bug, so there it counts.
+        ok_statuses = ("ok", "invalid_input") if agent_answered else ("ok",)
+        failed = any(s.status not in ok_statuses for s in run.steps)
         if not discovery.connected or answer.grounding.degraded or u.fallback_reason:
             status = "degraded"
         elif failed or answer.grounding.agent_hit_limit:
