@@ -1,6 +1,6 @@
-"""Copilot evaluation on a golden question set: each question must get the right kind of investigation, the right
-asset, live data when it needs it, the right documents, the key facts, the procedure's step first, and only valid
-citations.
+"""Copilot evaluation on a golden question set: each question must get the right asset, live data when it needs it,
+the right documents, the key facts, the procedure's step first, and only valid citations. The intent (the kind of
+investigation) is checked only on the rules path: with a model the agent may take any route, and only outcomes count.
 
     python -m copilot.evaluate                                                    # rules and templates: no LLM
     python -m copilot.evaluate --llm --limit 10 --report docs/evaluation/run.md   # with the model, part 1
@@ -39,12 +39,12 @@ OFF_TOPIC = ("conversation", "knowledge_question")  # a polite reply or "no rele
 @dataclass(frozen=True)
 class Case:
     question: str
-    intent: str | tuple[str, ...]  # the acceptable intent(s)
+    intent: str | tuple[str, ...]  # the acceptable intent(s); checked on the rules path only, not with a model
     asset_id: str | None = None  # the asset the answer is about; None = not checked
     uses_data: bool = True  # at least one MCP tool call
     sources: tuple[str, ...] | None = None  # a source label must start with one of these; () = no sources at all
     gap: str | None = None  # text one of the answer's gaps must contain (an honest "not found")
-    facts: tuple[str, ...] = ()  # text each of which must appear in the findings
+    facts: tuple[str, ...] = ()  # text the findings or the direct answer must show; digits only: a whole number
     first_step: str | None = None  # a source label the first recommended action must cite
     procedure: bool | None = None  # the procedure section must be present (True) or absent (False)
     answer_type: str | tuple[str, ...] | None = None  # the agent's acceptable answer type(s), checked when it has one
@@ -167,6 +167,13 @@ class EvalReport:
         }
 
 
+def _shows(fact: str, text: str) -> bool:
+    """Whether the text shows the fact; digits alone must be a whole number, not part of an id, a year or a time."""
+    if fact.isdigit():
+        return re.search(rf"(?<![\w:-])(?<!\d\.){re.escape(fact)}(?![\w:-])(?!\.\d)", text) is not None
+    return fact in text
+
+
 def check(case: Case, response: ChatResponse) -> list[str]:
     """What is wrong with this answer, one line per check that failed."""
     problems = []
@@ -188,9 +195,9 @@ def check(case: Case, response: ChatResponse) -> list[str]:
         problems.append(f"sources: {', '.join(labels) or 'none'}, expected {' or '.join(case.sources)}")
     if case.gap and not any(case.gap.lower() in g.lower() for g in response.answer.gaps):
         problems.append(f"gap: none mentions '{case.gap}'")
-    findings = " ".join(s.text for s in response.answer.findings)
-    if missing := [f for f in case.facts if f not in findings]:
-        problems.append(f"facts: {', '.join(missing)} not in the findings")
+    shown = (" ".join(s.text for s in response.answer.findings), response.answer.summary)  # what the operator reads
+    if missing := [f for f in case.facts if not any(_shows(f, text) for text in shown)]:
+        problems.append(f"facts: {', '.join(missing)} not in the findings or the direct answer")
     if case.first_step:
         first = response.answer.recommended_actions[:1]
         cited = [c.label for c in response.answer.citations if first and c.key in first[0].citations]

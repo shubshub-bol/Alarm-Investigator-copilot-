@@ -228,6 +228,46 @@ async def test_the_report_lists_each_answers_document_searches(service, tmp_path
     assert "Searches: pump High Vibration (PMP-VIB-HI)" in text
 
 
+B201 = "Boiler B-201 how many times it failed in past?"
+
+
+def fact_problems(case: Case, response: ChatResponse) -> list[str]:
+    return [p for p in check(case, response) if p.startswith("facts:")]
+
+
+def shown(response: ChatResponse, finding: str, summary: str) -> ChatResponse:
+    """The same response with one finding and a direct answer: what the operator reads."""
+    response = response.model_copy(deep=True)
+    response.answer.findings = response.answer.findings[:1]
+    response.answer.findings[0].text = finding
+    response.answer.summary = summary
+    return response
+
+
+@pytest.mark.parametrize("finding", ["Alarm ALM-000424 tripped", "Trip logged at 12:24:00", "Since 2024", "Load 0.24"])
+async def test_a_24_inside_an_id_a_year_or_a_time_is_not_the_count(service, finding):
+    response = (await evaluate(service, [golden(B201)])).rows[0].response
+    changed = shown(response, finding, "No count was found [T1].")
+    assert fact_problems(golden(B201), changed) == ["facts: 24 not in the findings or the direct answer"]
+
+
+@pytest.mark.parametrize("summary", ["Boiler B-201 had 24 alarms [T1].", "Boiler B-201 had 24."])
+async def test_a_24_in_the_direct_answer_counts_as_shown(service, summary):
+    response = (await evaluate(service, [golden(B201)])).rows[0].response
+    changed = shown(response, "Failure count since 2026-04-02", summary)
+    assert fact_problems(golden(B201), changed) == []
+
+
+async def test_the_count_is_found_in_the_offline_findings(service):
+    response = (await evaluate(service, [golden(B201)])).rows[0].response
+    assert fact_problems(golden(B201), response) == []
+
+
+async def test_a_data_case_answered_without_data_is_reported(service):
+    documents = (await evaluate(service, [golden("What does the safety instruction say about lockout?")])).rows[0]
+    assert "live data: none, expected some" in check(GOLDEN[0], documents.response)
+
+
 async def test_the_notes_give_the_agents_steps_and_why_it_stopped(service):
     response = (await evaluate(service, GOLDEN[:1])).rows[0].response
     g = response.answer.grounding
