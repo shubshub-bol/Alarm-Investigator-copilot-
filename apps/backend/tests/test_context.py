@@ -1,10 +1,10 @@
 """What a chat remembers for the model: the last 10 turns in full, older turns as their important bits."""
 
+from copilot.agent import AgentStep
 from copilot.context import ANSWER_CHARS, RECENT_TURNS, remember, render
 from copilot.investigation import ConversationState, Evidence
 from copilot.mcp_client import in_memory_connector
 from copilot.service import CopilotService
-from copilot.understanding import LlmUnderstanding
 from copilot_test_helpers import simulator_transport
 from mcp_test_helpers import make_server
 
@@ -60,9 +60,14 @@ class RecordingLlm:
 
     async def generate_json(self, system, prompt, schema):
         self.prompts.append(prompt)
-        if schema is LlmUnderstanding:
-            return schema.model_validate({"intent": "investigate_asset", "asset_query": "Boiler Feed Pump 101"})
-        return schema.model_validate({"summary": "Vibration on Boiler Feed Pump 101 is rising [T3]."})
+        if schema is AgentStep and "RESULTS SO FAR:\n(none yet)" in prompt:
+            return schema.model_validate(
+                {"action": "tool", "name": "search_assets", "arguments_json": '{"query": "Boiler Feed Pump 101"}'}
+            )
+        if schema is AgentStep:
+            final = {"answer_type": "list", "direct_answer": "Boiler Feed Pump 101 is a pump [T1]."}
+            return schema.model_validate({"action": "done", "final": final})
+        return schema.model_validate({"intent": "investigate_asset", "asset_query": "Boiler Feed Pump 101"})
 
     async def generate_text(self, system, prompt, temperature=None):
         return "Pump vibration"
@@ -74,10 +79,8 @@ async def test_each_question_carries_the_chat_so_far(retriever):
     first = await service.ask("Investigate Boiler Feed Pump 101")
     await service.ask("And over the last 30 days?", first.conversation_id)
 
-    understanding = [p for p in llm.prompts if p.startswith(("Question:", "Earlier in this chat"))]
-    assert "Earlier" not in understanding[0]  # a new chat has no history
-    assert "User: Investigate Boiler Feed Pump 101" in understanding[1]
-    assert "Copilot: Vibration on Boiler Feed Pump 101 is rising." in understanding[1]
-    answers = [p for p in llm.prompts if "TOOL FACTS" in p]
-    assert "User: Investigate Boiler Feed Pump 101" in answers[1]
+    starts = [p for p in llm.prompts if "RESULTS SO FAR:\n(none yet)" in p]  # each question's first agent step
+    assert "EARLIER IN THIS CHAT" not in starts[0]  # a new chat has no history
+    assert "User: Investigate Boiler Feed Pump 101" in starts[1]
+    assert "Copilot: Boiler Feed Pump 101 is a pump." in starts[1]
     assert len(service.conversations.resume(first.conversation_id).state.history) == 2

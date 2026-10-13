@@ -9,6 +9,7 @@ from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, Field
 
+from copilot.agent import Agent, AgentRun, compose_agent_answer
 from copilot.answer import CopilotAnswer, compose_answer, conversation_reply
 from copilot.context import remember, render
 from copilot.conversations import ConversationStore, OpenConversation, StorageError, new_conversation_id
@@ -25,6 +26,7 @@ log = logging.getLogger("copilot.service")
 TraceStep = Annotated[ToolCallRecord | RetrievalRecord, Field(discriminator="kind")]
 EventCallback = Callable[[str, dict[str, Any]], Awaitable[None]]  # (event name, JSON-ready data)
 TITLE_WAIT_SECONDS = 3.0  # how long a finished answer waits for a slow LLM title before using the rule title
+NEEDS_MODEL = "This question needs the language model."
 
 
 class DiscoveryRecord(BaseModel):
@@ -107,7 +109,7 @@ class CopilotService:
 
         t0 = time.perf_counter()
         chat = render(conv.state)  # the chat so far, for the model: recent turns in full, older ones in short
-        u = await understand(question, self.llm, chat)
+        u = await understand(question, None)  # keyword rules: small talk, and the reading used without a model
         understanding_ms = _ms(t0)
         await emit("understanding", u.model_dump(mode="json"))
         if u.intent == "conversation":
@@ -118,6 +120,7 @@ class CopilotService:
 
         # The LLM title runs alongside the investigation and is only waited for once the answer is ready.
         title_task = asyncio.create_task(llm_title(self.llm, question)) if self.llm and conv.needs_title else None
+        agent_run: AgentRun | None = None
         try:
             t0 = time.perf_counter()
             async with McpToolClient(self.connector, server_name=self.server_name) as mcp:
@@ -131,11 +134,26 @@ class CopilotService:
                     duration_ms=_ms(t0),
                 )
                 await emit("discovery", discovery.model_dump(mode="json"))
-                run = await investigate(u, mcp, self.retriever, conv.state, trace_id=trace_id, on_step=on_step)
+                if self.llm is not None:
+                    agent = Agent(question, chat, self.llm, mcp, tools, self.retriever, conv.state, trace_id, on_step)
+                    agent_run = await agent.run()
+                if agent_run is None or agent_run.failed_at_once:
+                    run = await investigate(u, mcp, self.retriever, conv.state, trace_id=trace_id, on_step=on_step)
+                else:
+                    run = agent_run.run
             investigation_ms = _ms(t0)
 
             t0 = time.perf_counter()
-            answer = await compose_answer(question, run, self.llm, chat)
+            if agent_run is not None and not agent_run.failed_at_once:
+                u = agent_run.understanding
+                answer = await compose_agent_answer(question, agent_run, self.llm, chat)
+            else:
+                reason = agent_run.model_error if agent_run else None
+                if reason:
+                    u = u.model_copy(update={"fallback_reason": reason})
+                uncovered = u.intent == "knowledge_question" and run.evidence.retrieval_confidence in ("low", "none")
+                extra = [NEEDS_MODEL] if self.llm is None and uncovered else None
+                answer = await compose_answer(question, run, None, chat, degraded_reason=reason, extra_gaps=extra)
             answer_ms = _ms(t0)
             title = await self._title(title_task, u, run.evidence, answer) if conv.needs_title else None
         finally:
@@ -145,7 +163,7 @@ class CopilotService:
         failed = any(s.status != "ok" for s in run.steps)
         if not discovery.connected or answer.grounding.degraded or u.fallback_reason:
             status = "degraded"
-        elif failed:
+        elif failed or answer.grounding.agent_hit_limit:
             status = "partial"
         else:
             status = "ok"

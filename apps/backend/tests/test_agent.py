@@ -9,6 +9,7 @@ from copilot.agent import MAX_STEPS, RESULT_CHARS, Agent, compose_agent_answer, 
 from copilot.investigation import MAX_PASSAGES, ConversationState
 from copilot.llm import LlmError
 from copilot.mcp_client import McpToolClient, in_memory_connector
+from copilot.service import NEEDS_MODEL, CopilotService
 from copilot_test_helpers import simulator_transport
 from mcp_test_helpers import make_server
 
@@ -468,3 +469,39 @@ async def test_a_rejected_answer_after_a_document_search_falls_back_to_the_docum
     assert answer.grounding.summary_source == "template"
     assert answer.summary.startswith("SAF-")  # the closest sentence of the best safety instruction, cited
     assert answer.answer_type is None
+
+
+# ---------------------------------------------------------------- the service
+def service_with(llm, retriever):
+    return CopilotService(in_memory_connector(make_server(simulator_transport())), retriever, llm)
+
+
+async def test_with_a_model_the_agent_answers(retriever):
+    llm = ScriptedLlm(
+        tool("search_assets", query="boiler", asset_type="boiler"), done("Boiler B-201 is the only boiler [T1].")
+    )
+    response = await service_with(llm, retriever).ask("How many boilers do we have?")
+    assert (response.understanding.intent, response.answer.answer_type) == ("agent", "count")
+    assert response.answer.summary == "Boiler B-201 is the only boiler [T1]."
+    assert [s.tool for s in response.trace if s.kind == "mcp_tool"] == ["search_assets"]
+    assert response.status == "ok"
+
+
+async def test_a_model_that_fails_at_once_leaves_the_answer_to_the_rules(retriever):
+    llm = ScriptedLlm(LlmError("429 RESOURCE_EXHAUSTED"))
+    question = "Investigate Boiler Feed Pump 101 over the last 90 days"
+    response = await service_with(llm, retriever).ask(question)
+    assert response.understanding.method == "rules" and "429" in response.understanding.fallback_reason
+    assert response.answer.grounding.degraded and response.status == "degraded"
+    assert response.answer.recommended_actions  # the playbook still answered
+
+
+async def test_without_a_model_a_question_no_playbook_covers_says_it_needs_one(retriever):
+    response = await service_with(None, retriever).ask("How many refineries do we have?")
+    assert NEEDS_MODEL in response.answer.gaps
+
+
+async def test_hitting_the_step_limit_is_a_partial_answer(retriever):
+    llm = ScriptedLlm(*[tool("search_assets", query=f"pump {n}") for n in range(MAX_STEPS)])
+    response = await service_with(llm, retriever).ask("Find every pump")
+    assert response.status == "partial"
