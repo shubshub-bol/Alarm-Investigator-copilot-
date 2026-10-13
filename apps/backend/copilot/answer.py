@@ -44,7 +44,7 @@ def _fit(text: str) -> str:
 
 
 class LlmReply(BaseModel):
-    """What the model must return (also sent to it as the JSON schema): its reasoning, never the facts."""
+    """The model's reasoning, never the facts, as compose_answer checks it; the agent builds it from its final reply."""
 
     summary: str = Field(max_length=1200)
     analysis: list[Statement] = []

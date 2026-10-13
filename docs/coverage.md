@@ -8,10 +8,10 @@ Measured on 13 October 2026 with `pytest-cov` over the Python packages (statemen
 | Alarm API connector | 209 | 202 | 97% |
 | MCP server | 566 | 510 | 90% |
 | RAG | 944 | 894 | 95% |
-| Copilot backend | 2490 | 2360 | 95% |
-| **Total** | **5258** | **4997** | **95%** |
+| Copilot backend | 2485 | 2355 | 95% |
+| **Total** | **5253** | **4992** | **95%** |
 
-569 Python tests and 82 GUI tests pass. The GUI tests (vitest and Testing Library) cover the screens, saved chats,
+565 Python tests and 82 GUI tests pass. The GUI tests (vitest and Testing Library) cover the screens, saved chats,
 address handling, the live-stream parser and which answer type shows "What to do"; GUI line coverage is not
 measured.
 

@@ -165,25 +165,6 @@ def test_rules_fill_entities_the_model_left_empty():
     assert u.uses_context is True
 
 
-@pytest.mark.parametrize(
-    "reply",
-    [
-        {"intent": "knowledge_question", "asset_query": "Boiler B-201"},  # seen with an OpenRouter model
-        {"intent": "knowledge_question"},  # the asset is named, but only the rules picked it up
-        {"intent": "conversation", "asset_query": "Boiler B-201"},
-    ],
-)
-def test_a_named_asset_always_gets_its_live_data(reply):
-    u = merged("Boiler B-201 how many times it failed in past ?", **reply)
-    assert u.intent == "investigate_asset"
-    assert u.asset_query == "Boiler B-201"
-
-
-def test_a_document_question_without_an_asset_stays_a_document_question():
-    u = merged("What does the safety instruction say about lockout?", intent="knowledge_question")
-    assert u.intent == "knowledge_question"
-
-
 def test_the_rules_intent_is_recorded_when_the_model_decides():
     u = merged("Boiler Feed Pump 101 vibration, what should I check?", intent="related_assets")
     assert u.intent == "related_assets"  # the model decides

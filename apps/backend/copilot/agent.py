@@ -27,7 +27,6 @@ from copilot.llm import LlmError, LlmProvider
 from copilot.mcp_client import McpToolClient
 from copilot.trace import RetrievalRecord, ToolCallRecord, ToolSpec
 from copilot.understanding import (
-    INTENT_HELP,
     LlmUnderstanding,
     QueryUnderstanding,
     merge_with_rules,
@@ -45,16 +44,14 @@ PASSAGE_CHARS = 600  # one document passage as the model sees it
 NAME_MAX, WHY_MAX = 60, 300  # a step's name and purpose
 ANSWER_MAX = 1200  # characters in the final direct answer (the answer checks shorten it further)
 STEP_LIMIT_GAP = f"The question could not be fully answered within {MAX_STEPS} steps."
-RECIPES = {
-    name: INTENT_HELP[name]
-    for name in (
-        "investigate_asset",
-        "active_alarms",
-        "highest_priority",
-        "related_assets",
-        "procedure_lookup",
-        "recommendation_check",
-    )
+RECIPES = {  # the playbooks that read live data, as the model sees them on the menu
+    "investigate_asset": "Why an asset (or a type of asset) keeps alarming: recurring alarms, likely contributing "
+    "factors, the applicable procedure and recommended actions.",
+    "active_alarms": "Alarms that are active right now on an asset or site, and immediate actions.",
+    "highest_priority": "Which alarm in a site or unit has the highest priority, and why.",
+    "related_assets": "Which related or connected assets should be inspected for an alarm.",
+    "procedure_lookup": "Which operating procedure or manual section applies to an alarm.",
+    "recommendation_check": "Whether the Alarm API's recommended actions are consistent with the documents.",
 }
 RECIPE_INPUTS = ("asset", "asset_type", "site", "unit", "lookback_days", "severities", "alarm_topic", "uses_context")
 DOC_TYPES = (

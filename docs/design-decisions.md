@@ -37,8 +37,8 @@ can branch on it. Protocol-level failures are reserved for real protocol problem
 
 ## 5. Deterministic playbooks instead of free-form tool calling
 
-The language model reads the question (intent and entities) and writes the answer; the tool chain in between
-is a playbook per intent, written in code. This gives the right tools in the right order every time, a
+In the original design (see the later change below), the language model read the question (intent and
+entities) and wrote the answer; the tool chain in between is a playbook per intent, written in code. This gives the right tools in the right order every time, a
 predictable number of model calls (two or three per question), predictable latency and cost, chains that can be
 tested, and an answer even with the model switched off.
 

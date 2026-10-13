@@ -26,18 +26,6 @@ Intent = Literal[
 ]
 Severity = Literal["low", "medium", "high", "critical"]
 
-INTENT_HELP = {
-    "investigate_asset": "Why an asset (or a type of asset) keeps alarming: recurring alarms, likely contributing "
-    "factors, the applicable procedure and recommended actions.",
-    "active_alarms": "Alarms that are active right now on an asset or site, and immediate actions.",
-    "highest_priority": "Which alarm in a site or unit has the highest priority, and why.",
-    "related_assets": "Which related or connected assets should be inspected for an alarm.",
-    "procedure_lookup": "Which operating procedure or manual section applies to an alarm.",
-    "recommendation_check": "Whether the Alarm API's recommended actions are consistent with the documents.",
-    "knowledge_question": "A general question about the documents that needs no live plant data.",
-    "conversation": "Greetings, thanks, or questions about what the assistant can do. No plant data or documents.",
-}
-
 
 class _Reading[IntentT: str](BaseModel):
     """What a reading of the question holds. The intent type is a parameter, so the model's reading and the
@@ -58,9 +46,9 @@ class _Reading[IntentT: str](BaseModel):
     rationale: str = Field("", max_length=300)
 
 
-# The model never chooses "agent": the schema it is sent lists the playbooks only.
+# A model's reading of the question: the inputs of one of the agent's recipes. Its intent is never "agent".
 class LlmUnderstanding(_Reading[PlaybookIntent]):
-    """The part the LLM fills in (also the JSON schema sent to it)."""
+    """A model's reading: checks a recipe's inputs and describes them on the agent's menu."""
 
 
 # The copilot's reading of a question: the rules', the model's merged with the rules', or the agent's ("agent").
@@ -225,16 +213,10 @@ def merge_with_rules(parsed: LlmUnderstanding, rules: QueryUnderstanding, questi
         merged["asset_query"] = None
     if merged["asset_type"]:
         merged["asset_type"] = _type_name(merged["asset_type"])
-    # A named asset always gets its live data. Seen with an OpenRouter model: "Boiler B-201 how many times it failed
-    # in past?" was filed as a document question, so no tool was called and the answer said it could not tell.
-    asset_query = merged["asset_query"] or rules.asset_query
-    if merged["intent"] in _NO_DATA_INTENTS and asset_query:
-        merged.update(intent="investigate_asset", asset_query=asset_query)
     return QueryUnderstanding(**merged, question=question, method="llm", rules_intent=rules.intent)
 
 
 _GAP_FILL_FIELDS = ("asset_type", "site", "unit", "lookback_days", "severities", "alarm_topic", "status")
-_NO_DATA_INTENTS = ("knowledge_question", "conversation")
 _ORDER = ["low", "medium", "high", "critical"]
 
 
