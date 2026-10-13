@@ -103,6 +103,9 @@ class Investigation:
         self.mcp_down = False
         self.lookback = u.lookback_days or DEFAULT_LOOKBACK_DAYS
         self.max_passages = MAX_PASSAGES  # the agent raises it before a recipe, past what its own searches kept
+        # Passages the agent's own searches kept: a playbook search that finds one again gives it its own purpose,
+        # which the answer's sections are built by (its procedure step, its safety step).
+        self.claimable: set[str] = set()
         self._main_searched = False
 
     # =============================================================== primitives
@@ -190,6 +193,9 @@ class Investigation:
             if existing:
                 kept.append(existing)
                 key_of[passage.chunk_id] = existing.citation.key
+                if existing.citation.key in self.claimable:
+                    self.claimable.discard(existing.citation.key)
+                    self.evidence.passage_purposes[existing.citation.key] = purpose
                 continue
             if len(self.evidence.passages) >= self.max_passages:
                 continue

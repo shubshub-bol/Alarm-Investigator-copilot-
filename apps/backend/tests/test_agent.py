@@ -639,6 +639,24 @@ async def test_the_agents_own_searches_leave_the_recipe_its_full_passage_limit(m
     assert any("lockout and isolation" in s.text for s in answer.recommended_actions)
 
 
+async def test_a_passage_the_agent_found_first_still_serves_the_recipe(mcp, retriever):  # I4, by another path
+    question = "Why does Boiler Feed Pump 101 keep vibrating?"
+    result, llm = await run_agent(
+        question,
+        tool("search_assets", query="Boiler Feed Pump 101"),
+        search("lockout and isolation before inspecting a pump", doc_types=["safety_instruction"]),
+        recipe("investigate_asset", asset="Boiler Feed Pump 101"),
+        done("High vibration keeps recurring [T2].", "why"),
+        mcp=mcp,
+        retriever=retriever,
+    )
+    answer = await compose_agent_answer(question, result, llm)
+    ev = result.run.evidence
+    safety = next(p.citation.key for p in ev.passages if p.citation.label == "SAF-005 §2")
+    assert ev.passage_purposes[safety].startswith("Safety requirements")  # the recipe's search found it again
+    assert any("lockout and isolation" in s.text for s in answer.recommended_actions)
+
+
 async def test_a_playbook_keeps_the_usual_passage_limit(mcp, retriever):  # I4: the rules path is unchanged
     from copilot.understanding import understand_with_rules
 

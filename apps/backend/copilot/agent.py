@@ -470,7 +470,11 @@ class Agent:
         doc_types = [t for t in wanted if t in DOC_TYPES] or None
         # No hidden equipment filter: the model chose the query, and a comparison may need another asset's documents.
         filters = RetrievalFilters(doc_types=doc_types)
-        passages = await self.inv.retrieve(query, f"Search the documents: {query}"[:200], filters, k=4, main=True)
+        purpose = f"Search the documents: {query}"[:200]
+        passages = await self.inv.retrieve(query, purpose, filters, k=4, main=True)
+        purposes = self.inv.evidence.passage_purposes
+        # The passages this search added: a recipe that finds one again takes it for its own purpose (its safety step)
+        self.inv.claimable.update(p.citation.key for p in passages if purposes.get(p.citation.key) == purpose)
         # retrieve returns only the passages it kept; its trace record lists what the search found (key None = not
         # kept), or why it failed
         record = self.inv.steps[-1]
