@@ -1,4 +1,4 @@
-import type { Intent } from "../api/types";
+import type { CopilotAnswer, Intent } from "../api/types";
 
 export const INTENT_LABEL: Record<Intent, string> = {
   investigate_asset: "Investigate an asset",
@@ -11,6 +11,16 @@ export const INTENT_LABEL: Record<Intent, string> = {
   conversation: "Conversation",
   agent: "Answered with the alarm tools",
 };
+
+/**
+ * Steps stay on the answer when it is about what to do or why, or when a warning points at them.
+ * Otherwise they move to the evidence panel, so each step appears once.
+ */
+export function stepsOnAnswer(answer: CopilotAnswer): boolean {
+  const type = answer.answer_type;
+  const conflict = answer.action_assessments.some((a) => a.verdict === "conflict");
+  return !type || type === "what_to_do" || type === "why" || conflict;
+}
 
 export function seconds(ms: number): string {
   return ms < 1000 ? `${Math.round(ms)} ms` : `${(ms / 1000).toFixed(1)} s`;

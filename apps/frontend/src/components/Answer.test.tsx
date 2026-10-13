@@ -148,6 +148,34 @@ test("a count answer leads with the number and leaves the steps to the details",
 test("a what-to-do answer keeps its steps on the answer", () => {
   const steps = structuredClone(response);
   steps.answer.answer_type = "what_to_do";
+  steps.answer.action_assessments = []; // no conflict, so only the type keeps the steps
   renderAnswer({ response: steps });
   expect(screen.getByRole("heading", { name: "What to do" })).toBeInTheDocument();
 });
+
+test("a why answer keeps its steps on the answer", () => {
+  const why = structuredClone(response);
+  why.answer.answer_type = "why";
+  why.answer.action_assessments = []; // no conflict, so only the type keeps the steps
+  renderAnswer({ response: why });
+  expect(screen.getByRole("heading", { name: "What to do" })).toBeInTheDocument();
+});
+
+test("a conflict keeps the steps on the answer even when the type would hide them", () => {
+  const conflicted = structuredClone(response);
+  conflicted.answer.answer_type = "count"; // the fixture has a conflict
+  renderAnswer({ response: conflicted });
+  expect(screen.getByRole("heading", { name: "What to do" })).toBeInTheDocument();
+  expect(screen.getByRole("note")).toHaveTextContent("Check before acting");
+});
+
+test.each(["list", "compare", "document", "cannot_answer"] as const)(
+  "a %s answer with no conflict leaves the steps to the evidence panel",
+  (type) => {
+    const hidden = structuredClone(response);
+    hidden.answer.answer_type = type;
+    hidden.answer.action_assessments = []; // no conflict, so only the type decides
+    renderAnswer({ response: hidden });
+    expect(screen.queryByRole("heading", { name: "What to do" })).not.toBeInTheDocument();
+  },
+);

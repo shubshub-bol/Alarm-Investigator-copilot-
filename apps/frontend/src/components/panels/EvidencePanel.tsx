@@ -1,6 +1,6 @@
 import type { ReactElement } from "react";
 import type { ActionAssessment, Evidence } from "../../api/types";
-import { percent, shortTime, signed } from "../../lib/format";
+import { percent, shortTime, signed, stepsOnAnswer } from "../../lib/format";
 import type { Turn } from "../../state/useChat";
 import { StatementList, chipRenderer } from "../Answer";
 import { PriorityBadge } from "../PriorityBadge";
@@ -11,7 +11,7 @@ interface Props {
   onCite: (key: string) => void;
 }
 
-/** Alarm summary and the full detail behind the answer: data, causes, procedure, API check, gaps. */
+/** Alarm summary and the full detail behind the answer: data, causes, procedure, steps, API check, gaps. */
 export function EvidencePanel({ turn, selectedKey, onCite }: Props) {
   const response = turn.response;
   if (!response) return <p className="muted">Evidence appears here when the investigation finishes.</p>;
@@ -53,6 +53,12 @@ export function EvidencePanel({ turn, selectedKey, onCite }: Props) {
         <section className="ev-block">
           <h3>Applicable procedure</h3>
           <StatementList items={answer.procedure} chip={chip} />
+        </section>
+      )}
+      {answer.recommended_actions.length > 0 && !stepsOnAnswer(answer) && (
+        <section className="ev-block">
+          <h3>What to do</h3>
+          <StatementList items={answer.recommended_actions} chip={chip} ordered />
         </section>
       )}
       {answer.action_assessments.length > 0 && <Verdicts assessments={answer.action_assessments} chip={chip} />}

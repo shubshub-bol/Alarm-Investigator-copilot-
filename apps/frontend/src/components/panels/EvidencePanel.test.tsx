@@ -38,3 +38,20 @@ test("lists every API recommendation with its verdict", () => {
   expect(items).toHaveLength(response.answer.action_assessments.length);
   expect(within(section).getByText("Conflict").closest("li")).toHaveTextContent("Continue operation");
 });
+
+test("a count answer's steps move into the panel, since the answer leaves them out", () => {
+  const counted = structuredClone(response);
+  counted.answer.answer_type = "count";
+  counted.answer.action_assessments = []; // no conflict, so the answer leaves the steps out
+  render(<EvidencePanel turn={{ ...turn, response: counted }} selectedKey={null} onCite={vi.fn()} />);
+  const steps = screen.getByRole("heading", { name: "What to do" }).closest("section")!;
+  expect(within(steps).getAllByRole("listitem")).toHaveLength(counted.answer.recommended_actions.length);
+});
+
+test("a what-to-do answer does not repeat its steps in the panel", () => {
+  const steps = structuredClone(response);
+  steps.answer.answer_type = "what_to_do";
+  steps.answer.action_assessments = []; // no conflict, so only the type puts the steps on the answer
+  render(<EvidencePanel turn={{ ...turn, response: steps }} selectedKey={null} onCite={vi.fn()} />);
+  expect(screen.queryByRole("heading", { name: "What to do" })).not.toBeInTheDocument();
+});

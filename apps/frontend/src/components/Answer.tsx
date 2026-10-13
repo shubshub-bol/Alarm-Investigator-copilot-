@@ -1,7 +1,7 @@
 import type { ReactElement } from "react";
 import type { ChatResponse, Evidence, Statement } from "../api/types";
 import { splitCitations } from "../lib/citations";
-import { plural, seconds } from "../lib/format";
+import { plural, seconds, stepsOnAnswer } from "../lib/format";
 import { CitationChip } from "./CitationChip";
 import type { DrawerTab } from "./EvidenceDrawer";
 import { AlarmIcon, SourcesIcon, StepsIcon } from "./icons";
@@ -19,9 +19,7 @@ export function Answer({ response, selectedKey, onCite, onOpen }: Props) {
   const { answer, evidence, discovery, status } = response;
   const chip = chipRenderer(response, selectedKey, onCite);
   const conflicts = answer.action_assessments.filter((a) => a.verdict === "conflict");
-  // Steps belong on the answer when it is about what to do or why, or when a warning points at them.
-  const type = answer.answer_type;
-  const showSteps = !type || type === "what_to_do" || type === "why" || conflicts.length > 0;
+  const showSteps = stepsOnAnswer(answer);
 
   if (response.understanding.intent === "conversation") {
     return (
