@@ -16,7 +16,7 @@ import anyio
 from pydantic import BaseModel
 
 from copilot.consistency import assess_actions
-from copilot.evidence import Evidence, clear_subject, record_result
+from copilot.evidence import Evidence, NegativeFinding, clear_subject, record_result
 from copilot.mcp_client import McpToolClient
 from copilot.trace import RetrievalRecord, RetrievedRef, ToolCallRecord
 from copilot.understanding import QueryUnderstanding
@@ -168,10 +168,6 @@ class Investigation:
 
         if main:
             self._set_main_confidence(result.confidence)
-        if not result.passages and no_documents:
-            self._gap(no_documents)
-        elif main and result.confidence in ("low", "none"):
-            self._gap(NO_PASSAGES)
         kept, key_of = [], {}
         for passage in result.passages:
             existing = next((p for p in self.evidence.passages if p.chunk_id == passage.chunk_id), None)
@@ -211,6 +207,10 @@ class Investigation:
                 **common,
             )
         )
+        if not result.passages and (no_documents or main):  # the search ran and found nothing: a fact
+            self._found_nothing(no_documents or NO_PASSAGES, "search_documents")
+        elif main and result.confidence in ("low", "none"):  # weak passages: a warning, not a finding
+            self._gap(NO_PASSAGES)
         return kept
 
     def _set_main_confidence(self, confidence: str) -> None:
@@ -223,6 +223,22 @@ class Investigation:
     def _gap(self, text: str) -> None:
         if text not in self.evidence.missing:
             self.evidence.missing.append(text)
+
+    def _found_nothing(self, text: str, tool: str) -> None:
+        """A lookup that worked and found nothing: a fact tied to the step that established it (the latest
+        successful step of `tool`), not a gap. Without such a step it was not established, so it stays a gap."""
+        step = next(
+            (
+                s
+                for s in reversed(self.steps)
+                if s.status == "ok" and (s.tool if isinstance(s, ToolCallRecord) else "search_documents") == tool
+            ),
+            None,
+        )
+        if step is None:
+            self._gap(text)
+        elif all(n.text != text for n in self.evidence.negatives):
+            self.evidence.negatives.append(NegativeFinding(text=text, step=step.step, tool=tool))
 
     def _types(self, *extra: str | None) -> list[str] | None:
         """The asset's type and any extra types, as an equipment filter; None (no filter) when no asset is known."""
@@ -257,7 +273,7 @@ class Investigation:
             top = results[0] if results else None
             if top is None or any(n not in f"{top['name']} {top['asset_id']}" for n in numbers):
                 closest = f" Closest match: {top['name']}." if top else ""
-                self.evidence.missing.append(f"No asset matches '{u.asset_query}'.{closest}")
+                self._found_nothing(f"No asset matches '{u.asset_query}'.{closest}", "search_assets")
                 return None
             if len(results) > 1 and results[1]["match_score"] == top["match_score"]:
                 self.evidence.notes.append(
@@ -289,7 +305,7 @@ class Investigation:
         if found is None:
             return None
         if not found["results"]:
-            self.evidence.missing.append(f"No {u.asset_type} assets found.")
+            self._found_nothing(f"No {u.asset_type} assets found.", "search_assets")
         return found["results"]
 
     async def pick_asset_by_topic(self) -> dict | None:
@@ -309,12 +325,17 @@ class Investigation:
             group_by=["asset_id", "asset_name", "alarm_code", "alarm_name"],
             kpis=["alarm_count"],
         )
-        groups = (summary or {}).get("groups", [])
+        if summary is None:  # the summary failed: it did not find nothing
+            return None
+        groups = summary.get("groups", [])
         if u.alarm_topic:
             groups = [g for g in groups if u.alarm_topic in g["key"]["alarm_name"].lower()]
         if not groups:
             topic = f" '{u.alarm_topic}'" if u.alarm_topic else ""
-            self.evidence.missing.append(f"No{topic} alarms on {u.asset_type} assets in the last {self.lookback} days.")
+            self._found_nothing(
+                f"There are 0{topic} alarms on {u.asset_type} assets in the last {self.lookback} days.",
+                "summarize_alarms",
+            )
             return None
         best = max(groups, key=lambda g: g["kpis"]["alarm_count"])
         chosen = next(c for c in candidates if c["asset_id"] == best["key"]["asset_id"])
@@ -350,7 +371,9 @@ class Investigation:
         groups = summary["groups"]
         if not groups:
             level = "/".join(u.severities) + " " if u.severities else ""
-            self.evidence.missing.append(f"No {level}alarms on {asset['name']} in the last {self.lookback} days.")
+            self._found_nothing(
+                f"There are 0 {level}alarms on {asset['name']} in the last {self.lookback} days.", "summarize_alarms"
+            )
             return None
         matching = [g for g in groups if u.alarm_topic and u.alarm_topic in g["key"]["alarm_name"].lower()]
         top = (matching or groups)[0]
@@ -388,8 +411,8 @@ class Investigation:
         ]
         self.evidence.contributing_factors = sorted(factors, key=lambda p: -p["confidence"])[:3]
         if not factors:
-            self.evidence.missing.append(
-                "No alarm consistently preceded the main alarm (no clear contributing factor)."
+            self._found_nothing(
+                "No alarm consistently preceded the main alarm (no clear contributing factor).", "correlate_alarms"
             )
 
     async def latest_alarm(self, asset: dict, code: str) -> dict | None:
@@ -537,7 +560,7 @@ class Investigation:
         if asset is None and not (site or unit) and u.asset_type and not u.asset_query:
             return await self.active_alarms_of_type()
         if asset is None and not (site or unit):
-            if not self.evidence.missing:
+            if not (self.evidence.missing or self.evidence.negatives):
                 self.evidence.missing.append("Name an asset, site or unit to list its active alarms.")
             return await self.rag_question()
         found = await self.tool(
@@ -557,7 +580,7 @@ class Investigation:
         if not found["alarms"]:
             level = "/".join(u.severities) + " " if u.severities else ""
             where = (self.evidence.asset or {}).get("name") or " ".join(x for x in (site, unit) if x)
-            self.evidence.missing.append(f"There are no active {level}alarms on {where}.")
+            self._found_nothing(f"There are 0 active {level}alarms on {where}.", "get_alarms")
             return
         await self.explain_active(found["alarms"])
 
@@ -584,7 +607,7 @@ class Investigation:
             level = "/".join(u.severities) + " " if u.severities else ""
             names = ", ".join(c["name"] for c in candidates[:5]) + (", ..." if len(candidates) > 5 else "")
             kind = u.asset_type.replace("_", " ") if u.asset_type else "these"
-            self.evidence.missing.append(f"There are no active {level}alarms on {kind} assets ({names}).")
+            self._found_nothing(f"There are 0 active {level}alarms on {kind} assets ({names}).", "get_alarms")
             return
         await self.explain_active(alarms)
 
@@ -633,7 +656,7 @@ class Investigation:
             return await self.rag_question()
         if not found["alarms"]:
             where = " ".join(x for x in (site, unit) if x) or "the plant"
-            self.evidence.missing.append(f"There are no active alarms in {where}.")
+            self._found_nothing(f"There are 0 active alarms in {where}.", "get_alarms")
             return
         await self.rank(found["alarms"])
         focus = self.evidence.focus_alarm
@@ -682,7 +705,7 @@ class Investigation:
             return self.evidence.focus_alarm
         asset = await self.resolve_asset()
         if asset is None:
-            if not self.evidence.missing:
+            if not (self.evidence.missing or self.evidence.negatives):
                 self.evidence.missing.append("No alarm in context; ask about a specific asset or alarm first.")
             return None
         await self.load_asset(asset["asset_id"])

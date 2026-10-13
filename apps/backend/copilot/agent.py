@@ -41,6 +41,15 @@ MAX_STEPS = 6
 LIST_ITEMS = 10  # a list in a tool result is cut to this many items for the model, with its total
 RESULT_CHARS = 3000  # one tool result as the model sees it
 PASSAGE_CHARS = 600  # one document passage as the model sees it
+MAIN_LISTS = {  # the list a tool's result is about: empty means the lookup found nothing
+    "search_assets": ("results", "assets"),
+    "get_alarms": ("alarms", "alarms"),
+    "summarize_alarms": ("groups", "alarm groups"),
+    "get_alarm_trends": ("series", "trend points"),
+    "correlate_alarms": ("pairs", "alarm pairs"),
+    "analyze_alarm_floods": ("flood_windows", "alarm floods"),
+    "find_rationalization_candidates": ("candidates", "candidates"),
+}
 NAME_MAX, WHY_MAX = 60, 300  # a step's name and purpose
 ANSWER_MAX = 1200  # characters in the final direct answer (the answer checks shorten it further)
 STEP_LIMIT_GAP = f"The question could not be fully answered within {MAX_STEPS} steps."
@@ -439,8 +448,13 @@ class Agent:
             if record.error_code == "INVALID_INPUT":  # the model's own slip: in the trace, but no gap in the data
                 self.inv.evidence.notes.pop()  # the failure note call_tool has just added
             return f"Failed: [{record.error_code}] {record.error_message}"
-        statement = f"{step.name}({_inputs(args)}) returned {result_text(result)}"
-        fact = Fact(key=f"T{len(self.facts) + 1}", step=record.step, tool=step.name, statement=statement)
+        field, noun = MAIN_LISTS.get(step.name, ("", ""))
+        empty = bool(field) and result.get(field) == []
+        verb = f"found 0 {noun}:" if empty else "returned"
+        statement = f"{step.name}({_inputs(args)}) {verb} {result_text(result)}"
+        fact = Fact(
+            key=f"T{len(self.facts) + 1}", step=record.step, tool=step.name, statement=statement, negative=empty
+        )
         self.facts.append(fact)
         return f"[{fact.key}] {fact.statement}"
 
@@ -518,7 +532,14 @@ class Agent:
                 f"{left_out} passage(s) found but not kept: the evidence limit ({self.inv.max_passages} passages) is "
                 "reached; answer with the passages already given."
             )
-        return "\n".join(lines) or "No relevant passages."
+        if lines:
+            return "\n".join(lines)
+        text = f"The document search for '{query}' found 0 relevant passages."
+        fact = Fact(
+            key=f"T{len(self.facts) + 1}", step=record.step, tool="search_documents", statement=text, negative=True
+        )
+        self.facts.append(fact)
+        return f"[{fact.key}] {text}"
 
     def _update_state(self) -> None:
         """What a follow-up ('this alarm') can refer back to, as Investigation.run records it."""

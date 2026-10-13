@@ -67,16 +67,16 @@ GOLDEN: list[Case] = [
     Case("Investigate Motor M-501 alarms over the last 30 days", "investigate_asset", "AST-MTR-501",
          sources=("TG-MTR-003",)),
     Case("Boiler B-201 how many times it failed in past?", "investigate_asset", "AST-BLR-201", sources=(),
-         gap="no procedure for boiler alarms", facts=("24",), procedure=False),  # no boiler documents
+         facts=("24", "no procedure for boiler alarms"), procedure=False),  # no boiler documents
     Case("Investigate Forced Draft Fan F-201", "investigate_asset", "AST-FAN-201", sources=("SAF-005",),
-         gap="no procedure for fan alarms"),  # the safety instruction covers fans; no procedure does
-    Case("Investigate Boiler Feed Pump 999", "investigate_asset", gap="No asset matches"),
+         facts=("no procedure for fan alarms",)),  # the safety instruction covers fans; no procedure does
+    Case("Investigate Boiler Feed Pump 999", "investigate_asset", facts=("No asset matches",)),
     # what is active now
     Case("Show active critical alarms for Boiler Feed Pump 102 and recommend immediate actions.", "active_alarms",
          "AST-BFP-102", sources=("SOP-BFP-001",)),
     Case("Are there active alarms on Gas Compressor C-301 right now?", "active_alarms", "AST-CMP-301"),
     Case("What alarms are active right now in NorthPlant Unit 1?", "active_alarms"),
-    Case("any boiler alarma are active", "active_alarms", gap="no active alarms on boiler assets"),  # a real chat
+    Case("any boiler alarma are active", "active_alarms", facts=("0 active alarms on boiler assets",)),  # a real chat
     Case("Are any pump alarms active?", "active_alarms", sources=("SOP-BFP-001",)),
     Case("check for all boilers", ("investigate_asset", "active_alarms"), sources=(), procedure=False),  # a real chat
     # what matters most

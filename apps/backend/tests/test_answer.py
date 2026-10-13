@@ -1,5 +1,7 @@
 """Evidence comparison and grounded answers: tool facts [T#], document citations [S#], conflicts, degradation."""
 
+import re
+
 import httpx
 import pytest
 
@@ -179,12 +181,12 @@ async def test_plain_summary_for_the_ai_question_quotes_the_governing_rule(mcp, 
 async def test_plain_summary_says_when_nothing_is_active(mcp, retriever):
     question = "Are there active alarms on Boiler Feed Pump 101 right now?"
     answer = await answer_offline(mcp, retriever, ACCEPTANCE, question)
-    assert answer.summary == "There are no active alarms on Boiler Feed Pump 101."
+    assert re.fullmatch(r"There are 0 active alarms on Boiler Feed Pump 101 \[T\d+\]\.", answer.summary)
 
 
 async def test_plain_summary_says_when_no_procedure_applies(mcp, retriever):
     answer = await answer_offline(mcp, retriever, "Which procedure applies to Boiler B-201 alarms?")
-    assert answer.summary == "The documents have no procedure for boiler alarms."
+    assert re.fullmatch(r"The documents have no procedure for boiler alarms \[T\d+\]\.", answer.summary)
 
 
 async def test_the_first_action_comes_from_the_section_about_the_alarm(mcp, retriever):
@@ -215,7 +217,7 @@ async def test_weak_documents_are_flagged_when_the_alarm_data_is_unavailable(ret
     async with McpToolClient(http_connector("http://127.0.0.1:9/mcp", token="x", timeout_seconds=2)) as mcp:
         run = await investigate(understand_with_rules(question), mcp, retriever, ConversationState(), trace_id="t")
     answer = compose_answer(question, run)
-    assert any("no relevant passages" in g.lower() for g in answer.gaps)
+    assert any("no relevant passages" in f.statement.lower() for f in answer.facts if f.negative)
 
 
 # ------------------------------------------------------- the model's reply, checked
@@ -481,7 +483,8 @@ async def test_unrelated_question_admits_there_is_no_evidence(mcp, retriever):
     answer = compose_answer("chocolate cake recipe", run)
     assert answer.citations == []
     assert answer.procedure == []
-    assert any("no relevant" in g.lower() for g in answer.gaps)
+    assert any("no relevant passages" in f.statement.lower() for f in answer.facts if f.negative)
+    assert answer.summary.endswith("[T1].")  # the honest "nothing found" is cited
 
 
 async def test_no_document_gap_when_no_document_search_ran(mcp, retriever):
@@ -490,7 +493,7 @@ async def test_no_document_gap_when_no_document_search_ran(mcp, retriever):
     question = "Are there active alarms on Boiler Feed Pump 101 right now?"
     run = await investigate(understand_with_rules(question), mcp, retriever, state, trace_id="t2")
     answer = compose_answer(question, run)
-    assert "There are no active alarms on Boiler Feed Pump 101." in answer.gaps
+    assert "There are 0 active alarms on Boiler Feed Pump 101." in [f.statement for f in answer.facts]
     assert not any("no relevant passages" in g.lower() for g in answer.gaps)  # nothing was searched
 
 
@@ -508,3 +511,12 @@ async def test_partial_failure_is_reported_in_gaps(retriever):
     answer = compose_answer(ACCEPTANCE, run)
     assert any("correlate_alarms" in g for g in answer.gaps)
     assert answer.recommended_actions  # still useful
+
+
+async def test_a_negative_finding_is_a_cited_fact(mcp, retriever):
+    answer = await answer_offline(mcp, retriever, "Are any boiler alarms active?")
+    fact = next(f for f in answer.facts if f.negative)
+    assert fact.statement == "There are 0 active alarms on boiler assets (Boiler B-201)."
+    assert answer.summary == f"There are 0 active alarms on boiler assets (Boiler B-201) [{fact.key}]."
+    assert any(s.citations == [fact.key] for s in answer.findings)
+    assert answer.gaps == []

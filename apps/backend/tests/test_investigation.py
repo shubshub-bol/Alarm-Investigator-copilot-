@@ -172,7 +172,7 @@ async def test_unknown_asset_stops_asset_steps(mcp, retriever):
     u = understand_with_rules("Investigate Boiler Feed Pump 999")
     run = await investigate(u, mcp, retriever, ConversationState(), trace_id="t")
     assert tools_called(run) == ["search_assets"]
-    assert any("Boiler Feed Pump 999" in m for m in run.evidence.missing)
+    assert any("Boiler Feed Pump 999" in n.text for n in run.evidence.negatives)
 
 
 async def test_partial_failure_keeps_the_rest_of_the_investigation(retriever):
@@ -215,7 +215,7 @@ async def test_mcp_server_down_still_returns_document_evidence(retriever):
 async def test_an_asset_type_without_documents_gets_none_and_says_so(question, kind, mcp, retriever):
     run = await investigate(understand_with_rules(question), mcp, retriever, ConversationState(), trace_id="t")
     assert labels(run) == set()  # before: feed pump and safety passages for a boiler
-    assert f"The documents have no procedure for {kind} alarms." in run.evidence.missing
+    assert f"The documents have no procedure for {kind} alarms." in [n.text for n in run.evidence.negatives]
     assert run.evidence.retrieval_confidence == "none"
 
 
@@ -224,7 +224,7 @@ async def test_confidence_comes_from_the_main_search(mcp, retriever):
         understand_with_rules("Investigate Forced Draft Fan F-201"), mcp, retriever, ConversationState(), trace_id="t"
     )
     assert labels(run) == {"SAF-005 §2"}  # the safety instruction covers fans; no pump procedure for a fan any more
-    assert "The documents have no procedure for fan alarms." in run.evidence.missing
+    assert "The documents have no procedure for fan alarms." in [n.text for n in run.evidence.negatives]
     assert run.evidence.retrieval_confidence == "none"  # the procedure search found nothing; the safety one did
 
 
@@ -281,7 +281,7 @@ async def test_active_alarms_for_a_type_check_every_asset_of_that_type(mcp, retr
     )
     assert tools_called(run) == ["search_assets", "get_alarms"]  # find the boilers, then one alarm query
     assert run.steps[0].arguments["asset_type"] == "boiler"
-    assert "There are no active alarms on boiler assets (Boiler B-201)." in run.evidence.missing
+    assert "There are 0 active alarms on boiler assets (Boiler B-201)." in [n.text for n in run.evidence.negatives]
 
 
 async def test_active_alarms_for_a_type_are_ranked_when_there_are_some(mcp, retriever):
@@ -336,3 +336,30 @@ async def test_a_playbook_starts_from_a_clean_record_for_its_subject(mcp):
     assert inv.playbook_start == 1 and not inv._metadata_loaded("AST-BFP-101")  # but its own steps are not its own
     await inv.tool("get_asset_metadata", "Asset details", asset_id="AST-BFP-101")
     assert inv._metadata_loaded("AST-BFP-101") and ev.asset["asset_id"] == "AST-BFP-101"
+
+
+async def test_a_failed_summary_is_not_a_finding(retriever):
+    """A lookup that failed did not find nothing: it is a failure note, not "There are 0 ... alarms"."""
+    healthy = simulator_transport()
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/alarms/summary":
+            return httpx.Response(503, json={"error": {"code": "unavailable", "message": "down"}})
+        return await healthy.handle_async_request(request)
+
+    async with McpToolClient(in_memory_connector(make_server(httpx.MockTransport(handler), max_retries=0))) as mcp:
+        await mcp.discover()
+        u = understand_with_rules("Why are compressor discharge pressure alarms repeatedly occurring?")
+        run = await investigate(u, mcp, retriever, ConversationState(), trace_id="t")
+    assert not any("alarms on compressor assets" in n.text for n in run.evidence.negatives)
+    assert any("summarize_alarms" in n for n in run.evidence.notes)
+
+
+async def test_negative_findings_are_tied_to_the_lookup_that_found_nothing(mcp, retriever):
+    run = await investigate(
+        understand_with_rules("Are any boiler alarms active?"), mcp, retriever, ConversationState(), trace_id="t"
+    )
+    negative = next(n for n in run.evidence.negatives if n.text.startswith("There are 0 active alarms"))
+    step = next(s for s in run.steps if s.step == negative.step)
+    assert (negative.tool, step.tool) == ("get_alarms", "get_alarms")
+    assert run.evidence.missing == []  # nothing failed: it is a fact, not a gap

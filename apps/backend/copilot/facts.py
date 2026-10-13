@@ -14,6 +14,7 @@ class Fact(BaseModel):
     step: int  # the trace step that produced it
     tool: str
     statement: str
+    negative: bool = False  # a lookup that found nothing
 
 
 def _pct(value: float | None) -> str:
@@ -121,4 +122,8 @@ def build_facts(run: InvestigationRun) -> list[Fact]:
                 f"History: {history['occurrences_prior_90_days']} occurrences of this alarm in the 90 days before it "
                 f"({history['occurrences_prior_30_days']} in the last 30), trend {history['trend_direction']}.",
             )
+    steps = {s.step for s in run.steps}
+    for n in ev.negatives:  # lookups that found nothing, in the order they ran
+        if n.step in steps:
+            facts.append(Fact(key=f"T{len(facts) + 1}", step=n.step, tool=n.tool, statement=n.text, negative=True))
     return facts

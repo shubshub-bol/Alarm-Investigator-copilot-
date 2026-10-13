@@ -23,6 +23,14 @@ RECOMMENDATION_FIELDS = (
 PRIORITY_FIELDS = ("alarm_id", "score", "priority", "priority_label", "factors")
 
 
+class NegativeFinding(BaseModel):
+    """A lookup that worked and found nothing: a fact like any other, tied to the step that established it."""
+
+    text: str
+    step: int
+    tool: str  # the MCP tool, or "search_documents" for a document search
+
+
 class Evidence(BaseModel):
     """Everything the investigation established, kept as structured data for the answer writer."""
 
@@ -49,6 +57,7 @@ class Evidence(BaseModel):
     passages: list[RetrievedPassage] = []
     passage_purposes: dict[str, str] = {}  # citation key -> why it was retrieved
     retrieval_confidence: str = "none"
+    negatives: list[NegativeFinding] = []  # lookups that found nothing: facts, not gaps
     notes: list[str] = []  # assumptions, selections and partial failures, shown to the user
     missing: list[str] = []  # what could not be looked up or failed: a service down, an error, a missing input
 
@@ -88,7 +97,7 @@ def _by_asset(arguments: dict[str, Any]) -> bool:
 def clear_subject(ev: Evidence) -> None:
     """Forget what the calls so far established about the question's subject, for a playbook that starts now and
     investigates its own: the asset and what hangs on it, the alarm, the advice. What was found about the plant
-    stays: the known assets, the passages, the notes and the gaps."""
+    stays: the known assets, the passages, the findings that a lookup found nothing, the notes and the gaps."""
     ev.asset = ev.focus_alarm = ev.priority = ev.recommendations = ev.alarm_summary = ev.trend = None
     ev.recommendations_step = None
     ev.related_assets, ev.focused_asset_ids, ev.advised_alarm_ids, ev.active_alarms = [], [], [], []

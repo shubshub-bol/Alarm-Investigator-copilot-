@@ -186,8 +186,10 @@ def _closest_sentence(passages: list[RetrievedPassage], question: str) -> tuple[
     return best[1], best[2]
 
 
-def _no_document_gap(missing: list[str]) -> str | None:
-    return next((m for m in missing if m.startswith("The documents have no")), None)
+def _negative(by_tool: dict[str, list[Fact]], tool: str | None = None) -> Fact | None:
+    """The first lookup (of `tool`, when given) that found nothing."""
+    found = [f for name, fs in by_tool.items() if tool in (None, name) for f in fs if f.negative]
+    return min(found, key=lambda f: int(f.key[1:]), default=None)
 
 
 def _cited(sentence: str, *keys: str) -> str:
@@ -234,8 +236,8 @@ def _plain_summary(
         passage, step = main
         c = passage.citation
         parts.append(_cited(f"{c.label} ({c.title}) applies: {step}", c.key))
-    elif ev.intent == "procedure_lookup" and (gap := _no_document_gap(ev.missing)):
-        parts.append(gap)
+    elif ev.intent == "procedure_lookup" and (none := _negative(by_tool, "search_documents")):
+        parts.append(_cited(none.statement, none.key))
     elif ev.intent == "recommendation_check" and assessments and rec_facts:
         n = Counter(a.verdict for a in assessments)
         parts.append(
@@ -291,8 +293,10 @@ def _plain_summary(
             f"[{conflict.citation_keys[0]}]."
         )
     if not parts:
-        if ev.missing:
-            parts.append(ev.missing[0])  # what the investigation could not find answers the question honestly
+        if none := _negative(by_tool):  # a lookup that found nothing answers the question honestly, cited
+            parts.append(_cited(none.statement, none.key))
+        elif ev.missing:
+            parts.append(ev.missing[0])
         elif ev.passages:
             parts.append("Answer based on the plant documents only.")
         else:

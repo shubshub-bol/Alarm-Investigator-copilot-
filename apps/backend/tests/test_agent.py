@@ -488,7 +488,7 @@ async def test_a_site_written_with_a_space_gets_that_sites_alarms(mcp, retriever
     ev = result.run.evidence
     assert result.understanding.site == "EastRefinery"
     assert result.run.steps[0].arguments["site"] == "EastRefinery"
-    assert ev.active_alarms and not any("no active" in m for m in ev.missing)
+    assert ev.active_alarms and not any("0 active" in n.text for n in ev.negatives)
 
 
 async def test_a_site_in_a_tool_call_is_sent_without_spaces(mcp, retriever):  # C1
@@ -1011,3 +1011,45 @@ async def test_a_recipe_loads_its_focus_assets_metadata_even_when_the_agent_load
     assert [s.step for s in loads][0] == 1 and len(loads) == 2  # the recipe loaded it for itself
     assert ev.asset["asset_id"] == "AST-BFP-102"
     assert "AST-MTR-102" in {a["asset_id"] for a in ev.related_assets}
+
+
+async def test_an_empty_tool_result_is_stated_as_a_count(mcp, retriever):
+    result, llm = await run_agent(
+        "Any active alarms on Boiler B-201?",
+        tool("get_alarms", asset_id="AST-BLR-201", status="active"),
+        done("Boiler B-201 has 0 active alarms [T1].", "count"),
+        mcp=mcp,
+        retriever=retriever,
+    )
+    fact = result.facts[0]
+    assert fact.negative and fact.statement.startswith(
+        'get_alarms(asset_id="AST-BLR-201", status="active") found 0 alarms'
+    )
+    answer = compose_agent_answer("Any active alarms on Boiler B-201?", result, llm)
+    assert answer.grounding.summary_source == "llm"  # the 0 is in the evidence
+
+
+async def test_a_document_search_that_finds_nothing_is_a_cited_fact(mcp, retriever):
+    result, llm = await run_agent(
+        "Do the documents cover chocolate cake?",
+        search("chocolate cake recipe"),
+        done("The documents do not cover it [T1].", "cannot_answer"),
+        mcp=mcp,
+        retriever=retriever,
+    )
+    assert "[T1] The document search for 'chocolate cake recipe' found 0 relevant passages." in llm.prompts[1]
+    assert result.facts[0].negative and result.facts[0].tool == "search_documents"
+
+
+async def test_a_recipes_negative_finding_can_be_cited(mcp, retriever):
+    question = "any boiler alarms active?"
+    result, llm = await run_agent(
+        question,
+        recipe("active_alarms", asset_type="boiler"),
+        done("There are 0 active alarms on boiler assets [T1].", "count"),
+        mcp=mcp,
+        retriever=retriever,
+    )
+    assert "[T1] There are 0 active alarms on boiler assets (Boiler B-201)." in llm.prompts[1]
+    answer = compose_agent_answer(question, result, llm)
+    assert answer.grounding.summary_source == "llm" and answer.grounding.unknown_citations == []
