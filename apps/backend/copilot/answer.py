@@ -16,6 +16,7 @@ from typing import Literal
 from pydantic import BaseModel, Field
 
 from copilot.consistency import ActionAssessment, assess_actions, sentences
+from copilot.evidence import Evidence
 from copilot.facts import Fact, build_facts
 from copilot.investigation import InvestigationRun
 from copilot.llm import LlmError, LlmProvider
@@ -206,12 +207,26 @@ def _related_with_alarms(recommendations: dict | None) -> list[str]:
     return out
 
 
+def _advice_facts(ev: Evidence, facts: list[Fact]) -> list[Fact]:
+    """The facts that state the Alarm API's advice the record holds: those of the one step that produced it, from
+    whoever made the call (the agent or a recipe). None when the record holds no advice, or holds it open because
+    two different alarms were advised."""
+    if ev.recommendations is None or ev.recommendations_step is None:
+        return []
+    return [f for f in facts if f.tool == "get_operator_recommendations" and f.step == ev.recommendations_step]
+
+
 def _plain_summary(
-    run: InvestigationRun, by_tool: dict[str, list[Fact]], assessments: list[ActionAssessment], question: str = ""
+    run: InvestigationRun,
+    by_tool: dict[str, list[Fact]],
+    assessments: list[ActionAssessment],
+    question: str = "",
+    rec_facts: list[Fact] | None = None,
 ) -> str:
-    """The summary built from the evidence alone: one form per intent, every statement cited."""
+    """The summary built from the evidence alone: one form per intent, every statement cited. `rec_facts` are the
+    facts of the advice in the record (see _advice_facts)."""
     ev = run.evidence
-    rec_facts = by_tool.get("get_operator_recommendations", [])
+    rec_facts = rec_facts or []
     parts: list[str] = []
     main = _main_procedure(run)
     related = _related_with_alarms(ev.recommendations)
@@ -299,22 +314,24 @@ def template_answer(
     by_tool: dict[str, list[Fact]] = {}
     for f in facts if recipe_keys is None else [f for f in facts if f.key in recipe_keys]:
         by_tool.setdefault(f.tool, []).append(f)
-    rec_fact = next(iter(by_tool.get("get_operator_recommendations", [])), None)
+    # The advice shown is the advice in the record, and the fact that states it is the one from its own step, whoever
+    # made that call, so what is shown under causes and actions cites the lookup it came from.
+    rec_facts = _advice_facts(ev, facts)
+    rec_fact = rec_facts[0] if rec_facts else None
     rec_keys = [rec_fact.key] if rec_fact else []
 
-    summary = _plain_summary(run, by_tool, assessments, question)
+    summary = _plain_summary(run, by_tool, assessments, question, rec_facts)
 
-    # findings: every tool fact except the API's recommendation list, which is shown under actions instead; when
-    # nothing shows it there (the agent called the tool itself, so there are no recommendations), it stays a finding
-    hidden = rec_fact if ev.recommendations else None
-    findings = [Statement(text=_fit(f.statement), citations=[f.key]) for f in facts if f is not hidden]
+    # findings: every tool fact except the API's recommendation list, which is shown under actions instead; advice
+    # the record does not hold (none, or for two different alarms) has no such place, so its facts stay findings
+    findings = [Statement(text=_fit(f.statement), citations=[f.key]) for f in facts if f is not rec_fact]
 
     # likely causes
     causes = [Statement(text=_fit(f.statement), citations=[f.key]) for f in by_tool.get("correlate_alarms", [])]
     for p in _passages_for(run, "Guidance on contributing factor")[:1]:
         text = _key_sentence(p, ("misalignment", "sign", "cause", "points to", "typical"))
         causes.append(Statement(text=f"Documented pattern: {text}", citations=[p.citation.key]))
-    if ev.recommendations and rec_fact:
+    if rec_fact and ev.recommendations:
         causes.append(
             Statement(
                 text=f"Alarm API likely causes: {', '.join(ev.recommendations['likely_causes'])}.", citations=rec_keys

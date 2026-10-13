@@ -1,7 +1,8 @@
 # Evidence integrity: design
 
 Date: 2026-10-13. Status: agreed in review (part 1 approved; the user approved the rest: "go ahead with all you
-want").
+want"). Clarified while building: correlate_alarms records nothing; a summary grouped per asset is a comparison; a
+playbook starts from a clean record for its subject.
 
 ## Goal
 
@@ -48,7 +49,7 @@ per tool, writing the same shapes the playbooks write today (so facts, the GUI a
 | `get_alarm_trends` | the trend |
 | `score_alarm_priority` | the priority |
 | `get_operator_recommendations` | the API's advice, and the asset it names as known |
-| `correlate_alarms` | the correlation pairs (the playbook still chooses which are strong enough) |
+| `correlate_alarms` | nothing beyond its fact (the playbook judges which pairs are contributing factors) |
 | floods, rationalization candidates, KPI tools | nothing beyond their fact |
 
 The asset of the question (`Evidence.asset`) is set when the calls clearly focus on one asset: asset metadata, an

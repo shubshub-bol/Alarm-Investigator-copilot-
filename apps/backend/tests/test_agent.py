@@ -400,7 +400,7 @@ async def test_a_long_tool_result_is_cut_in_the_findings_but_whole_in_the_facts(
     assert [len(s.text) for s in answer.findings] == [800] and answer.findings[0].text.endswith("...")
 
 
-async def test_a_direct_recommendations_lookup_stays_in_the_details(mcp, retriever):
+async def test_a_direct_recommendations_lookup_is_shown_as_causes_and_actions_citing_its_fact(mcp, retriever):
     alarms = await mcp.call("get_alarms", {"asset_id": "AST-CMP-301", "status": "active"}, trace_id="t")
     alarm_id = alarms.result["alarms"][0]["alarm_id"]
     question = "What does the alarm system recommend for this alarm?"
@@ -892,3 +892,122 @@ async def test_a_recipe_investigates_its_own_asset(mcp, retriever):
     ev = result.run.evidence
     assert ev.asset["asset_id"] == "AST-BFP-101"
     assert "SOP-BFP-001 §4.1" in {p.citation.label for p in ev.passages}
+
+
+# ---- the advice the answer shows is the advice its citations name
+async def test_advice_for_two_alarms_is_not_presented_as_either_ones(mcp, retriever):
+    question = "What does the alarm system recommend for these two alarms?"
+    result, llm = await run_agent(
+        question,
+        tool("get_operator_recommendations", alarm_id="ALM-000418"),  # a Gas Compressor C-301 alarm
+        tool("get_operator_recommendations", alarm_id="ALM-000423"),  # a Motor M-102 alarm
+        done("The API returned advice for both alarms [T1] [T2].", "what_to_do"),
+        mcp=mcp,
+        retriever=retriever,
+    )
+    answer = compose_agent_answer(question, result, llm)
+    assert result.run.evidence.recommendations is None  # neither alarm's advice is "the" advice
+    assert answer.likely_causes == [] and answer.recommended_actions == [] and answer.action_assessments == []
+    assert {c for s in answer.findings for c in s.citations} == {"T1", "T2"}  # both lookups stay in the findings
+
+
+async def test_advice_looked_up_before_a_recipe_leaves_no_uncited_statement(mcp, retriever):
+    question = "Which procedure applies to Gas Compressor C-301 discharge pressure alarms?"
+    result, llm = await run_agent(
+        question,
+        tool("get_operator_recommendations", alarm_id="ALM-000418"),  # a Gas Compressor C-301 alarm
+        recipe("procedure_lookup", asset="Gas Compressor C-301", alarm_topic="discharge pressure"),
+        done("SOP-CMP-004 applies [S1].", "document"),
+        mcp=mcp,
+        retriever=retriever,
+    )
+    answer = compose_agent_answer(question, result, llm)
+    assert answer.recommended_actions
+    assert all(s.citations for s in [*answer.likely_causes, *answer.recommended_actions])
+
+
+async def test_advice_looked_up_after_a_recipe_is_cited_by_its_own_fact(mcp, retriever):
+    question = "Which procedure applies to Gas Compressor C-301 discharge pressure alarms?"
+    result, llm = await run_agent(
+        question,
+        recipe("procedure_lookup", asset="Gas Compressor C-301", alarm_topic="discharge pressure"),
+        tool("get_operator_recommendations", alarm_id="ALM-000418"),
+        done("SOP-CMP-004 applies [S1].", "document"),
+        mcp=mcp,
+        retriever=retriever,
+    )
+    answer = compose_agent_answer(question, result, llm)
+    key = next(f.key for f in answer.facts if f.tool == "get_operator_recommendations")
+    assert key not in (result.recipe_keys or [])  # the agent's own lookup, not the recipe's
+    from_api = [s for s in answer.recommended_actions if "API recommendation" in s.text]
+    assert from_api and all(key in s.citations for s in from_api)
+    assert [s.citations for s in answer.likely_causes] == [[key]]
+    assert all(s.citations for s in answer.recommended_actions)
+
+
+# ---- a recipe starts from a clean record for its own subject
+async def test_a_recipe_reloads_the_remembered_alarm_whatever_the_agent_looked_at_first(mcp, retriever):
+    state = ConversationState(last_alarm={"alarm_id": "ALM-000418"})  # the previous answer's alarm: a compressor's
+    result, _ = await run_agent(
+        "Which procedure applies to this alarm?",
+        tool("get_alarm_details", alarm_id="ALM-000423"),  # a Motor M-102 alarm, looked at on the way
+        recipe("procedure_lookup", uses_context=True),
+        done("A procedure applies [S1].", "document"),
+        mcp=mcp,
+        retriever=retriever,
+        state=state,
+    )
+    ev = result.run.evidence
+    assert ev.focus_alarm["alarm_id"] == "ALM-000418" and state.last_alarm["alarm_id"] == "ALM-000418"
+    queries = [s.query for s in result.run.steps if s.kind == "rag_retrieval"]
+    assert queries and all("High Discharge Pressure" in q and "Overload" not in q for q in queries)
+
+
+async def test_a_recipe_starts_without_the_subject_the_agent_looked_at_before(mcp, retriever):
+    state = ConversationState(last_alarm={"alarm_id": "ALM-000418"})
+    result, _ = await run_agent(
+        "Which procedure applies to this alarm?",
+        tool("get_asset_metadata", asset_id="AST-BFP-101"),  # its related assets are not the recipe's
+        tool("score_alarm_priority", alarm_id="ALM-000423"),  # nor is its priority
+        recipe("procedure_lookup", uses_context=True),
+        done("A procedure applies [S1].", "document"),
+        mcp=mcp,
+        retriever=retriever,
+        state=state,
+    )
+    ev = result.run.evidence
+    assert ev.asset["asset_id"] == "AST-CMP-301"
+    assert ev.related_assets == [] and ev.priority is None
+    assert "AST-BFP-101" in ev.known_assets  # what the agent found stays known
+
+
+async def test_a_recipe_loads_the_metadata_of_its_own_asset_after_the_agent_looked_at_another(mcp, retriever):
+    result, _ = await run_agent(
+        "Investigate Boiler Feed Pump 101",
+        tool("get_asset_metadata", asset_id="AST-CMP-301"),
+        recipe("investigate_asset", asset="Boiler Feed Pump 101"),
+        done("High vibration recurs [T2].", "why"),
+        mcp=mcp,
+        retriever=retriever,
+    )
+    ev = result.run.evidence
+    assert {"AST-MTR-101", "AST-DEA-101"} <= {
+        a["asset_id"] for a in ev.related_assets
+    }  # pump 101's, not the compressor's
+    assert ev.asset["asset_id"] == "AST-BFP-101"
+
+
+async def test_a_recipe_loads_its_focus_assets_metadata_even_when_the_agent_loaded_it_before(mcp, retriever):
+    result, _ = await run_agent(
+        "What alarms are active right now in NorthPlant Unit 1?",
+        tool("get_asset_metadata", asset_id="AST-BFP-102"),  # the asset of the most urgent active alarm
+        recipe("active_alarms", site="NorthPlant", unit="Unit 1"),
+        done("There are active alarms [T3].", "list"),
+        mcp=mcp,
+        retriever=retriever,
+    )
+    ev = result.run.evidence
+    loads = [s for s in result.run.steps if getattr(s, "tool", None) == "get_asset_metadata"]
+    assert [s.step for s in loads][0] == 1 and len(loads) == 2  # the recipe loaded it for itself
+    assert ev.asset["asset_id"] == "AST-BFP-102"
+    assert "AST-MTR-102" in {a["asset_id"] for a in ev.related_assets}

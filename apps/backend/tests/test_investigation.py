@@ -302,3 +302,37 @@ async def test_a_document_question_keeps_to_the_type_it_names(mcp, retriever):
     )
     run = await investigate(u, mcp, retriever, ConversationState(), trace_id="t")
     assert all(label.startswith("ALM-PHIL-006") for label in labels(run))  # no pump documents for a boiler
+
+
+# ------------------------------------------------------ the record holds only what the playbook established
+
+
+async def test_a_type_question_that_picks_no_asset_leaves_the_record_without_one(mcp, retriever):
+    """The pick compares the boilers (one candidate here) and finds no vibration alarm: nothing was chosen."""
+    state = ConversationState()
+    u = understand_with_rules("Why does the boiler keep raising vibration alarms?")
+    ev = (await investigate(u, mcp, retriever, state, trace_id="t")).evidence
+    assert ev.asset is None and ev.alarm_summary is None
+    assert state.last_asset is None  # a follow-up cannot refer back to an asset nobody chose
+
+
+async def test_a_named_asset_with_no_active_alarms_is_still_the_questions_asset(mcp, retriever):
+    """A call filtered to one known asset focuses it (the design's rule), whether or not it found alarms."""
+    u = understand_with_rules("Which is the highest priority alarm on Boiler Feed Pump 101?")
+    run = await investigate(u, mcp, retriever, ConversationState(), trace_id="t")
+    assert tools_called(run) == ["search_assets", "get_alarms"]
+    assert run.evidence.asset["asset_id"] == "AST-BFP-101"
+
+
+async def test_a_playbook_starts_from_a_clean_record_for_its_subject(mcp):
+    inv = Investigation(understand_with_rules("x"), mcp, None, ConversationState(), "t")
+    await inv.tool("get_asset_metadata", "Asset details", asset_id="AST-BFP-101")
+    inv.evidence.notes.append("a note")
+    assert inv.evidence.asset["asset_id"] == "AST-BFP-101" and inv._metadata_loaded("AST-BFP-101")
+    inv.begin_playbook()
+    ev = inv.evidence
+    assert ev.asset is None and ev.related_assets == [] and ev.focused_asset_ids == []
+    assert set(ev.known_assets) == {"AST-BFP-101"} and ev.notes == ["a note"]  # what was found stays
+    assert inv.playbook_start == 1 and not inv._metadata_loaded("AST-BFP-101")  # but its own steps are not its own
+    await inv.tool("get_asset_metadata", "Asset details", asset_id="AST-BFP-101")
+    assert inv._metadata_loaded("AST-BFP-101") and ev.asset["asset_id"] == "AST-BFP-101"

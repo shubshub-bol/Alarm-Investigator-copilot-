@@ -470,8 +470,7 @@ class Agent:
         # room for its procedure, safety and governance passages.
         self.inv.max_passages = MAX_PASSAGES + len(ev.passages)
         steps, passages, missing, notes = len(self.inv.steps), len(ev.passages), len(ev.missing), len(ev.notes)
-        advice_before = ev.recommendations  # the agent's own advice lookup fills the record too
-        ev.focused_asset_ids, ev.asset = [], None  # the recipe investigates its own asset; earlier looks do not blur it
+        self.inv.begin_playbook()  # the recipe investigates its own subject; the agent's earlier looks do not blur it
         await getattr(self.inv, step.name)()
         await self.inv.governance_if_conflict()
         # Facts from the recipe's own steps only, so a tool the agent called earlier is not stated twice.
@@ -483,7 +482,7 @@ class Agent:
         lines += [
             f"[{p.citation.key}] {p.citation.label}: {_cut(p.text, PASSAGE_CHARS)}" for p in ev.passages[passages:]
         ]
-        if ev.recommendations and ev.recommendations is not advice_before:  # the advice this recipe fetched
+        if ev.recommendations:  # the advice this recipe fetched: the record was cleared when it began
             lines.append("API RECOMMENDED ACTIONS TO ASSESS (in action_assessments, by step number):")
             lines += [f"({a['step']}) {a['action']}" for a in ev.recommendations["recommended_actions"]]
         lines += [f"Gap: {m}" for m in ev.missing[missing:]] + [f"Note: {n}" for n in ev.notes[notes:]]

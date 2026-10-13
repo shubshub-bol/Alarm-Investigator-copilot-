@@ -16,7 +16,7 @@ import anyio
 from pydantic import BaseModel
 
 from copilot.consistency import assess_actions
-from copilot.evidence import Evidence, record_result
+from copilot.evidence import Evidence, clear_subject, record_result
 from copilot.mcp_client import McpToolClient
 from copilot.trace import RetrievalRecord, RetrievedRef, ToolCallRecord
 from copilot.understanding import QueryUnderstanding
@@ -77,6 +77,7 @@ class Investigation:
         self.on_step = on_step
         self.evidence = Evidence(intent=u.intent)
         self.steps: list[StepRecord] = []
+        self.playbook_start = 0  # the step the running playbook began at: earlier steps are not its own
         self.mcp_down = False
         self.lookback = u.lookback_days or DEFAULT_LOOKBACK_DAYS
         self.max_passages = MAX_PASSAGES  # the agent raises it before a recipe, past what its own searches kept
@@ -93,6 +94,12 @@ class Investigation:
         if self.on_step is not None:
             await self.on_step(record)
 
+    def begin_playbook(self) -> None:
+        """A playbook is about to run after other steps (the agent's own): it investigates its own subject, so the
+        record forgets the earlier subject and the steps before this point no longer count as the playbook's."""
+        clear_subject(self.evidence)
+        self.playbook_start = len(self.steps)
+
     async def tool(self, name: str, purpose: str, **arguments: Any) -> dict | None:
         return await self.call_tool(name, purpose, arguments)
 
@@ -103,7 +110,7 @@ class Investigation:
         record = await self.mcp.call(name, args, trace_id=self.trace_id, purpose=purpose)
         await self._record(record)
         if record.status == "ok":
-            record_result(self.evidence, name, args, record.result or {})
+            record_result(self.evidence, name, args, record.result or {}, record.step)
             return record.result
         if record.error_code == "MCP_UNAVAILABLE":
             self.mcp_down = True
@@ -232,7 +239,7 @@ class Investigation:
             and s.tool == "get_asset_metadata"
             and s.status == "ok"
             and s.arguments.get("asset_id") == asset_id
-            for s in self.steps
+            for s in self.steps[self.playbook_start :]
         )
 
     # ============================================================ building blocks

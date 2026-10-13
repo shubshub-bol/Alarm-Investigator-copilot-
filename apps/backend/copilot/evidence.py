@@ -30,7 +30,9 @@ class Evidence(BaseModel):
     lookback_days: int | None = None
     asset: dict | None = None  # the asset the question is about, when the calls clearly focus on one
     related_assets: list[dict] = []
-    known_assets: dict[str, dict] = {}  # every asset a tool returned, by asset id
+    # the assets a search, asset details, alarm details or the API's advice returned, by asset id (the related assets
+    # listed in an asset's details are not added: they are named there, not looked up)
+    known_assets: dict[str, dict] = {}
     focused_asset_ids: list[str] = []  # the assets single-asset calls were about, in order
     alarm_summary: dict | None = None
     top_alarm: dict | None = None
@@ -41,6 +43,8 @@ class Evidence(BaseModel):
     focus_alarm: dict | None = None
     priority: dict | None = None
     recommendations: dict | None = None
+    recommendations_step: int | None = None  # the trace step whose result is `recommendations`
+    advised_alarm_ids: list[str] = []  # the alarms the API's advice was fetched for, in order
     action_checks: list[dict] = []  # per API action: the passages retrieved to check it
     passages: list[RetrievedPassage] = []
     passage_purposes: dict[str, str] = {}  # citation key -> why it was retrieved
@@ -56,6 +60,8 @@ def _asset(info: dict) -> dict:
 def _know(ev: Evidence, info: dict | None) -> None:
     if info and info.get("asset_id"):
         ev.known_assets[info["asset_id"]] = {**ev.known_assets.get(info["asset_id"], {}), **_asset(info)}
+        if len(ev.focused_asset_ids) == 1:  # the one asset calls were about may have only now become known
+            ev.asset = ev.known_assets.get(ev.focused_asset_ids[0])
 
 
 def _focus(ev: Evidence, asset_id: str | None) -> None:
@@ -73,8 +79,24 @@ def _one(ids: Any) -> str | None:
     return ids[0] if isinstance(ids, list) and len(ids) == 1 else None
 
 
-def record_result(ev: Evidence, tool: str, arguments: dict[str, Any], result: dict[str, Any]) -> None:
-    """Write what one successful tool result plainly shows into the evidence record."""
+def _by_asset(arguments: dict[str, Any]) -> bool:
+    """A summary grouped per asset compares assets, even when it covers only one."""
+    group_by = arguments.get("group_by")
+    return isinstance(group_by, list) and "asset_id" in group_by
+
+
+def clear_subject(ev: Evidence) -> None:
+    """Forget what the calls so far established about the question's subject, for a playbook that starts now and
+    investigates its own: the asset and what hangs on it, the alarm, the advice. What was found about the plant
+    stays: the known assets, the passages, the notes and the gaps."""
+    ev.asset = ev.focus_alarm = ev.priority = ev.recommendations = ev.alarm_summary = ev.trend = None
+    ev.recommendations_step = None
+    ev.related_assets, ev.focused_asset_ids, ev.advised_alarm_ids, ev.active_alarms = [], [], [], []
+
+
+def record_result(ev: Evidence, tool: str, arguments: dict[str, Any], result: dict[str, Any], step: int) -> None:
+    """Write what one successful tool result plainly shows into the evidence record. `step` is the trace step that
+    made the call, so a fact can be tied to the advice it states."""
     if tool == "search_assets":
         for found in result.get("results", []):
             _know(ev, found)
@@ -93,13 +115,13 @@ def record_result(ev: Evidence, tool: str, arguments: dict[str, Any], result: di
         _focus(ev, arguments.get("asset_id"))
     elif tool == "summarize_alarms":
         asset_id = _one(arguments.get("asset_ids"))
-        if asset_id:
+        if asset_id and not _by_asset(arguments):
             ev.alarm_summary = {
                 "time_range": result["time_range"],
                 "totals": result["totals"],
                 "groups": result["groups"][:6],
             }
-        _focus(ev, asset_id)
+            _focus(ev, asset_id)
     elif tool == "get_alarm_trends":
         asset_id = _one(arguments.get("asset_ids"))
         if asset_id:
@@ -109,9 +131,16 @@ def record_result(ev: Evidence, tool: str, arguments: dict[str, Any], result: di
         if ev.priority is None:
             ev.priority = {k: result[k] for k in PRIORITY_FIELDS if k in result}
     elif tool == "get_operator_recommendations":
-        ev.recommendations = {k: result[k] for k in RECOMMENDATION_FIELDS if k in result}
+        alarm_id = result.get("alarm_id", arguments.get("alarm_id"))
+        if alarm_id and alarm_id not in ev.advised_alarm_ids:
+            ev.advised_alarm_ids.append(alarm_id)
+        if len(ev.advised_alarm_ids) > 1:  # advice for two different alarms: neither is "the" advice, and it stays so
+            ev.recommendations, ev.recommendations_step = None, None
+        else:
+            ev.recommendations = {k: result[k] for k in RECOMMENDATION_FIELDS if k in result}
+            ev.recommendations_step = step
         if ev.priority is None and result.get("priority"):
-            ev.priority = {**result["priority"], "alarm_id": result.get("alarm_id", arguments.get("alarm_id"))}
+            ev.priority = {**result["priority"], "alarm_id": alarm_id}
         context = result.get("asset_context")
         _know(ev, context)
         _focus(ev, (context or {}).get("asset_id"))
