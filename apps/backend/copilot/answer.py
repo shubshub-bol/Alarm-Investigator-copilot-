@@ -67,6 +67,7 @@ class Grounding(BaseModel):
     llm_latency_ms: float | None = None
     summary_source: Literal["llm", "template"] = "template"
     summary_rejected: str | None = None  # why the model's summary was not shown
+    rejected_summary: str | None = None  # what the model wrote then (cut to 300 characters), for review
 
 
 class CopilotAnswer(BaseModel):
@@ -463,7 +464,7 @@ def _apply_reply(body: AnswerBody, reply: LlmReply, evidence: str, valid: set[st
     unknown.update(k for k in keys if k not in valid)
     problem = _text_problem(text, keys, valid, evidence, SUMMARY_MAX)
     if problem:
-        grounding.summary_rejected = problem
+        grounding.summary_rejected, grounding.rejected_summary = problem, reply.summary[:300]
         log.warning("model summary rejected; using the plain summary", extra={"fields": {"reason": problem}})
     else:
         body.summary = _one_key_each(summary)
@@ -599,6 +600,7 @@ async def compose_answer(
     body.action_assessments = _merge_assessments(body.action_assessments, rules)
     conflicting = [a.action for a in body.action_assessments if a.verdict == "conflict"]
     if grounding.summary_source == "llm" and any(_recommends(body.summary, c) for c in conflicting):
+        grounding.rejected_summary = body.summary[:300]
         body.summary, grounding.summary_source = plain_summary, "template"
         grounding.summary_rejected = "it recommends an Alarm API action the documents conflict with"
         log.warning("model summary rejected; using the plain summary", extra={"fields": {"reason": "conflict"}})

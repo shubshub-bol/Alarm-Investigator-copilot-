@@ -286,6 +286,7 @@ async def test_a_model_summary_that_fails_the_check_is_replaced(acceptance_run, 
     assert answer.summary == offline.summary
     assert answer.grounding.summary_source == "template"
     assert reason in answer.grounding.summary_rejected
+    assert answer.grounding.rejected_summary == summary[:300]  # kept for review
 
 
 async def test_each_analysis_statement_is_checked_on_its_own(acceptance_run):

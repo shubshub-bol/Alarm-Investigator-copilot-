@@ -189,9 +189,22 @@ def notes(response: ChatResponse) -> str:
         f"{k} {v}" for k, v in (("asset", u.asset_query), ("type", u.asset_type), ("topic", u.alarm_topic)) if v
     )
     out = [f"understood as {u.intent}" + (f" ({seen})" if seen else "")]
-    if response.answer.grounding.summary_rejected:
-        out.append(f"summary rejected: {response.answer.grounding.summary_rejected}")
+    g = response.answer.grounding
+    if g.summary_rejected:
+        out.append(f"summary rejected: {g.summary_rejected}")
+    if g.rejected_summary:
+        wrote = " ".join(g.rejected_summary.replace("|", "/").split())  # one table cell: no pipes, no line breaks
+        out.append(f'model wrote: "{wrote}"')
     return "; ".join(out)
+
+
+async def services_down(service: CopilotService) -> str | None:
+    """Why the set cannot run against these services, or None. Checked first, so no model request is spent on a
+    run whose alarm data would all be missing."""
+    tools = await service.list_tools()
+    if tools.connected:
+        return None
+    return f"The MCP server is unreachable ({tools.error}). Start the Alarm API and the MCP server first."
 
 
 def facts_part(response: ChatResponse) -> list[tuple[str, tuple[str, ...]]]:
@@ -266,6 +279,9 @@ def main(argv: list[str] | None = None) -> int:
         llm,
         conversations=ConversationStore(),  # in memory: evaluation chats are never saved
     )
+    if problem := asyncio.run(services_down(service)):
+        print(problem)
+        return 2
     report = asyncio.run(evaluate(service, GOLDEN[args.skip :][: args.limit], repeat=args.repeat))
     for row in report.rows:
         print(f"{'FAIL' if row.problems else 'pass'}  {row.case.question[:90]}")

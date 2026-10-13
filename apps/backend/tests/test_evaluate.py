@@ -2,8 +2,8 @@
 
 import pytest
 
-from copilot.evaluate import GOLDEN, Case, evaluate, facts_part, write_report
-from copilot.mcp_client import in_memory_connector
+from copilot.evaluate import GOLDEN, Case, evaluate, facts_part, services_down, write_report
+from copilot.mcp_client import http_connector, in_memory_connector
 from copilot.service import CopilotService
 from copilot_test_helpers import simulator_transport
 from mcp_test_helpers import make_server
@@ -62,13 +62,25 @@ async def test_the_report_has_the_score_and_every_question(service, tmp_path):
 
 async def test_the_report_says_how_each_question_was_understood_and_why_a_summary_was_rejected(service, tmp_path):
     report = await evaluate(service, GOLDEN[:1])
-    report.rows[0].response.answer.grounding.summary_rejected = "number 31 is not in the evidence"
+    grounding = report.rows[0].response.answer.grounding
+    grounding.summary_rejected = "number 31 is not in the evidence"
+    grounding.rejected_summary = "Boiler Feed Pump 101 had 31 alarms | rising"
     write_report(report, tmp_path / "run.md", "LLM")
     text = (tmp_path / "run.md").read_text(encoding="utf-8")
     assert "understood as investigate_asset (asset Boiler Feed Pump 101, type pump)" in text
     assert "summary rejected: number 31 is not in the evidence" in text
+    assert 'model wrote: "Boiler Feed Pump 101 had 31 alarms / rising"' in text  # a | would break the table
 
 
 async def test_the_report_has_unix_line_endings_like_the_rest_of_the_repository(service, tmp_path):
     write_report(await evaluate(service, GOLDEN[:1]), tmp_path / "run.md", "offline")
     assert b"\r\n" not in (tmp_path / "run.md").read_bytes()
+
+
+async def test_the_evaluation_does_not_start_when_the_mcp_server_is_unreachable():
+    dead = CopilotService(http_connector("http://127.0.0.1:9/mcp", token="x", timeout_seconds=2), None, llm=None)
+    assert "MCP server is unreachable" in await services_down(dead)  # no model requests spent on a broken stack
+
+
+async def test_the_evaluation_starts_when_the_services_are_up(service):
+    assert await services_down(service) is None
