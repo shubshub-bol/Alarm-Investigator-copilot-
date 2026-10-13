@@ -12,7 +12,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field, ValidationError
 
-from copilot.answer import Statement
+from copilot.answer import CopilotAnswer, LlmReply, Statement, compose_answer
 from copilot.consistency import ActionAssessment
 from copilot.facts import Fact, build_facts
 from copilot.investigation import (
@@ -352,3 +352,37 @@ class Agent:
             state.last_alarm = ev.focus_alarm
         state.last_site = self.u.site or state.last_site
         state.last_unit = self.u.unit or state.last_unit
+
+
+async def compose_agent_answer(
+    question: str, agent_run: AgentRun, llm: LlmProvider | None, context: str = ""
+) -> CopilotAnswer:
+    """The answer from an agent run: its final reply checked like any model text, the details built from what its
+    steps found, and how the run ended (step limit, model failure) in the gaps."""
+    final = agent_run.final
+    reply = (
+        LlmReply(
+            summary=final.direct_answer,
+            analysis=final.analysis,
+            action_assessments=final.action_assessments,
+            gaps=final.gaps,
+        )
+        if final
+        else None
+    )
+    answer = await compose_answer(
+        question,
+        agent_run.run,
+        None,
+        context,
+        facts=agent_run.facts,
+        reply=reply,
+        degraded_reason=agent_run.model_error,
+        extra_gaps=[STEP_LIMIT_GAP] if agent_run.hit_limit else None,
+    )
+    answer.answer_type = final.answer_type if final else None
+    g = answer.grounding
+    g.mode, g.agent_steps, g.agent_hit_limit = "llm", agent_run.steps, agent_run.hit_limit
+    last = getattr(llm, "last_call", {}) or {}
+    g.model, g.llm_latency_ms = last.get("model"), last.get("latency_ms")
+    return answer

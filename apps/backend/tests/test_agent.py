@@ -5,7 +5,7 @@ import json
 import httpx
 import pytest
 
-from copilot.agent import MAX_STEPS, RESULT_CHARS, Agent, tool_line
+from copilot.agent import MAX_STEPS, RESULT_CHARS, Agent, compose_agent_answer, tool_line
 from copilot.investigation import MAX_PASSAGES, ConversationState
 from copilot.llm import LlmError
 from copilot.mcp_client import McpToolClient, in_memory_connector
@@ -356,3 +356,95 @@ async def test_a_named_asset_does_not_wait_for_a_lookup_that_has_no_tools(mcp, r
     agent = Agent(question, "", llm, mcp, [], retriever, ConversationState(), "t")  # no tools were discovered
     result = await agent.run()
     assert (result.final.direct_answer, result.steps, len(llm.prompts)) == ("No data could be looked up.", 1, 1)
+
+
+# --------------------------------------------------------------- the answer from an agent run
+async def test_an_agent_answer_leads_with_the_direct_answer(mcp, retriever):
+    result, llm = await run_agent(
+        "How many boilers do we have?",
+        tool("search_assets", query="boiler", asset_type="boiler"),
+        done("Boiler B-201 is the only boiler [T1]."),
+        mcp=mcp,
+        retriever=retriever,
+    )
+    answer = await compose_agent_answer("How many boilers do we have?", result, llm)
+    assert answer.summary == "Boiler B-201 is the only boiler [T1]."
+    assert answer.answer_type == "count"
+    assert any(s.citations == ["T1"] and "Boiler B-201" in s.text for s in answer.findings)
+    assert (answer.grounding.mode, answer.grounding.agent_steps, answer.grounding.agent_hit_limit) == ("llm", 2, False)
+
+
+async def test_an_agent_answer_without_a_final_reply_says_what_was_looked_up(mcp, retriever):
+    steps = [tool("search_assets", query=f"pump {n}") for n in range(MAX_STEPS)]
+    result, llm = await run_agent("Find every pump", *steps, mcp=mcp, retriever=retriever)
+    answer = await compose_agent_answer("Find every pump", result, llm)
+    assert answer.summary.startswith("Looked up with search_assets")
+    assert "The question could not be fully answered within 6 steps." in answer.gaps
+    assert answer.answer_type is None and answer.grounding.agent_hit_limit is True
+
+
+async def test_a_long_tool_result_is_cut_in_the_findings_but_whole_in_the_facts(mcp, retriever):
+    question = "List every alarm at NorthPlant"
+    result, llm = await run_agent(
+        question,
+        tool("get_alarms", site="NorthPlant", fetch_all=True, max_items=200),
+        done("NorthPlant has many alarms [T1].", "list"),
+        mcp=mcp,
+        retriever=retriever,
+    )
+    answer = await compose_agent_answer(question, result, llm)
+    assert len(answer.facts[0].statement) > 800  # the fact keeps its whole statement
+    assert [len(s.text) for s in answer.findings] == [800] and answer.findings[0].text.endswith("...")
+
+
+async def test_a_recipe_answer_keeps_the_recipe_details(mcp, retriever):
+    result, llm = await run_agent(
+        "Investigate Boiler Feed Pump 101",
+        recipe("investigate_asset", asset="Boiler Feed Pump 101", lookback_days=90, severities=["high", "critical"]),
+        done("High vibration on Boiler Feed Pump 101 keeps recurring [T2].", "why"),
+        mcp=mcp,
+        retriever=retriever,
+    )
+    answer = await compose_agent_answer("Investigate Boiler Feed Pump 101", result, llm)
+    sop = next(c.key for c in answer.citations if c.label == "SOP-BFP-001 §4.1")
+    assert answer.procedure and sop in answer.recommended_actions[0].citations
+    assert answer.answer_type == "why"
+
+
+async def test_a_model_failure_midway_is_degraded_but_keeps_the_data(mcp, retriever):
+    result, llm = await run_agent(
+        "How many boilers do we have?",
+        tool("search_assets", query="boiler", asset_type="boiler"),
+        LlmError("timeout"),
+        mcp=mcp,
+        retriever=retriever,
+    )
+    answer = await compose_agent_answer("How many boilers do we have?", result, llm)
+    assert answer.grounding.degraded and "timeout" in answer.grounding.degraded_reason
+    assert answer.findings
+
+
+async def test_an_invented_number_in_the_direct_answer_is_rejected(mcp, retriever):
+    result, llm = await run_agent(
+        "How many boilers do we have?",
+        tool("search_assets", query="boiler", asset_type="boiler"),
+        done("There are 731 boilers [T1]."),
+        mcp=mcp,
+        retriever=retriever,
+    )
+    answer = await compose_agent_answer("How many boilers do we have?", result, llm)
+    assert answer.grounding.summary_source == "template" and "number 731" in answer.grounding.summary_rejected
+
+
+async def test_a_rejected_answer_after_a_document_search_falls_back_to_the_documents(mcp, retriever):
+    question = "What must be done before inspecting a pump?"
+    result, llm = await run_agent(
+        question,
+        search("lockout and isolation before inspecting a pump", doc_types=["safety_instruction"]),
+        done("Wait 731 minutes first [S1].", "document"),
+        mcp=mcp,
+        retriever=retriever,
+    )
+    answer = await compose_agent_answer(question, result, llm)
+    assert answer.grounding.summary_source == "template"
+    assert answer.summary.startswith("SAF-")  # the closest sentence of the best safety instruction, cited

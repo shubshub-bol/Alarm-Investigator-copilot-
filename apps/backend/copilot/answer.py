@@ -28,9 +28,18 @@ _KEY_IN_GROUP = re.compile(r"\b[TS]\d+\b")
 _CITATION_GROUP = re.compile(r"\[\s*[TS]\d+(?:\s*[,;]\s*[TS]\d+)*\s*\]")  # [T2] or [T2, S3] or [S1; S4]
 
 
+STATEMENT_MAX = 800  # characters in one statement
+
+
 class Statement(BaseModel):
-    text: str = Field(max_length=800)
+    text: str = Field(max_length=STATEMENT_MAX)
     citations: list[str] = []
+
+
+def _fit(text: str) -> str:
+    """A fact's statement as a statement of the answer. An agent's tool result can run to 3000 characters; the cut
+    only shortens the line shown under 'What the data shows': the answer's facts keep the whole statement."""
+    return text if len(text) <= STATEMENT_MAX else text[: STATEMENT_MAX - 3] + "..."
 
 
 class LlmReply(BaseModel):
@@ -70,10 +79,13 @@ class Grounding(BaseModel):
     rejected_summary: str | None = None  # what the model wrote then (cut to 300 characters), for review
     summary_keys_added: bool = False  # the model cited nothing; code added the keys its numbers and codes point to
     summary_shortened: bool = False  # the model's summary was too long; its first whole sentences that fit were kept
+    agent_steps: int = 0  # steps the agent took (0 on the rules path)
+    agent_hit_limit: bool = False  # the agent used all its steps without a final answer
 
 
 class CopilotAnswer(BaseModel):
     summary: str
+    answer_type: str | None = None  # the agent's answer type (count, list, compare, ...); None on the rules path
     analysis: list[Statement] = []  # the model's checked reasoning; empty without a model
     findings: list[Statement]
     likely_causes: list[Statement]
@@ -222,9 +234,12 @@ def _plain_summary(
         parts.append(_cited(f"Related assets with recent alarms: {', '.join(related)}", *keys))
         for p in _passages_for(run, "Which related equipment")[:1]:
             parts.append(_cited(f"{p.citation.label} lists what to inspect: {_first_sentence(p)}", p.citation.key))
-    elif ev.intent == "knowledge_question" and ev.passages:
+    elif ev.intent in ("knowledge_question", "agent") and ev.passages and not by_tool:
         p, sentence = _closest_sentence(ev.passages, question)
         parts.append(_cited(f"{p.citation.label} ({p.citation.title}): {sentence}", p.citation.key))
+    elif ev.intent == "agent" and by_tool:
+        tools = list(by_tool)
+        parts.append(_cited(f"Looked up with {', '.join(tools)}; what was found is below", by_tool[tools[0]][0].key))
     elif ev.ranked_alarms:
         best = ev.ranked_alarms[0]
         rank_fact = next((f for f in by_tool.get("score_alarm_priority", []) if best["alarm_id"] in f.statement), None)
@@ -282,10 +297,10 @@ def template_answer(
     summary = _plain_summary(run, by_tool, assessments, question)
 
     # findings: every tool fact except the API's recommendation list (shown under actions instead)
-    findings = [Statement(text=f.statement, citations=[f.key]) for f in facts if f is not rec_fact]
+    findings = [Statement(text=_fit(f.statement), citations=[f.key]) for f in facts if f is not rec_fact]
 
     # likely causes
-    causes = [Statement(text=f.statement, citations=[f.key]) for f in by_tool.get("correlate_alarms", [])]
+    causes = [Statement(text=_fit(f.statement), citations=[f.key]) for f in by_tool.get("correlate_alarms", [])]
     for p in _passages_for(run, "Guidance on contributing factor")[:1]:
         text = _key_sentence(p, ("misalignment", "sign", "cause", "points to", "typical"))
         causes.append(Statement(text=f"Documented pattern: {text}", citations=[p.citation.key]))
@@ -623,11 +638,21 @@ def render_markdown(a: AnswerBody, gaps: list[str]) -> str:
 
 # ---------------------------------------------------------------------------- entry
 async def compose_answer(
-    question: str, run: InvestigationRun, llm: LlmProvider | None, context: str = ""
+    question: str,
+    run: InvestigationRun,
+    llm: LlmProvider | None,
+    context: str = "",
+    *,
+    facts: list[Fact] | None = None,
+    reply: LlmReply | None = None,
+    degraded_reason: str | None = None,
+    extra_gaps: list[str] | None = None,
 ) -> CopilotAnswer:
-    """`context` is the chat so far (copilot/context.py), shown to the model only; it is never evidence."""
+    """`context` is the chat so far (copilot/context.py), shown to the model only; it is never evidence. The agent
+    passes its own `facts` (any tool's results, keyed as the model saw them) and its final `reply`, so no second
+    model call is made; `degraded_reason` and `extra_gaps` report how it ended."""
     ev = run.evidence
-    facts = build_facts(run)
+    facts = facts if facts is not None else build_facts(run)
     citations = [p.citation for p in ev.passages]
     valid = {f.key for f in facts} | {c.key for c in citations}
     rules = assess_actions(ev.recommendations["recommended_actions"], ev.passages) if ev.recommendations else []
@@ -635,19 +660,21 @@ async def compose_answer(
 
     body = template_answer(run, facts, rules, question)  # the facts part: from the evidence, with or without a model
     plain_summary = body.summary
-    if llm is not None:
+    if reply is None and llm is not None:
         try:
             reply = await llm.generate_json(SYSTEM_PROMPT, _llm_prompt(question, run, facts, context), LlmReply)
         except (LlmError, ValidationError) as exc:
-            grounding.degraded = True
-            grounding.degraded_reason = str(exc).splitlines()[0][:200]
-            log.warning("llm answer failed; using template", extra={"fields": {"reason": grounding.degraded_reason}})
+            degraded_reason = str(exc).splitlines()[0][:200]
+            log.warning("llm answer failed; using template", extra={"fields": {"reason": degraded_reason}})
         else:
-            grounding.mode = "llm"
             last = getattr(llm, "last_call", {}) or {}
             grounding.model, grounding.llm_latency_ms = last.get("model"), last.get("latency_ms")
-            sources = [(f.key, f.statement) for f in facts] + [(p.citation.key, p.text) for p in ev.passages]
-            _apply_reply(body, reply, _evidence_text(question, run, facts), sources, valid, grounding)
+    if reply is not None:
+        grounding.mode = "llm"
+        sources = [(f.key, f.statement) for f in facts] + [(p.citation.key, p.text) for p in ev.passages]
+        _apply_reply(body, reply, _evidence_text(question, run, facts), sources, valid, grounding)
+    if degraded_reason:
+        grounding.degraded, grounding.degraded_reason = True, degraded_reason
 
     body.action_assessments = _merge_assessments(body.action_assessments, rules)
     conflicting = [a.action for a in body.action_assessments if a.verdict == "conflict"]
@@ -659,7 +686,7 @@ async def compose_answer(
     body.recommended_actions = _drop_conflicting(body.recommended_actions, body.action_assessments, grounding)
     body.analysis = _drop_conflicting(body.analysis, body.action_assessments, grounding)
 
-    gaps = list(dict.fromkeys([*body.gaps, *ev.missing, *ev.notes]))
+    gaps = list(dict.fromkeys([*body.gaps, *ev.missing, *ev.notes, *(extra_gaps or [])]))
     if grounding.degraded:
         gaps.append(f"The language model was unavailable ({grounding.degraded_reason}); this answer uses a template.")
     gaps = list(dict.fromkeys(gaps))
