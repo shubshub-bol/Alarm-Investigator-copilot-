@@ -2,7 +2,7 @@
 
 import pytest
 
-from copilot.evaluate import GOLDEN, Case, check, evaluate, facts_part, services_down, write_report
+from copilot.evaluate import GOLDEN, Case, check, evaluate, facts_part, notes, services_down, write_report
 from copilot.mcp_client import http_connector, in_memory_connector
 from copilot.service import ChatResponse, CopilotService
 from copilot_test_helpers import simulator_transport
@@ -186,3 +186,35 @@ async def test_the_direct_answer_patterns_ignore_case(service):
     response = (await evaluate(service, GOLDEN[:1])).rows[0].response
     response.answer.summary = "motor m-101 had 24 alarms [T1]."
     assert answer_problems(golden(MOST_ALARMS), response) == []
+
+
+def as_agent(response: ChatResponse) -> ChatResponse:
+    """The same response as if the agent had answered (with a model, a question without a recipe has this intent)."""
+    return response.model_copy(update={"understanding": response.understanding.model_copy(update={"intent": "agent"})})
+
+
+def intent_problems(case: Case, response: ChatResponse) -> list[str]:
+    return [p for p in check(case, response) if p.startswith("intent:")]
+
+
+@pytest.mark.parametrize("question", ["What does the safety instruction say about lockout?", "Tell me a joke"])
+async def test_a_question_without_data_may_be_answered_by_the_agent(service, question):
+    documents = (await evaluate(service, [golden("What does the safety instruction say about lockout?")])).rows[0]
+    assert intent_problems(golden(question), as_agent(documents.response)) == []  # no tool ran
+    with_data = (await evaluate(service, GOLDEN[:1])).rows[0].response  # tools ran
+    assert intent_problems(golden(question), as_agent(with_data)) != []
+
+
+async def test_the_notes_give_the_agents_steps_and_why_it_stopped(service):
+    response = (await evaluate(service, GOLDEN[:1])).rows[0].response
+    g = response.answer.grounding
+    g.agent_steps, g.agent_hit_limit, g.degraded, g.degraded_reason = 6, True, True, "timeout"
+    text = notes(response)
+    assert "6 agent steps" in text and "stopped at the step limit" in text and "model error: timeout" in text
+
+
+async def test_the_refinery_count_may_say_only_or_single(service):
+    response = (await evaluate(service, GOLDEN[:1])).rows[0].response
+    for summary in ("EastRefinery is the only refinery [T1].", "There is a single refinery, East Refinery [T1]."):
+        response.answer.summary = summary
+        assert answer_problems(golden(REFINERIES), response) == []

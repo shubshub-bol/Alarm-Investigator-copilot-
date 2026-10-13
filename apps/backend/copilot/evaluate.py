@@ -119,7 +119,7 @@ GOLDEN: list[Case] = [
     Case("What is the capital of France?", OFF_TOPIC, uses_data=False, sources=()),
     # no playbook covers these: the agent combines tools (skipped offline)
     Case("How many refineries do we have?", ("agent", "active_alarms"), answer_type="count",
-         answer=(r"\b(1|one)\b", r"East ?Refinery"), model_only=True),
+         answer=(r"\b(1|one|only|single)\b", r"East ?Refinery"), model_only=True),
     Case("Compare Boiler Feed Pump 101 and Boiler Feed Pump 102 over the last 90 days", ("agent", "investigate_asset"),
          answer_type="compare", model_only=True,
          answer=(r"101\D{0,60}?\b42\b|\b42\b\D{0,60}?101", r"102\D{0,60}?\b20\b|\b20\b\D{0,60}?102")),
@@ -171,12 +171,15 @@ def check(case: Case, response: ChatResponse) -> list[str]:
     """What is wrong with this answer, one line per check that failed."""
     problems = []
     intents = (case.intent,) if isinstance(case.intent, str) else case.intent
-    if response.understanding.intent not in intents:
+    used = any(isinstance(step, ToolCallRecord) for step in response.trace)
+    # With a model, a question no recipe covers is the agent's: a document or off-topic question answered without
+    # any live data has the intent "agent".
+    accepted = (*intents, "agent") if "knowledge_question" in intents and not case.uses_data and not used else intents
+    if response.understanding.intent not in accepted:
         problems.append(f"intent: {response.understanding.intent}, expected {' or '.join(intents)}")
     asset = (response.evidence.asset or {}).get("asset_id")
     if case.asset_id is not None and asset != case.asset_id:
         problems.append(f"asset: {asset}, expected {case.asset_id}")
-    used = any(isinstance(step, ToolCallRecord) for step in response.trace)
     if used != case.uses_data:
         problems.append("live data: used, expected none" if used else "live data: none, expected some")
     labels = [c.label for c in response.answer.citations]
@@ -210,13 +213,20 @@ def check(case: Case, response: ChatResponse) -> list[str]:
 
 
 def notes(response: ChatResponse) -> str:
-    """How the question was understood, and why the model's summary was not shown (when it was not)."""
+    """How the question was understood, the agent's steps and how its run ended, and why the model's summary was not
+    shown (when it was not)."""
     u = response.understanding
     seen = ", ".join(
         f"{k} {v}" for k, v in (("asset", u.asset_query), ("type", u.asset_type), ("topic", u.alarm_topic)) if v
     )
     out = [f"understood as {u.intent}" + (f" ({seen})" if seen else "")]
     g = response.answer.grounding
+    if g.agent_steps:
+        out.append(f"{g.agent_steps} agent step{'s' if g.agent_steps != 1 else ''}")
+    if g.agent_hit_limit:
+        out.append("stopped at the step limit")
+    if reason := g.degraded_reason or u.fallback_reason:
+        out.append(f"model error: {' '.join(reason.replace('|', '/').split())}")  # one table cell
     if g.summary_keys_added:
         out.append("keys added by code")
     if g.summary_shortened:
