@@ -14,7 +14,7 @@ from copilot.llm import LlmError, LlmProvider
 
 log = logging.getLogger("copilot.understanding")
 
-Intent = Literal[
+PlaybookIntent = Literal[
     "investigate_asset",  # why is this asset alarming, contributing factors, procedure, actions
     "active_alarms",  # what is active now on an asset/site and what to do immediately
     "highest_priority",  # which alarm in a site/unit matters most and why
@@ -23,6 +23,9 @@ Intent = Literal[
     "recommendation_check",  # do the API recommendations agree with the documents
     "knowledge_question",  # general documentation question, no plant data needed
     "conversation",  # greetings, thanks, "what can you do": no tools, no documents
+]
+Intent = Literal[
+    PlaybookIntent,
     "agent",  # answered by the agent's own tool steps rather than one playbook
 ]
 Severity = Literal["low", "medium", "high", "critical"]
@@ -45,7 +48,7 @@ class LlmUnderstanding(BaseModel):
 
     model_config = ConfigDict(extra="ignore")
 
-    intent: Intent
+    intent: PlaybookIntent  # the model never chooses "agent": the schema it is sent lists the playbooks only
     asset_query: str | None = Field(None, max_length=80, description="Asset name or id exactly as the user wrote it")
     asset_type: str | None = Field(None, max_length=30, description="pump, motor, compressor... if no specific asset")
     site: str | None = Field(None, max_length=40, description="Site name without spaces, e.g. EastRefinery")
@@ -61,6 +64,7 @@ class LlmUnderstanding(BaseModel):
 class QueryUnderstanding(LlmUnderstanding):
     model_config = ConfigDict(extra="forbid")
 
+    intent: Intent  # the agent's own reading may be "agent"; the model's reading never is
     question: str = ""  # the original text, kept for document search
     method: Literal["rules", "llm"] = "rules"
     fallback_reason: str | None = None

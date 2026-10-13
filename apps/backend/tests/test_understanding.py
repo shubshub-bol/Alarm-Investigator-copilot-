@@ -1,6 +1,7 @@
 """Intent and entity extraction: rule-based understanding, and the LLM path with fallback."""
 
 import pytest
+from pydantic import ValidationError
 
 from copilot.llm import LlmError
 from copilot.understanding import (
@@ -283,6 +284,11 @@ def test_a_merged_reading_widens_severities_and_fills_gaps_from_the_rules():
 
 def test_agent_is_an_intent():
     assert QueryUnderstanding(intent="agent").intent == "agent"
+
+
+def test_the_model_cannot_choose_the_agent_intent():
+    with pytest.raises(ValidationError):
+        LlmUnderstanding(intent="agent")
 
 
 async def test_llm_failure_falls_back_to_rules():
