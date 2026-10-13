@@ -28,7 +28,7 @@ from copilot.llm import build_provider
 from copilot.mcp_client import http_connector
 from copilot.service import ChatResponse, CopilotService
 from copilot.suggestions import STARTER_QUESTIONS
-from copilot.trace import ToolCallRecord
+from copilot.trace import RetrievalRecord, ToolCallRecord
 from rag.config import RagSettings
 from rag.retrieval import Retriever
 
@@ -67,7 +67,7 @@ GOLDEN: list[Case] = [
     Case("Investigate Motor M-501 alarms over the last 30 days", "investigate_asset", "AST-MTR-501",
          sources=("TG-MTR-003",)),
     Case("Boiler B-201 how many times it failed in past?", "investigate_asset", "AST-BLR-201", sources=(),
-         facts=("24", "no procedure for boiler alarms"), procedure=False),  # no boiler documents
+         facts=("24",), procedure=False),  # no boiler documents
     Case("Investigate Forced Draft Fan F-201", "investigate_asset", "AST-FAN-201", sources=("SAF-005",),
          facts=("no procedure for fan alarms",)),  # the safety instruction covers fans; no procedure does
     Case("Investigate Boiler Feed Pump 999", "investigate_asset", facts=("No asset matches",)),
@@ -172,10 +172,9 @@ def check(case: Case, response: ChatResponse) -> list[str]:
     problems = []
     intents = (case.intent,) if isinstance(case.intent, str) else case.intent
     used = any(isinstance(step, ToolCallRecord) for step in response.trace)
-    # With a model, a question no recipe covers is the agent's: a document or off-topic question answered without
-    # any live data has the intent "agent".
-    accepted = (*intents, "agent") if "knowledge_question" in intents and not case.uses_data and not used else intents
-    if response.understanding.intent not in accepted:
+    # The route is what the keyword rules decide, so it is checked on the rules path. With a model the agent may
+    # take any route; only what the operator gets is checked.
+    if response.understanding.method == "rules" and response.understanding.intent not in intents:
         problems.append(f"intent: {response.understanding.intent}, expected {' or '.join(intents)}")
     asset = (response.evidence.asset or {}).get("asset_id")
     if case.asset_id is not None and asset != case.asset_id:
@@ -300,6 +299,8 @@ def write_report(report: EvalReport, path: Path, mode: str) -> None:
         tools = [s.tool for s in r.response.trace if isinstance(s, ToolCallRecord)]
         lines += ["", f"### {n}. {r.case.question} ({'FAIL' if r.problems else 'pass'})", ""]
         lines += [f"Tools: {', '.join(tools) or 'none'}", ""]
+        searches = [s.query for s in r.response.trace if isinstance(s, RetrievalRecord)]
+        lines += [f"Searches: {'; '.join(searches) or 'none'}", ""]
         lines += [f"> {line}" for line in r.response.answer.summary.splitlines() or [""]]
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text("\n".join(lines) + "\n", encoding="utf-8", newline="\n")

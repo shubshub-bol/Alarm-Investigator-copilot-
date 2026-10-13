@@ -198,21 +198,34 @@ async def test_the_direct_answer_patterns_ignore_case(service):
     assert answer_problems(golden(MOST_ALARMS), response) == []
 
 
-def as_agent(response: ChatResponse) -> ChatResponse:
-    """The same response as if the agent had answered (with a model, a question without a recipe has this intent)."""
-    return response.model_copy(update={"understanding": response.understanding.model_copy(update={"intent": "agent"})})
-
-
 def intent_problems(case: Case, response: ChatResponse) -> list[str]:
     return [p for p in check(case, response) if p.startswith("intent:")]
 
 
-@pytest.mark.parametrize("question", ["What does the safety instruction say about lockout?", "Tell me a joke"])
-async def test_a_question_without_data_may_be_answered_by_the_agent(service, question):
-    documents = (await evaluate(service, [golden("What does the safety instruction say about lockout?")])).rows[0]
-    assert intent_problems(golden(question), as_agent(documents.response)) == []  # no tool ran
-    with_data = (await evaluate(service, GOLDEN[:1])).rows[0].response  # tools ran
-    assert intent_problems(golden(question), as_agent(with_data)) != []
+def answered_by_the_agent(response: ChatResponse, intent: str) -> ChatResponse:
+    """The same response as if the agent had answered by another route."""
+    u = response.understanding.model_copy(update={"intent": intent, "method": "llm"})
+    return response.model_copy(update={"understanding": u})
+
+
+async def test_with_a_model_the_route_is_not_checked(service):
+    response = (await evaluate(service, GOLDEN[:1])).rows[0].response
+    assert intent_problems(GOLDEN[0], answered_by_the_agent(response, "active_alarms")) == []
+
+
+async def test_on_the_rules_path_the_route_is_checked(service):
+    response = (await evaluate(service, GOLDEN[:1])).rows[0].response
+    wrong = response.model_copy(
+        update={"understanding": response.understanding.model_copy(update={"intent": "active_alarms"})}
+    )
+    assert intent_problems(GOLDEN[0], wrong) != []
+
+
+async def test_the_report_lists_each_answers_document_searches(service, tmp_path):
+    report = await evaluate(service, GOLDEN[:1])
+    write_report(report, tmp_path / "run.md", "offline")
+    text = (tmp_path / "run.md").read_text(encoding="utf-8")
+    assert "Searches: pump High Vibration (PMP-VIB-HI)" in text
 
 
 async def test_the_notes_give_the_agents_steps_and_why_it_stopped(service):
