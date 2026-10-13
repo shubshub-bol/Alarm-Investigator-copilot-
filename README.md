@@ -9,6 +9,11 @@ An assistant that investigates industrial plant alarms. It pulls live alarm data
 server** and procedure guidance through **document RAG**, then combines both into one grounded answer in which
 every statement cites its evidence, with the full tool trace one click away.
 
+With a language model, an **agent** works out what the question needs and picks the steps itself: a proven
+investigation, any of the 13 MCP tools, or a document search. It then answers in the shape that was asked (a
+number, a list, a comparison, the steps to take). Without a model, keyword rules choose one of 8 fixed
+investigations, so the copilot still works offline.
+
 ![The copilot answering the acceptance question](docs/screenshots/answer.png)
 
 **Demo video (up to 10 minutes):** _link added after recording_
@@ -19,7 +24,8 @@ every statement cites its evidence, with the full tool trace one click away.
 | See how it works | [Architecture](docs/architecture.md) and [diagram](docs/architecture-diagram.png) |
 | MCP | [MCP server](#mcp-server) and the [tool catalog](docs/mcp-tool-catalog.md) |
 | RAG | [Document RAG](#document-rag) and the [RAG design](docs/rag-design.md) |
-| Quality | [Tests](#build-run-and-test) and [coverage](docs/coverage.md) |
+| The agent | [How it works](docs/architecture.md) and [why it was built this way](docs/design-decisions.md) (section 19) |
+| Quality | [Tests](#build-run-and-test), [coverage](docs/coverage.md) and [answer-quality runs](docs/evaluation/) |
 
 ## Main capabilities
 
@@ -35,14 +41,24 @@ every statement cites its evidence, with the full tool trace one click away.
 - **Document RAG in the same workflow.** Searches built from the MCP results find the right procedure, the
   troubleshooting guidance for the contributing factor, and the safety rules, using hybrid keyword and vector
   search.
-- **Grounded, checked answers.** Every statement cites a tool fact `[T#]` or a document passage `[S#]`; invented
-  citations are removed. Each Alarm API recommendation is checked against the procedures, and conflicts are
-  shown as "Check before acting".
+- **Grounded, checked answers.** Every statement cites a tool fact `[T#]` or a document passage `[S#]`. Code
+  builds the facts part of the answer from the evidence; the model writes only the direct answer and its
+  analysis, and both are checked: every number and code must appear in the evidence, invented citations are
+  removed, and advice the documents conflict with is never endorsed. Each Alarm API recommendation is checked
+  against the procedures, and conflicts are shown as "Check before acting".
+- **Follow-up questions.** "Which procedure applies to this alarm?" or "and over the last 30 days?" work in the
+  same chat. The model sees the last 10 turns (each question with its answer's summary and analysis) and only
+  the important bits of older ones (asset, alarm, time window). This is background for following the
+  conversation, never evidence: every number is fetched fresh from the tools for each question.
 - **Traceability.** One trace id per question across the backend, MCP server and Alarm API; the GUI shows every
-  tool call with its raw request and response, every document search with scores, and the discovered tools.
-- **Graceful degradation.** Without a language model it uses rules and templates; without the MCP server it
-  answers from documents and says so; failed steps are listed as gaps.
-- **A usable GUI.** Chat with saved chats, live progress, evidence drawer, light and dark themes, responsive.
+  tool call with its raw request and response and why it was made, every document search with scores, and the
+  discovered tools.
+- **Graceful degradation.** Without a language model it uses rules and templates. If the model fails before its
+  first step (quota, outage), the rules answer and the answer is marked degraded. Without the MCP server it
+  answers from documents and says so. Failed steps are listed as gaps.
+- **A usable GUI.** Chat with saved chats, live progress, evidence drawer, light and dark themes, responsive. The
+  direct answer comes first; "What to do" stays on the answer for "what should I do" and "why" questions (or when
+  advice conflicts) and is in the evidence drawer otherwise.
 
 ## Quick start
 
@@ -58,8 +74,9 @@ Open **http://localhost:3000** and click the first example question. The first b
 model and builds the document index inside the image (a few minutes); later starts take seconds.
 
 No `.env` is needed: by default the language model is off (rules and template answers) and demo tokens are used.
-To use a language model, copy `.env.example` to `.env` and set `LLM_PROVIDER`, `LLM_MODEL` and `LLM_API_KEY`
-(see [Configuration](#configuration)), then run `docker compose up --build` again.
+To use a language model, and with it the agent, copy `.env.example` to `.env` and set `LLM_PROVIDER`,
+`LLM_MODEL` and `LLM_API_KEY` (see [Configuration](#configuration)), then run `docker compose up --build`
+again. A free Google AI Studio key works: `LLM_PROVIDER=gemini`, `LLM_MODEL=gemini-flash-latest`.
 
 Check the running stack end to end (all services healthy, then the acceptance question with its tool chain,
 citations and conflict check):
@@ -132,7 +149,7 @@ case has no ticketing system.
 | Coverage report | `make coverage` | see [docs/coverage.md](docs/coverage.md) |
 | Formatting, lint, types | `make lint` | `uv run ruff format --check .`, `uv run ruff check .`, `uv run mypy`, `npm --prefix apps/frontend run typecheck` |
 | Retrieval quality | | `uv run python -m rag.evaluate` |
-| Answer quality (34 questions, 4 more with a model) | | `uv run python -m copilot.evaluate` (add `--llm --limit 10 --report FILE` to use the model) |
+| Answer quality (34 questions, 4 more with a model) | | `uv run python -m copilot.evaluate` (add `--llm --limit 10 --report FILE` to use the model; `--llm --skip 34` runs the 4 agent questions) |
 | Dependency audit | `make audit` | see the `Makefile` |
 
 The Python tests include unit, MCP server, MCP client, RAG, orchestration, API, error-path and end-to-end tests;
@@ -243,6 +260,21 @@ documents, the status is `degraded`, the GUI shows "Alarm data unavailable", and
 
 **Small talk.** *"hello"* gets a short reply and no tool calls: *"Hi! Ask me about an alarm, an asset or a site."*
 
+**Questions no playbook covers (with a model).** The agent answers these by combining small tools. They are in
+the answer-quality set with their correct values from the plant data. To pass, the answer must be written by the
+model, have the right answer type and contain those values as whole numbers:
+
+| Question | Correct answer |
+|---|---|
+| How many refineries do we have? | One: EastRefinery |
+| Compare Boiler Feed Pump 101 and Boiler Feed Pump 102 over the last 90 days | 42 alarms for pump 101, 20 for pump 102 |
+| Which motor alarmed most in the last 90 days? | Motor M-101 (35 alarms) |
+| How many assets are at EastRefinery? | 7 |
+
+First run with Gemini (2026-10-13): 4 of 4 passed in 15 agent steps, none stopped at the step limit
+([report](docs/evaluation/2026-10-13-agent-part1.md)). Without a model, these questions get a playbook's answer
+or "This question needs the language model."
+
 ## Screenshots
 
 | | |
@@ -277,7 +309,7 @@ handling and deployment: [docs/architecture.md](docs/architecture.md).
 | Backend, simulator, MCP server | Python 3.12, FastAPI, pydantic v2, httpx, uv |
 | MCP | MCP Python SDK (streamable HTTP and stdio) |
 | RAG | rank-bm25, NumPy, ONNX Runtime with `BAAI/bge-small-en-v1.5`, tokenizers, pypdf |
-| Language model | Gemini (google-genai) or OpenRouter, behind one provider interface; optional |
+| Language model | Gemini (google-genai) or OpenRouter, behind one provider interface; optional. It drives the agent through a structured step format (no provider-specific function calling) |
 | Storage | SQLite (saved chats), files (document index) |
 | GUI | React 19, TypeScript, Vite, Vitest, Testing Library |
 | Packaging and CI | Docker, Docker Compose, nginx, GitHub Actions |
@@ -286,7 +318,7 @@ handling and deployment: [docs/architecture.md](docs/architecture.md).
 ## Repository layout
 
 ```text
-apps/backend/copilot           copilot backend: orchestration, MCP client, RAG use, answers, saved chats
+apps/backend/copilot           copilot backend: agent, playbooks, MCP client, RAG use, answers, saved chats
 apps/frontend                  React GUI
 mcp-servers/alarm-management   the MCP server
 connectors/alarm_api_client    reusable Alarm API connector
@@ -297,6 +329,8 @@ test-data/postman              the assignment's Postman collections
 scripts/                       smoke tests and documentation generators
 deploy/nginx.conf              GUI web server configuration
 docs/                          architecture, diagram, MCP tool catalog, RAG design, API integration, decisions, limitations
+docs/evaluation                answer-quality runs with a language model
+docs/specs, docs/plans         design specs and the build plans made from them
 ```
 
 This follows the suggested structure, with one addition: the Alarm API simulator lives in `services/`, apart
@@ -310,7 +344,8 @@ from the copilot, because it stands in for the external source system.
   end of that period.
 - The copilot is a single-user tool running on the user's machine: no sign-in, ports bound to localhost.
 - The copilot only reads plant data; no tool changes anything, so no write approval flow is needed.
-- A language model is optional: the copilot must work, with plainer wording, without one.
+- A language model is optional: the copilot must work, with plainer wording, without one. The agent, and so
+  questions no playbook covers, needs one.
 
 ## Known limitations
 
@@ -324,6 +359,8 @@ from the copilot, because it stands in for the external source system.
   site gets that playbook's answer, which may not answer the question asked.
 - Free language model plans are rate-limited; a question one recipe covers uses about 2 model calls, others 2 to 6,
   plus 1 for a new chat's title.
+- With the agent, only the 4 agent questions have been run with a real model so far; the earlier model runs in
+  [docs/evaluation](docs/evaluation/) used the previous flow (the model read the question, then a playbook ran).
 - Logs and the in-GUI trace, but no metrics or tracing backend.
 
 The full list, including small deferred review items, and the planned improvements are in
@@ -339,7 +376,9 @@ The full list, including small deferred review items, and the planned improvemen
 | [rag-design.md](docs/rag-design.md) | Corpus, ingestion, chunking, metadata, embeddings, index, hybrid search, ranking, filters, citations, low confidence, prompt injection, refresh |
 | [rag-examples.md](docs/rag-examples.md) | Real retrieved chunks, scores, citations and edge cases |
 | [api-integration.md](docs/api-integration.md) | The Alarm API contract, the connector, the backend API and its live stream |
-| [design-decisions.md](docs/design-decisions.md) | The main choices and their trade-offs |
+| [design-decisions.md](docs/design-decisions.md) | The main choices and their trade-offs (section 19: the agent) |
+| [evaluation/](docs/evaluation/) | Answer-quality runs with a language model, question by question |
+| [specs/](docs/specs/) and [plans/](docs/plans/) | Design specs (chat sessions, evidence-first answers, the agent) and their build plans |
 | [known-limitations.md](docs/known-limitations.md) | Limitations and future improvements |
 | [coverage.md](docs/coverage.md) | Test coverage and what the tests cover |
 
