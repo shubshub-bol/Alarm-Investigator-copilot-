@@ -93,3 +93,12 @@ async def test_the_report_counts_summaries_whose_keys_code_added(service, tmp_pa
     text = (tmp_path / "run.md").read_text(encoding="utf-8")
     assert "| summaries whose keys code added | 1 |" in text
     assert "keys added by code" in text
+
+
+async def test_the_report_counts_shortened_summaries(service, tmp_path):
+    report = await evaluate(service, GOLDEN[:1])
+    report.rows[0].response.answer.grounding.summary_shortened = True
+    write_report(report, tmp_path / "run.md", "LLM")
+    text = (tmp_path / "run.md").read_text(encoding="utf-8")
+    assert "| summaries shortened to fit | 1 |" in text
+    assert "summary shortened" in text

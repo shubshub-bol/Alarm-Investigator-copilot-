@@ -141,6 +141,7 @@ class EvalReport:
         return {
             "summaries rejected by the check": sum(a.grounding.summary_rejected is not None for a in answers),
             "summaries whose keys code added": sum(a.grounding.summary_keys_added for a in answers),
+            "summaries shortened to fit": sum(a.grounding.summary_shortened for a in answers),
             "statements removed by the checks": sum(a.grounding.removed_statements for a in answers),
             "answers with an analysis": sum(bool(a.analysis) for a in answers),
             "model and rules disagreed on the intent": sum(
@@ -193,6 +194,8 @@ def notes(response: ChatResponse) -> str:
     g = response.answer.grounding
     if g.summary_keys_added:
         out.append("keys added by code")
+    if g.summary_shortened:
+        out.append("summary shortened to fit")
     if g.summary_rejected:
         out.append(f"summary rejected: {g.summary_rejected}")
     if g.rejected_summary:

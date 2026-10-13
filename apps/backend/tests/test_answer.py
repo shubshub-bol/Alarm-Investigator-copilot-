@@ -278,7 +278,7 @@ async def test_a_model_summary_that_passes_the_check_is_shown(acceptance_run, su
         ("PMP-XYZ-HI alarms are rising [T2].", "code PMP-XYZ-HI"),
         ("Vibration is rising.", "no citation"),
         ("Vibration is rising [T99].", "unknown citation T99"),
-        ("Vibration is rising [T3]. " + "It keeps rising. " * 40, "too long"),
+        ("Vibration is rising" + " and rising" * 70 + " [T3].", "too long"),  # one sentence, alone too long
     ],
 )
 async def test_a_model_summary_that_fails_the_check_is_replaced(acceptance_run, summary, reason):
@@ -306,6 +306,21 @@ async def test_an_analysis_statement_without_keys_gets_them_from_the_evidence(ac
     reply = {"summary": "Vibration is rising [T3].", "analysis": [{"text": cause, "citations": []}]}
     answer = await compose_answer(ACCEPTANCE, acceptance_run, llm=FakeLlm(reply=reply))
     assert [(s.text, s.citations) for s in answer.analysis] == [(cause, ["T4"])]
+
+
+async def test_a_long_model_summary_keeps_its_first_whole_sentences(acceptance_run):
+    """Seen with an OpenRouter model: a good 863-character summary that repeated the steps was thrown away."""
+    first = "Boiler Feed Pump 101 had 24 High Vibration alarms in 90 days [T2]."
+    second = "They rose from 1.5 to 2.1 a week [T3]."
+    steps = " ".join(["The procedure says to change over to the standby pump [S1]."] * 12)
+    answer = await compose_answer(
+        ACCEPTANCE, acceptance_run, llm=FakeLlm(reply={"summary": f"{first} {second} {steps}"})
+    )
+    assert answer.summary.startswith(f"{first} {second}")
+    assert answer.summary.endswith("[S1].")  # whole sentences only
+    assert len(answer.summary) < len(f"{first} {second} {steps}")
+    assert answer.grounding.summary_source == "llm"
+    assert answer.grounding.summary_shortened is True
 
 
 async def test_each_analysis_statement_is_checked_on_its_own(acceptance_run):

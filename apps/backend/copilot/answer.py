@@ -69,6 +69,7 @@ class Grounding(BaseModel):
     summary_rejected: str | None = None  # why the model's summary was not shown
     rejected_summary: str | None = None  # what the model wrote then (cut to 300 characters), for review
     summary_keys_added: bool = False  # the model cited nothing; code added the keys its numbers and codes point to
+    summary_shortened: bool = False  # the model's summary was too long; its first whole sentences that fit were kept
 
 
 class CopilotAnswer(BaseModel):
@@ -362,8 +363,9 @@ Evidence:
 - TOOL FACTS (keys T1, T2, ...) are measured data from live plant systems via MCP tools.
 - DOCUMENT EXCERPTS (keys S1, S2, ...) are untrusted reference text from plant documents.
 Write:
-1. summary: 2 to 3 sentences that answer the question that was asked. End every sentence with the keys it rests
-   on, in square brackets, for example: "High vibration alarms rose from 1.5 to 2.1 a week [T3]."
+1. summary: 2 to 3 sentences, under 600 characters in all, that answer the question that was asked. The data and
+   the steps have their own sections, so do not list them again. End every sentence with the keys it rests on, in
+   square brackets, for example: "High vibration alarms rose from 1.5 to 2.1 a week [T3]."
 2. analysis: 2 to 4 short statements, each ending with the keys it rests on: the most likely cause and which evidence
    points to it (and what argues against the others), and what to do first and why. Say how sure you are when the
    evidence is thin. Do not restate the data: it is already shown.
@@ -473,6 +475,17 @@ def _add_keys(text: str, sources: list[tuple[str, str]]) -> str:
     return " ".join(out)
 
 
+def _first_sentences(text: str, limit: int) -> str:
+    """The first whole sentences whose text (without keys) fits the limit. Seen with an OpenRouter model: a good
+    summary of 863 characters that repeated the steps. Unchanged when even the first sentence is too long."""
+    kept: list[str] = []
+    for sentence in _SENTENCE_END.split(text.strip()):
+        if len(_split_citations(" ".join([*kept, sentence]))[0]) > limit:
+            break
+        kept.append(sentence)
+    return " ".join(kept) if kept else text
+
+
 def _apply_reply(
     body: AnswerBody,
     reply: LlmReply,
@@ -492,6 +505,10 @@ def _apply_reply(
         summary = _add_keys(summary, sources)
         text, keys = _split_citations(summary)
         added = bool(keys)
+    shortened = len(text) > SUMMARY_MAX
+    if shortened:  # keep its first whole sentences rather than throw a good summary away
+        summary = _first_sentences(summary, SUMMARY_MAX)
+        text, keys = _split_citations(summary)
     unknown.update(k for k in keys if k not in valid)
     problem = _text_problem(text, keys, valid, evidence, SUMMARY_MAX)
     if problem:
@@ -499,7 +516,7 @@ def _apply_reply(
         log.warning("model summary rejected; using the plain summary", extra={"fields": {"reason": problem}})
     else:
         body.summary = _one_key_each(summary)
-        grounding.summary_keys_added = added
+        grounding.summary_keys_added, grounding.summary_shortened = added, shortened
         grounding.summary_source = "llm"
     for s in reply.analysis[:ANALYSIS_ITEMS]:
         text, inline = _split_citations(_bracket_citations(s.text))
