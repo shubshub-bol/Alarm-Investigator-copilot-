@@ -285,11 +285,18 @@ def _plain_summary(
 
 
 def template_answer(
-    run: InvestigationRun, facts: list[Fact], assessments: list[ActionAssessment], question: str = ""
+    run: InvestigationRun,
+    facts: list[Fact],
+    assessments: list[ActionAssessment],
+    question: str = "",
+    recipe_keys: list[str] | None = None,
 ) -> AnswerBody:
+    """`recipe_keys` are the facts of the recipe an agent ran (None on the rules path, or when no recipe ran). The
+    summary, causes and actions then cite those: the agent's own earlier calls of the same tools may be about another
+    asset or alarm. The findings still list every fact."""
     ev = run.evidence
     by_tool: dict[str, list[Fact]] = {}
-    for f in facts:
+    for f in facts if recipe_keys is None else [f for f in facts if f.key in recipe_keys]:
         by_tool.setdefault(f.tool, []).append(f)
     rec_fact = next(iter(by_tool.get("get_operator_recommendations", [])), None)
     rec_keys = [rec_fact.key] if rec_fact else []
@@ -649,10 +656,11 @@ async def compose_answer(
     reply: LlmReply | None = None,
     degraded_reason: str | None = None,
     extra_gaps: list[str] | None = None,
+    recipe_keys: list[str] | None = None,
 ) -> CopilotAnswer:
     """`context` is the chat so far (copilot/context.py), shown to the model only; it is never evidence. The agent
-    passes its own `facts` (any tool's results, keyed as the model saw them) and its final `reply`, so no second
-    model call is made; `degraded_reason` and `extra_gaps` report how it ended."""
+    passes its own `facts` (any tool's results, keyed as the model saw them), the keys of its recipe's facts, and its
+    final `reply`, so no second model call is made; `degraded_reason` and `extra_gaps` report how it ended."""
     ev = run.evidence
     facts = facts if facts is not None else build_facts(run)
     citations = [p.citation for p in ev.passages]
@@ -660,7 +668,8 @@ async def compose_answer(
     rules = assess_actions(ev.recommendations["recommended_actions"], ev.passages) if ev.recommendations else []
     grounding = Grounding(mode="template", retrieval_confidence=ev.retrieval_confidence)
 
-    body = template_answer(run, facts, rules, question)  # the facts part: from the evidence, with or without a model
+    # the facts part: from the evidence, with or without a model
+    body = template_answer(run, facts, rules, question, recipe_keys)
     plain_summary = body.summary
     if reply is None and llm is not None:
         try:

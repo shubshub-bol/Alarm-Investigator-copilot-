@@ -282,6 +282,13 @@ def test_a_merged_reading_widens_severities_and_fills_gaps_from_the_rules():
     assert (u.severities, u.lookback_days) == (["high", "critical"], 30)
 
 
+@pytest.mark.parametrize("site", ["East Refinery", " east  refinery ", "EastRefinery"])
+def test_a_merged_reading_writes_the_site_without_spaces(site):
+    question = "Are there active alarms at the east refinery right now?"
+    u = merge_with_rules(LlmUnderstanding(intent="active_alarms", site=site), understand_with_rules(question), question)
+    assert u.site.lower() == "eastrefinery" and " " not in u.site  # the Alarm API ignores case, not spaces
+
+
 def test_agent_is_an_intent():
     assert QueryUnderstanding(intent="agent").intent == "agent"
 

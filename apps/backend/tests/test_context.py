@@ -60,7 +60,7 @@ class RecordingLlm:
 
     async def generate_json(self, system, prompt, schema):
         self.prompts.append(prompt)
-        if schema is AgentStep and "RESULTS SO FAR:\n(none yet)" in prompt:
+        if schema is AgentStep and "(none yet)\n\nSTEPS LEFT" in prompt:
             return schema.model_validate(
                 {"action": "tool", "name": "search_assets", "arguments_json": '{"query": "Boiler Feed Pump 101"}'}
             )
@@ -79,7 +79,7 @@ async def test_each_question_carries_the_chat_so_far(retriever):
     first = await service.ask("Investigate Boiler Feed Pump 101")
     await service.ask("And over the last 30 days?", first.conversation_id)
 
-    starts = [p for p in llm.prompts if "RESULTS SO FAR:\n(none yet)" in p]  # each question's first agent step
+    starts = [p for p in llm.prompts if "(none yet)\n\nSTEPS LEFT" in p]  # each question's first agent step
     assert "EARLIER IN THIS CHAT" not in starts[0]  # a new chat has no history
     assert "User: Investigate Boiler Feed Pump 101" in starts[1]
     assert "Copilot: Boiler Feed Pump 101 is a pump." in starts[1]

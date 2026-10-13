@@ -102,6 +102,7 @@ class Investigation:
         self.steps: list[StepRecord] = []
         self.mcp_down = False
         self.lookback = u.lookback_days or DEFAULT_LOOKBACK_DAYS
+        self.max_passages = MAX_PASSAGES  # the agent raises it before a recipe, past what its own searches kept
         self._main_searched = False
 
     # =============================================================== primitives
@@ -190,7 +191,7 @@ class Investigation:
                 kept.append(existing)
                 key_of[passage.chunk_id] = existing.citation.key
                 continue
-            if len(self.evidence.passages) >= MAX_PASSAGES:
+            if len(self.evidence.passages) >= self.max_passages:
                 continue
             key = f"S{len(self.evidence.passages) + 1}"  # one numbering across all searches = the answer's keys
             renumbered = passage.model_copy(update={"citation": passage.citation.model_copy(update={"key": key})})

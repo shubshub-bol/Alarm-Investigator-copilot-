@@ -224,6 +224,11 @@ async def understand(question: str, llm: LlmProvider | None, context: str = "") 
     return merge_with_rules(parsed, rules, question)
 
 
+def without_spaces(site: str) -> str:
+    """A site as the Alarm API names it: 'East Refinery' -> 'EastRefinery'."""
+    return "".join(site.split())
+
+
 def _type_name(word: str) -> str:
     """'Boilers' -> 'boiler', 'heat exchangers' -> 'heat_exchanger': the form asset types are stored in."""
     word = "_".join(word.lower().split())
@@ -240,6 +245,8 @@ def merge_with_rules(parsed: LlmUnderstanding, rules: QueryUnderstanding, questi
             merged[name] = getattr(rules, name)
     merged["severities"] = at_or_above(merged["severities"])
     merged["uses_context"] = merged["uses_context"] or rules.uses_context
+    if merged["site"]:  # the Alarm API matches a site ignoring case, not spaces: "East Refinery" finds nothing
+        merged["site"] = without_spaces(merged["site"])
     # A type word is no asset name. Seen with an OpenRouter model: "any boiler alarms active" with the asset
     # 'boiler', which matches three asset names equally, two of them boiler feed pumps.
     if merged["asset_query"] and not re.search(r"\d", merged["asset_query"]):
